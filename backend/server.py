@@ -5,7 +5,6 @@
 # C) 管理员：搜索用户 / 发放法币（JWT 鉴权，仅 is_admin=1 可用）
 # D) 兼容性：保留你原有全部接口；新增逻辑以 Router 追加，不覆盖既有路由
 # E) 重要修正：扩展段的 JWT 解析按 sub=用户名（与你原 token 一致），避免 401
-
 from __future__ import annotations
 from fastapi import FastAPI, Depends, HTTPException, Header, Query, Path
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -48,7 +47,7 @@ class User(Base):
     unopened_bricks = Column(Integer, default=0)
     pity_brick = Column(Integer, default=0)
     pity_purple = Column(Integer, default=0)
-    # 新增：管理员标记（与扩展段的 SQLite 迁移一致）
+    # 新增：管理员标记
     is_admin = Column(Boolean, default=False)
 
 class Skin(Base):
@@ -356,7 +355,6 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
             put_admin_pending(data.username)
             return {"ok": True, "admin_verify_required": True, "msg": "已申请管理员，请查看 sms_codes.txt 并在登录页验证"}
     except NameError:
-        # 扩展段未加载时忽略
         pass
     return {"ok": True, "msg": "注册成功，请登录"}
 
@@ -366,7 +364,6 @@ def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
     if not u: raise HTTPException(401, "用户不存在")
     if not verify_pw(data.password, u.password_hash):
         raise HTTPException(401, "密码错误")
-    # 通过密码校验后，自动给绑定手机号发验证码
     code = f"{secrets.randbelow(1_000_000):06d}"
     write_sms_line(u.phone, code, "login2")
     save_otp(db, u.phone, "login2", code)
@@ -408,7 +405,7 @@ def me(user: User = Depends(user_from_token)):
         "fiat": user.fiat, "coins": user.coins, "keys": user.keys,
         "unopened_bricks": user.unopened_bricks,
         "pity_brick": user.pity_brick, "pity_purple": user.pity_purple,
-        "is_admin": bool(getattr(user, "is_admin", False)),  # 新增
+        "is_admin": bool(getattr(user, "is_admin", False)),
     }
 
 # ------------------ Wallet / Shop ------------------
@@ -756,7 +753,7 @@ def admin_activate_skin(s: SkinIn, db: Session = Depends(get_db), _: None = Depe
     if not row: raise HTTPException(404, "皮肤不存在")
     row.active = s.active; db.commit(); return {"ok": True, "active": row.active}
 
-# ======== 追加：管理员/充值扩展（JWT 管理员 + 充值两段式 + 管理员发放法币） ========
+# ======== 追加：管理员/充值扩展（JWT 管理员 + 充值两段式 + 管理员发放法币 + 充值申请查看） ========
 from fastapi import APIRouter
 import sqlite3, time as _time, os as _os, jwt as _jwt
 from typing import Optional as _Optional
@@ -780,19 +777,15 @@ def _conn():
 
 def _ts(): return int(_time.time())
 
-def _write_sms(tag, code, purpose):
-    line = f"{_ts()}\t{purpose}\t{tag}\t{code}\n"
+def _write_sms(tag, code, purpose, amount=None):
+    extra = (f"\tamount={amount}" if amount is not None else "")
+    line = f"{_ts()}\t{purpose}\t{tag}\t{code}{extra}\n"
     with open(SMS_FILE, "a", encoding="utf-8") as f:
         f.write(line)
 
 def _gen_code(n=6):
     import random
     return "".join([str(random.randint(0,9)) for _ in range(n)])
-
-def _get_user_by_name(u):
-    con=_conn(); cur=con.cursor()
-    cur.execute("SELECT * FROM users WHERE username=?", (u,))
-    r=cur.fetchone(); con.close(); return r
 
 # 幂等迁移：users.is_admin、admin_pending、topup_codes
 def _migrate_ext():
@@ -820,7 +813,7 @@ _migrate_ext()
 
 ext = APIRouter()
 
-# 解析 JWT -> 当前用户（与你主线一致：sub=用户名）
+# 解析 JWT -> 当前用户（sub=用户名）
 from fastapi import Depends as _Depends, HTTPException as _HTTPException
 from fastapi.security import HTTPBearer as _HTTPBearer, HTTPAuthorizationCredentials as _Creds
 _auth = _HTTPBearer(auto_error=False)
@@ -845,7 +838,7 @@ def _require_admin(u=_Depends(_require_user)):
         raise _HTTPException(403, "Forbidden")
     return u
 
-# 注册 want_admin=true 后，由前端在注册页第二步调用：提交验证码 -> 置管理员
+# 注册 want_admin=true 之后，前端可调用此接口提交验证码成为管理员
 @ext.post("/auth/admin-verify")
 def admin_verify(payload: dict):
     username = (payload or {}).get("username","")
@@ -865,38 +858,62 @@ def admin_verify(payload: dict):
     con.commit(); con.close()
     return {"ok":True}
 
-# 顶充两段式：请求验证码
+# 提供给 /auth/register 调用：把申请管理员的验证码写入 admin_pending
+def put_admin_pending(username: str):
+    con=_conn(); cur=con.cursor()
+    code = _gen_code(6); exp = _ts()+15*60
+    cur.execute("REPLACE INTO admin_pending(username, code, expire_at) VALUES (?,?,?)", (username, code, exp))
+    con.commit(); con.close()
+    _write_sms(username, code, "admin-verify")
+    return code
+
+# 充值两段式：请求验证码（携带金额）
 @ext.post("/wallet/topup/request")
-def topup_request(u=_Depends(_require_user)):
+def topup_request(payload: dict, u=_Depends(_require_user)):
+    amount = int((payload or {}).get("amount_fiat", 0) or 0)
+    if amount <= 0:
+        raise _HTTPException(400, "amount_fiat required")
     code = _gen_code(6)
     con=_conn(); cur=con.cursor()
     cur.execute("DELETE FROM topup_codes WHERE username=?", (u["username"],))
     cur.execute("INSERT INTO topup_codes(username, code, amount, expire_at) VALUES (?,?,?,?)",
-                (u["username"], code, 0, _ts()+10*60))
+                (u["username"], code, amount, _ts()+10*60))
     con.commit(); con.close()
-    _write_sms(u["username"], code, "wallet-topup")
-    return {"ok":True, "msg":"code generated"}
+    _write_sms(u["username"], code, "wallet-topup", amount=amount)
+    return {"ok":True}
 
-# 顶充确认：带 code + amount（法币单位与前端一致）
+# 充值两段式：确认（只带验证码）
 @ext.post("/wallet/topup/confirm")
 def topup_confirm(payload: dict, u=_Depends(_require_user)):
     code = (payload or {}).get("code","")
-    amount = int((payload or {}).get("amount_fiat",0) or 0)
-    if not code or amount<=0: raise _HTTPException(400, "code/amount required")
+    if not code: raise _HTTPException(400, "code required")
     con=_conn(); cur=con.cursor()
     cur.execute("SELECT * FROM topup_codes WHERE username=? ORDER BY expire_at DESC", (u["username"],))
     row=cur.fetchone()
     if not row:
-        con.close(); raise _HTTPException(400, "no code")
+        con.close(); raise _HTTPException(400, "no request")
     if _ts() > int(row["expire_at"]):
         con.close(); raise _HTTPException(400, "code expired")
     if str(code) != str(row["code"]):
         con.close(); raise _HTTPException(400, "invalid code")
-    # 入账（法币）
+    amount = int(row["amount"])
     cur.execute("UPDATE users SET fiat = fiat + ? WHERE id=?", (amount, u["id"]))
     cur.execute("DELETE FROM topup_codes WHERE username=?", (u["username"],))
     con.commit(); con.close()
-    return {"ok":True}
+    return {"ok":True, "added": amount}
+
+# 管理员：查看未使用/未过期的充值申请
+@ext.get("/admin/topup-requests")
+def admin_topup_requests(admin=_Depends(_require_admin)):
+    now=_ts()
+    con=_conn(); cur=con.cursor()
+    cur.execute("""SELECT username, code, amount as amount_fiat, expire_at
+                   FROM topup_codes
+                   WHERE expire_at > ?
+                   ORDER BY expire_at DESC""", (now,))
+    items=[dict(r) for r in cur.fetchall()]
+    con.close()
+    return {"items": items}
 
 # 管理员：搜索用户
 @ext.get("/admin/users")
@@ -927,15 +944,6 @@ def grant_fiat(payload: dict, admin=_Depends(_require_admin)):
         con.close(); raise _HTTPException(404, "user not found")
     con.commit(); con.close()
     return {"ok":True}
-
-# 提供给 /auth/register 调用：把申请管理员的验证码写入 admin_pending
-def put_admin_pending(username: str):
-    con=_conn(); cur=con.cursor()
-    code = _gen_code(6); exp = _ts()+15*60
-    cur.execute("REPLACE INTO admin_pending(username, code, expire_at) VALUES (?,?,?)", (username, code, exp))
-    con.commit(); con.close()
-    _write_sms(username, code, "admin-verify")
-    return code
 
 # 挂载扩展
 try:
