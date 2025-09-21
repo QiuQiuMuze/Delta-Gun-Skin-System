@@ -513,47 +513,61 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
     return {"ok": True, "results": results}
 
 # ------------------ Inventory ------------------
+# —— 背包平铺列表：默认隐藏已上架（on_market=True）的物品
 @app.get("/inventory")
-def inventory(rarity: Optional[RarityT] = None,
-              user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+def inventory(
+    rarity: Optional[RarityT] = None,
+    show_on_market: bool = False,     # 新增：默认 False => 隐藏在交易行中的物品
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db)
+):
     q = db.query(Inventory).filter_by(user_id=user.id)
-    if rarity: q = q.filter_by(rarity=rarity)
+    if rarity:
+        q = q.filter(Inventory.rarity == rarity)
+    if not show_on_market:
+        q = q.filter(Inventory.on_market == False)
+
     rows = q.order_by(Inventory.id.desc()).all()
     items = []
     for x in rows:
         items.append({
             "inv_id": x.id,
             "skin_id": x.skin_id, "name": x.name, "rarity": x.rarity,
-            "exquisite": x.exquisite, "wear": f"{x.wear_bp/100:.2f}", "grade": x.grade,
-            "serial": x.serial, "acquired_at": x.acquired_at, "on_market": x.on_market
+            "exquisite": x.exquisite,
+            "wear": f"{x.wear_bp/100:.2f}",
+            "grade": x.grade,
+            "serial": x.serial,
+            "acquired_at": x.acquired_at,
+            "on_market": x.on_market,               # 继续返回状态，前端可用来显示角标
+            "status": "on_market" if x.on_market else "in_bag"
         })
     return {"count": len(items), "items": items}
 
-@app.get("/inventory/item")
-def inventory_item(serial: str = Query(..., description="8位编号"),
-                   user: User = Depends(user_from_token), db: Session = Depends(get_db)):
-    rows = db.query(Inventory).filter_by(user_id=user.id, serial=serial).all()
-    if not rows: raise HTTPException(404, "未找到该编号的物品")
-    items = []
-    for x in rows:
-        items.append({
-            "inv_id": x.id,
-            "skin_id": x.skin_id, "name": x.name, "rarity": x.rarity,
-            "exquisite": x.exquisite, "wear": f"{x.wear_bp/100:.2f}", "grade": x.grade,
-            "serial": x.serial, "acquired_at": x.acquired_at, "on_market": x.on_market
-        })
-    return {"count": len(items), "items": items}
 
+# —— 背包按颜色分组：默认也隐藏已上架
 @app.get("/inventory/by-color")
-def inventory_by_color(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
-    rows = db.query(Inventory).filter_by(user_id=user.id).all()
+def inventory_by_color(
+    show_on_market: bool = False,     # 新增参数，默认隐藏已上架
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db)
+):
+    q = db.query(Inventory).filter_by(user_id=user.id)
+    if not show_on_market:
+        q = q.filter(Inventory.on_market == False)
+    rows = q.all()
+
     grouped = {"BRICK": [], "PURPLE": [], "BLUE": [], "GREEN": []}
     for x in rows:
         grouped[x.rarity].append({
             "inv_id": x.id,
             "skin_id": x.skin_id, "name": x.name, "rarity": x.rarity,
-            "exquisite": x.exquisite, "wear": f"{x.wear_bp/100:.2f}", "grade": x.grade,
-            "serial": x.serial, "acquired_at": x.acquired_at, "on_market": x.on_market
+            "exquisite": x.exquisite,
+            "wear": f"{x.wear_bp/100:.2f}",
+            "grade": x.grade,
+            "serial": x.serial,
+            "acquired_at": x.acquired_at,
+            "on_market": x.on_market,
+            "status": "on_market" if x.on_market else "in_bag"
         })
     summary = {r: len(v) for r, v in grouped.items()}
     return {"summary": summary, "buckets": grouped}
@@ -611,20 +625,53 @@ class MarketBrowseParams(BaseModel):
     grade: Optional[Literal["S","A","B","C"]] = None
     sort: Optional[Literal["wear_asc","wear_desc","price_asc","price_desc","newest","oldest"]] = "newest"
 
+from sqlalchemy.exc import IntegrityError
+
 @app.post("/market/list")
 def market_list(inp: MarketListIn, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    # 1) 找到物品并校验归属
     inv = db.query(Inventory).filter_by(id=inp.inv_id, user_id=user.id).first()
     if not inv:
         raise HTTPException(404, "物品不存在或不属于你")
-    if inv.on_market:
-        raise HTTPException(400, "该物品已在交易行")
+
+    # 2) 价格地板
     floor = MIN_PRICE.get(inv.rarity, 1)
     if inp.price < floor:
         raise HTTPException(400, f"定价过低，{inv.rarity} 最低价格为 {floor} 三角币")
-    inv.on_market = True
-    mi = MarketItem(inv_id=inv.id, user_id=user.id, price=inp.price, active=True, created_at=int(time.time()))
-    db.add(mi); db.commit()
-    return {"ok": True, "market_id": mi.id, "msg": "挂单成功"}
+
+    # 3) 如果已有“活跃挂单”，禁止重复上架
+    existed_active = db.query(MarketItem).filter_by(inv_id=inv.id, active=True).first()
+    if existed_active:
+        raise HTTPException(400, "该物品已在交易行")
+
+    # 4) 复用旧行（避免 unique 冲突）：如果有历史挂单(active=False)，直接“再激活”
+    old_row = db.query(MarketItem).filter_by(inv_id=inv.id).first()
+    try:
+        now_ts = int(time.time())
+        if old_row and not old_row.active:
+            # 复用
+            old_row.user_id   = user.id
+            old_row.price     = inp.price
+            old_row.active    = True
+            old_row.created_at= now_ts
+            inv.on_market     = True
+            db.commit()
+            return {"ok": True, "market_id": old_row.id, "msg": "挂单成功"}
+        else:
+            # 首次上架：插入一行，再标记 on_market
+            mi = MarketItem(inv_id=inv.id, user_id=user.id, price=inp.price, active=True, created_at=now_ts)
+            db.add(mi)
+            db.flush()  # 先拿到 mi.id
+            inv.on_market = True
+            db.commit()
+            return {"ok": True, "market_id": mi.id, "msg": "挂单成功"}
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(400, "该物品已在交易行或存在重复挂单")
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, "上架失败，请稍后再试")
+
 
 @app.get("/market/my")
 def market_my(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
