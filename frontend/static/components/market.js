@@ -11,6 +11,7 @@
     return "hl-green";
   }
   function gradeClass(g) { var m={S:"grade-s",A:"grade-a",B:"grade-b",C:"grade-c"}; return m[g]||""; }
+
   function mapRarity(v){
     const s = String(v || "").trim();
     const up = s.toUpperCase();
@@ -19,13 +20,15 @@
     if (["BRICK","PURPLE","BLUE","GREEN"].includes(up)) return up;
     return up || "GREEN";
   }
+
   function isExq(x){
     if (typeof x?.exquisite    !== "undefined") return !!x.exquisite;
     if (typeof x?.is_exquisite !== "undefined") return !!x.is_exquisite;
     if (typeof x?.exq          !== "undefined") return !!x.exq;
     return false;
   }
-  // 统一提取磨损：支持多字段、字符串/数字、基点/小数
+
+  // 数值 & 磨损归一化（支持 wear / wear_bp / float 等）
   function num(v){
     if (v == null || v === "") return NaN;
     if (typeof v === "number" && isFinite(v)) return v;
@@ -33,7 +36,6 @@
     return isFinite(n) ? n : NaN;
   }
   function normalizeWear(x){
-    // 候选字段（按优先级）
     const cand = [
       x.wear, x.wear_bp, x.bp_wear,
       x.abrasion, x.abrasion_bp,
@@ -43,56 +45,54 @@
     for (let i=0;i<cand.length;i++){
       let v = num(cand[i]);
       if (!isNaN(v)) {
-        // 如果是“基点”（常见：97 -> 0.97； 483 -> 4.83），做换算
-        if (v > 1.5) {
-          if (v <= 10000) v = v / 100;      // 绝大多数用 /100
-          else            v = v / 10000;    // 容错
+        if (v > 1.5) {               // 大概率是“基点” => /100 或 /10000
+          if (v <= 10000) v = v / 100;
+          else            v = v / 10000;
         }
-        // 保留两位小数（和你其他页面显示一致）
         return Number(v.toFixed(2));
       }
     }
     return NaN;
   }
 
-  // 背包字段归一化 —— 保留 on_market 以便过滤，只展示可上架的
+  // 背包项归一化（保留 on_market，只展示可上架）
   function normInv(x){
-    const inv_id  = x.inv_id ?? x.id ?? x.inventory_id ?? "";
-    const name    = x.name ?? x.skin_name ?? x.cn_name ?? "";
-    const rarity  = mapRarity(x.rarity ?? x.color ?? x.tier ?? x.rank ?? x.rarity_cn);
-    const wear    = normalizeWear(x);
-    const grade   = x.grade ?? x.quality ?? x.grade_cn ?? "";
-    const serial  = x.serial ?? x.sn ?? "";
+    const inv_id    = x.inv_id ?? x.id ?? x.inventory_id ?? "";
+    const name      = x.name ?? x.skin_name ?? x.cn_name ?? "";
+    const rarity    = mapRarity(x.rarity ?? x.color ?? x.tier ?? x.rank ?? x.rarity_cn);
+    const wear      = normalizeWear(x);
+    const grade     = x.grade ?? x.quality ?? x.grade_cn ?? "";
+    const serial    = x.serial ?? x.sn ?? "";
     const exquisite = isExq(x);
     const on_market = !!x.on_market;
     return { inv_id, name, rarity, wear, grade, serial, exquisite, on_market };
   }
 
-  // 小组件：按钮组渲染（给筛选用）
   function btn(label, active, attrs){
     return '<button class="btn '+(active?'active':'')+'" '+(attrs||'')+'>'+esc(label)+'</button>';
   }
 
   var MarketPage = {
     _tab: "browse", // browse | sell | mine
-    _filters: { rarity:"ALL", skin_id:"", exquisite:"ANY", grade:"ANY", order:"price_asc" }, // 仅浏览页用
 
-    // —— 上架页筛选状态（中文 UI）
+    // 浏览筛选（英文保留）
+    _filters: { rarity:"ALL", skin_id:"", exquisite:"ANY", grade:"ANY", order:"price_asc" },
+
+    // 上架筛选（中文 UI）
     _sellView: { rarity:"BRICK", exqMode:"ANY", sortWear:"asc" },
 
-    _inventoryAll: [],  // 所有未上架物品
-    _inventory: [],     // 根据上架筛选后的结果
+    _inventoryAll: [],  // 所有未上架
+    _inventory: [],     // 筛选后
     _sellSelected: null,
     _me: {},
 
     render: function () {
       var self = this;
       setTimeout(function(){
-        fetch("/me", { credentials:"same-origin" })
-          .then(r=>r.ok?r.json():{}).then(u=>{ self._me=u||{}; }).catch(()=>{});
-        self._loadInventory();  // 给上架用
-        self._loadBrowse();     // 浏览/购买
-        self._loadMine();       // 我的挂单
+        API.me().then(u => { self._me = u || {}; }).catch(()=>{});
+        self._loadInventory();
+        self._loadBrowse();
+        self._loadMine();
       },0);
 
       return ''+
@@ -105,7 +105,7 @@
         '</div>'+
       '</div>'+
 
-      // 浏览/购买（保持原来）
+      // 浏览/购买
       '<div id="mk-browse" class="card" style="'+(this._tab==='browse'?'':'display:none;')+'">'+
         '<h3>筛选 / 排序</h3>'+
         '<div class="input-row">'+
@@ -139,7 +139,7 @@
         '<div id="mk-browse-list" class="card"></div>'+
       '</div>'+
 
-      // 上架（中文筛选）
+      // 上架（中文按钮筛选）
       '<div id="mk-sell" class="card" style="'+(this._tab==='sell'?'':'display:none;')+'">'+
         '<h3>上架</h3>'+
         '<div id="sell-filter" class="input-row"></div>'+
@@ -150,7 +150,7 @@
         '</div>'+
       '</div>'+
 
-      // 我的挂单（保持原来）
+      // 我的挂单
       '<div id="mk-mine" class="card" style="'+(this._tab==='mine'?'':'display:none;')+'">'+
         '<h3>我的挂单</h3>'+
         '<div id="mk-mine-list" class="card"></div>'+
@@ -175,7 +175,7 @@
         };
       });
 
-      // 浏览筛选（保持原来）
+      // 浏览筛选
       $id('f-rarity').value=this._filters.rarity;
       $id('f-skin').value=this._filters.skin_id;
       $id('f-exq').value=this._filters.exquisite;
@@ -199,7 +199,7 @@
       };
     },
 
-    // ===== 加载库存（兼容 buckets，并过滤 on_market=true） =====
+    // ===== 加载库存（优先 by-color；失败回退 /inventory） =====
     _loadInventory: function(){
       const fill = (flat)=>{
         this._inventoryAll = (flat || []).map(normInv).filter(it => !it.on_market);
@@ -222,7 +222,7 @@
         });
     },
 
-    // ===== 上架筛选：根据 _sellView 从 _inventoryAll 计算 _inventory =====
+    // ===== 上架筛选逻辑 =====
     _applySellFilters: function(){
       const v = this._sellView;
       let list = this._inventoryAll.filter(it => it.rarity === v.rarity);
@@ -240,7 +240,7 @@
       this._inventory = list;
     },
 
-    // ===== 上架筛选栏（按钮组，中文 UI） =====
+    // 上架筛选栏（中文按钮）
     _renderSellBar: function(){
       const host = $id('sell-filter'); if (!host) return;
       const v = this._sellView;
@@ -332,38 +332,33 @@
       if (!inv){ alert("请先从列表中选择一把要上架的枪。"); return; }
       if (!price || price<=0){ alert("请填写有效价格。"); return; }
 
-      fetch("/market/list", {
-        method:"POST",
-        credentials:"same-origin",
-        headers:{ "Content-Type":"application/json" },
-        body:JSON.stringify({ inv_id:Number(inv), price:Number(price) })
-      })
-      .then(r=>r.json().then(j=>({ok:r.ok, j})))
-      .then(ret=>{
-        if (!ret.ok) throw new Error((ret.j&&(ret.j.detail||ret.j.msg))||"上架失败");
-        alert("上架成功！");
-        this._sellSelected=null; $id('sell-price').value=""; $id('sell-submit').disabled=true;
-        this._loadInventory(); this._loadMine(); this._loadBrowse();
-      })
-      .catch(e=>alert(e.message||"上架失败"));
+      API.marketList(Number(inv), Number(price))
+        .then((ret)=>{
+          // 后端返回: { ok: true, market_id, msg }
+          const msg = (ret && (ret.msg || ret.detail)) || "上架成功！";
+          alert(msg);
+          this._sellSelected=null; $id('sell-price').value=""; $id('sell-submit').disabled=true;
+          this._loadInventory(); this._loadMine(); this._loadBrowse();
+        })
+        .catch(e=>{
+          alert(e.message || "上架失败");
+        });
     },
 
-    // ===== 浏览 / 购买（保持原来） =====
+    // ===== 浏览 / 购买 =====
     _loadBrowse: function () {
-      var f=this._filters, qs=new URLSearchParams();
-      if (f.rarity && f.rarity!=="ALL") qs.set("rarity", f.rarity);
-      if (f.skin_id) qs.set("skin_id", f.skin_id);
-      if (f.exquisite==="EXQ") qs.set("is_exquisite","true");
-      if (f.exquisite==="PREM") qs.set("is_exquisite","false");
-      if (f.grade!=="ANY") qs.set("grade", f.grade);
-      var sortMap={price_asc:"price_asc",price_desc:"price_desc",wear_asc:"wear_asc",wear_desc:"wear_desc",newest:"newest",oldest:"oldest"};
-      qs.set("sort", sortMap[f.order]||"newest");
+      var f=this._filters, qs={
+        sort: {price_asc:"price_asc",price_desc:"price_desc",wear_asc:"wear_asc",wear_desc:"wear_desc",newest:"newest",oldest:"oldest"}[f.order] || "newest"
+      };
+      if (f.rarity && f.rarity!=="ALL") qs.rarity = f.rarity;
+      if (f.skin_id) qs.skin_id = f.skin_id;
+      if (f.exquisite==="EXQ") qs.is_exquisite = "true";
+      if (f.exquisite==="PREM") qs.is_exquisite = "false";
+      if (f.grade!=="ANY") qs.grade = f.grade;
 
-      fetch("/market/browse?"+qs.toString(), { credentials:"same-origin" })
-        .then(r=>r.ok?r.json():{items:[]})
+      API.marketBrowse(qs)
         .then(data=>{
           var items=(data.items||[]).map(function(x){
-            const wear = normalizeWear(x);
             return {
               id: x.id || x.market_id || x.listing_id,
               inv_id: x.inv_id,
@@ -374,7 +369,7 @@
               rarity: mapRarity(x.rarity || x.color || x.tier || x.rank || x.rarity_cn),
               exquisite: isExq(x),
               grade: x.grade ?? x.quality ?? "",
-              wear: wear,
+              wear: normalizeWear(x),
               serial: x.serial
             };
           });
@@ -400,14 +395,12 @@
             '<thead><tr><th>上架玩家</th><th>名称</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th><th>价格</th><th>操作</th></tr></thead>'+
             '<tbody>'+rows+'</tbody></table>';
 
-          $id('mk-browse-list').querySelectorAll('[data-buy]').forEach(function(btn){
+          $id('mk-browse-list').querySelectorAll('[data-buy]').forEach((btn)=>{
             const id=btn.getAttribute('data-buy');
             btn.onclick=function(){
-              fetch("/market/buy/"+id, { method:"POST", credentials:"same-origin" })
-                .then(r=>r.json().then(j=>({ok:r.ok, j})))
-                .then(ret=>{
-                  if (!ret.ok) throw new Error((ret.j&&(ret.j.detail||ret.j.msg))||"购买失败");
-                  alert("购买成功！");
+              API.marketBuy(id)
+                .then((ret)=>{
+                  alert((ret && (ret.msg||ret.detail)) || "购买成功！");
                   MarketPage._loadBrowse(); MarketPage._loadMine(); MarketPage._loadInventory();
                 })
                 .catch(e=>alert(e.message||"购买失败"));
@@ -417,10 +410,9 @@
         .catch(()=>{ $id('mk-browse-list').innerHTML='<div class="muted">加载失败</div>'; });
     },
 
-    // ===== 我的挂单（保持原来） =====
+    // ===== 我的挂单 =====
     _loadMine: function(){
-      fetch("/market/my", { credentials:"same-origin" })
-        .then(r=>r.ok?r.json():{items:[]})
+      API.marketMine()
         .then(data=>{
           var rows='';
           var list=(data.items||[]).map(function(x){
@@ -453,16 +445,11 @@
             '<table class="table"><thead><tr><th>名称</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th><th>价格</th><th>操作</th></tr></thead>'+
             '<tbody>'+rows+'</tbody></table>';
 
-          $id('mk-mine-list').querySelectorAll('[data-off]').forEach(function(btn){
+          $id('mk-mine-list').querySelectorAll('[data-off]').forEach((btn)=>{
             const id=btn.getAttribute('data-off');
             btn.onclick=function(){
-              fetch("/market/delist/"+id, { method:"POST", credentials:"same-origin" })
-                .then(r=>r.json().then(j=>({ok:r.ok, j})))
-                .then(ret=>{
-                  if (!ret.ok) throw new Error((ret.j&&(ret.j.detail||ret.j.msg))||"撤下失败");
-                  alert("已撤下。");
-                  MarketPage._loadMine(); MarketPage._loadBrowse(); MarketPage._loadInventory();
-                })
+              API.marketDelist(id)
+                .then((ret)=>{ alert((ret && (ret.msg||ret.detail)) || "已撤下。"); MarketPage._loadMine(); MarketPage._loadBrowse(); MarketPage._loadInventory(); })
                 .catch(e=>alert(e.message||"撤下失败"));
             };
           });
