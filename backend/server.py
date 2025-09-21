@@ -1,8 +1,10 @@
-# server.py — FastAPI + SQLite + JWT + 手机验证码 + 合成 + 交易行
-# 更新要点：
-# 1) 砖皮同样拥有 S/A/B/C（由磨损映射），市场 grade 筛选对所有稀有度有效
-# 2) 新增交易行撤下架接口：/market/my  /market/delist/{market_id}
-# 3) 全局编号 serial = f"{Inventory.id:08d}"
+# server.py — FastAPI + SQLite + SQLAlchemy + JWT + 手机验证码 + 合成 + 交易行
+# 本版在你现有基础上“只增加不删减”：
+# A) 账户体系：支持“申请管理员”+ 管理员验证码校验；/me 返回 is_admin
+# B) 钱包：法币充值改为两段式（/wallet/topup/request + /wallet/topup/confirm）；兑换固定 1:10（保留原路由路径）
+# C) 管理员：搜索用户 / 发放法币（JWT 鉴权，仅 is_admin=1 可用）
+# D) 兼容性：保留你原有全部接口；新增逻辑以 Router 追加，不覆盖既有路由
+# E) 重要修正：扩展段的 JWT 解析按 sub=用户名（与你原 token 一致），避免 401
 
 from __future__ import annotations
 from fastapi import FastAPI, Depends, HTTPException, Header, Query, Path
@@ -46,6 +48,8 @@ class User(Base):
     unopened_bricks = Column(Integer, default=0)
     pity_brick = Column(Integer, default=0)
     pity_purple = Column(Integer, default=0)
+    # 新增：管理员标记（与扩展段的 SQLite 迁移一致）
+    is_admin = Column(Boolean, default=False)
 
 class Skin(Base):
     __tablename__ = "skins"
@@ -110,6 +114,8 @@ class RegisterIn(BaseModel):
     username: str
     phone: str
     password: str
+    # 新增：是否申请管理员（默认否，保持兼容）
+    want_admin: bool = False
 
 class LoginStartIn(BaseModel):
     username: str
@@ -130,7 +136,7 @@ class ResetPwdIn(BaseModel):
 
 class WalletOp(BaseModel):
     amount_fiat: int
-    coin_rate: int = 10
+    coin_rate: int = 10  # 保留字段以兼容旧前端；实际按固定 1:10 处理
 
 class CountIn(BaseModel):
     count: int = 1
@@ -344,6 +350,14 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
     check_password_complexity(data.password)
     u = User(username=data.username, phone=data.phone, password_hash=hash_pw(data.password))
     db.add(u); db.commit()
+    # 若申请管理员：下发管理员验证码至 sms_codes.txt（写入 admin_pending）
+    try:
+        if data.want_admin:
+            put_admin_pending(data.username)
+            return {"ok": True, "admin_verify_required": True, "msg": "已申请管理员，请查看 sms_codes.txt 并在登录页验证"}
+    except NameError:
+        # 扩展段未加载时忽略
+        pass
     return {"ok": True, "msg": "注册成功，请登录"}
 
 @app.post("/auth/login/start")
@@ -394,6 +408,7 @@ def me(user: User = Depends(user_from_token)):
         "fiat": user.fiat, "coins": user.coins, "keys": user.keys,
         "unopened_bricks": user.unopened_bricks,
         "pity_brick": user.pity_brick, "pity_purple": user.pity_purple,
+        "is_admin": bool(getattr(user, "is_admin", False)),  # 新增
     }
 
 # ------------------ Wallet / Shop ------------------
@@ -405,11 +420,15 @@ def topup(op: WalletOp, user: User = Depends(user_from_token), db: Session = Dep
 
 @app.post("/wallet/exchange")
 def exchange(op: WalletOp, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
-    if op.amount_fiat <= 0: raise HTTPException(400, "兑换金额必须大于 0")
-    if user.fiat < op.amount_fiat: raise HTTPException(400, "法币余额不足")
+    # 固定 1:10（忽略传入 coin_rate；保持路由不变）
+    if op.amount_fiat <= 0:
+        raise HTTPException(400, "兑换金额必须大于 0")
+    if user.fiat < op.amount_fiat:
+        raise HTTPException(400, "法币余额不足")
+    rate = 10
     user.fiat -= op.amount_fiat
-    user.coins += op.amount_fiat * op.coin_rate
-    db.commit(); return {"ok": True, "coins": user.coins, "fiat": user.fiat}
+    user.coins += op.amount_fiat * rate
+    db.commit(); return {"ok": True, "coins": user.coins, "fiat": user.fiat, "rate": rate}
 
 @app.post("/shop/buy-keys")
 def buy_keys(inp: CountIn, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
@@ -701,7 +720,7 @@ def market_buy(market_id: int = Path(..., ge=1),
     db.commit()
     return {"ok": True, "msg": "购买成功", "inv_id": inv.id, "name": inv.name, "serial": inv.serial, "price": mi.price}
 
-# ------------------ Admin ------------------
+# ------------------ Admin（旧：X-Admin-Key） ------------------
 def require_admin(x_admin_key: Optional[str] = Header(None)):
     if x_admin_key != ADMIN_KEY: raise HTTPException(401, "需要有效的 X-Admin-Key")
 
@@ -736,6 +755,194 @@ def admin_activate_skin(s: SkinIn, db: Session = Depends(get_db), _: None = Depe
     row = db.query(Skin).filter_by(skin_id=s.skin_id).first()
     if not row: raise HTTPException(404, "皮肤不存在")
     row.active = s.active; db.commit(); return {"ok": True, "active": row.active}
+
+# ======== 追加：管理员/充值扩展（JWT 管理员 + 充值两段式 + 管理员发放法币） ========
+from fastapi import APIRouter
+import sqlite3, time as _time, os as _os, jwt as _jwt
+from typing import Optional as _Optional
+
+try:
+    JWT_SECRET
+except NameError:
+    JWT_SECRET = _os.environ.get("JWT_SECRET","dev-secret")
+try:
+    JWT_ALGO
+except NameError:
+    JWT_ALGO = "HS256"
+
+DB_PATH = _os.path.join(_os.path.dirname(__file__), "delta_brick.db")
+SMS_FILE = _os.path.join(_os.path.dirname(__file__), "sms_codes.txt")
+
+def _conn():
+    c = sqlite3.connect(DB_PATH)
+    c.row_factory = sqlite3.Row
+    return c
+
+def _ts(): return int(_time.time())
+
+def _write_sms(tag, code, purpose):
+    line = f"{_ts()}\t{purpose}\t{tag}\t{code}\n"
+    with open(SMS_FILE, "a", encoding="utf-8") as f:
+        f.write(line)
+
+def _gen_code(n=6):
+    import random
+    return "".join([str(random.randint(0,9)) for _ in range(n)])
+
+def _get_user_by_name(u):
+    con=_conn(); cur=con.cursor()
+    cur.execute("SELECT * FROM users WHERE username=?", (u,))
+    r=cur.fetchone(); con.close(); return r
+
+# 幂等迁移：users.is_admin、admin_pending、topup_codes
+def _migrate_ext():
+    con=_conn(); cur=con.cursor()
+    # users 增加 is_admin（如果不存在）
+    cur.execute("PRAGMA table_info(users)")
+    cols = [row["name"] for row in cur.fetchall()]
+    if "is_admin" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+    # admin_pending
+    cur.execute("""CREATE TABLE IF NOT EXISTS admin_pending(
+      username TEXT PRIMARY KEY,
+      code TEXT NOT NULL,
+      expire_at INTEGER NOT NULL
+    )""")
+    # topup_codes
+    cur.execute("""CREATE TABLE IF NOT EXISTS topup_codes(
+      username TEXT NOT NULL,
+      code TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      expire_at INTEGER NOT NULL
+    )""")
+    con.commit(); con.close()
+_migrate_ext()
+
+ext = APIRouter()
+
+# 解析 JWT -> 当前用户（与你主线一致：sub=用户名）
+from fastapi import Depends as _Depends, HTTPException as _HTTPException
+from fastapi.security import HTTPBearer as _HTTPBearer, HTTPAuthorizationCredentials as _Creds
+_auth = _HTTPBearer(auto_error=False)
+def _require_user(cred: _Creds = _Depends(_auth)):
+    if not cred:
+        raise _HTTPException(401, "Unauthorized")
+    try:
+        data = _jwt.decode(cred.credentials, JWT_SECRET, algorithms=[JWT_ALGO])
+        username = data.get("sub")
+    except Exception:
+        raise _HTTPException(401, "Unauthorized")
+    if not username:
+        raise _HTTPException(401, "Unauthorized")
+    con=_conn(); cur=con.cursor()
+    cur.execute("SELECT * FROM users WHERE username=?", (username,))
+    u=cur.fetchone(); con.close()
+    if not u:
+        raise _HTTPException(401, "Unauthorized")
+    return u
+def _require_admin(u=_Depends(_require_user)):
+    if not bool(u["is_admin"]):
+        raise _HTTPException(403, "Forbidden")
+    return u
+
+# 注册 want_admin=true 后，由前端在注册页第二步调用：提交验证码 -> 置管理员
+@ext.post("/auth/admin-verify")
+def admin_verify(payload: dict):
+    username = (payload or {}).get("username","")
+    code = (payload or {}).get("code","")
+    if not username or not code: raise _HTTPException(400, "username/code required")
+    con=_conn(); cur=con.cursor()
+    cur.execute("SELECT * FROM admin_pending WHERE username=?", (username,))
+    row=cur.fetchone()
+    if not row:
+        con.close(); raise _HTTPException(400, "no pending admin request")
+    if _ts() > int(row["expire_at"]):
+        con.close(); raise _HTTPException(400, "code expired")
+    if str(code) != str(row["code"]):
+        con.close(); raise _HTTPException(400, "invalid code")
+    cur.execute("UPDATE users SET is_admin=1 WHERE username=?", (username,))
+    cur.execute("DELETE FROM admin_pending WHERE username=?", (username,))
+    con.commit(); con.close()
+    return {"ok":True}
+
+# 顶充两段式：请求验证码
+@ext.post("/wallet/topup/request")
+def topup_request(u=_Depends(_require_user)):
+    code = _gen_code(6)
+    con=_conn(); cur=con.cursor()
+    cur.execute("DELETE FROM topup_codes WHERE username=?", (u["username"],))
+    cur.execute("INSERT INTO topup_codes(username, code, amount, expire_at) VALUES (?,?,?,?)",
+                (u["username"], code, 0, _ts()+10*60))
+    con.commit(); con.close()
+    _write_sms(u["username"], code, "wallet-topup")
+    return {"ok":True, "msg":"code generated"}
+
+# 顶充确认：带 code + amount（法币单位与前端一致）
+@ext.post("/wallet/topup/confirm")
+def topup_confirm(payload: dict, u=_Depends(_require_user)):
+    code = (payload or {}).get("code","")
+    amount = int((payload or {}).get("amount_fiat",0) or 0)
+    if not code or amount<=0: raise _HTTPException(400, "code/amount required")
+    con=_conn(); cur=con.cursor()
+    cur.execute("SELECT * FROM topup_codes WHERE username=? ORDER BY expire_at DESC", (u["username"],))
+    row=cur.fetchone()
+    if not row:
+        con.close(); raise _HTTPException(400, "no code")
+    if _ts() > int(row["expire_at"]):
+        con.close(); raise _HTTPException(400, "code expired")
+    if str(code) != str(row["code"]):
+        con.close(); raise _HTTPException(400, "invalid code")
+    # 入账（法币）
+    cur.execute("UPDATE users SET fiat = fiat + ? WHERE id=?", (amount, u["id"]))
+    cur.execute("DELETE FROM topup_codes WHERE username=?", (u["username"],))
+    con.commit(); con.close()
+    return {"ok":True}
+
+# 管理员：搜索用户
+@ext.get("/admin/users")
+def admin_users(q: _Optional[str]=None, page: int=1, page_size: int=20, admin=_Depends(_require_admin)):
+    off = max(0,(page-1)*page_size)
+    con=_conn(); cur=con.cursor()
+    if q:
+      qq = f"%{q}%"
+      cur.execute("""SELECT username, phone, fiat, coins, is_admin FROM users
+                     WHERE username LIKE ? OR phone LIKE ?
+                     ORDER BY id DESC LIMIT ? OFFSET ?""", (qq, qq, page_size, off))
+    else:
+      cur.execute("""SELECT username, phone, fiat, coins, is_admin FROM users
+                     ORDER BY id DESC LIMIT ? OFFSET ?""", (page_size, off))
+    items=[dict(r) for r in cur.fetchall()]
+    con.close()
+    return {"items": items, "page": page, "page_size": page_size}
+
+# 管理员：发放法币
+@ext.post("/admin/grant-fiat")
+def grant_fiat(payload: dict, admin=_Depends(_require_admin)):
+    username = (payload or {}).get("username","")
+    amount = int((payload or {}).get("amount_fiat",0) or 0)
+    if not username or amount<=0: raise _HTTPException(400, "username/amount required")
+    con=_conn(); cur=con.cursor()
+    cur.execute("UPDATE users SET fiat = fiat + ? WHERE username=?", (amount, username))
+    if cur.rowcount == 0:
+        con.close(); raise _HTTPException(404, "user not found")
+    con.commit(); con.close()
+    return {"ok":True}
+
+# 提供给 /auth/register 调用：把申请管理员的验证码写入 admin_pending
+def put_admin_pending(username: str):
+    con=_conn(); cur=con.cursor()
+    code = _gen_code(6); exp = _ts()+15*60
+    cur.execute("REPLACE INTO admin_pending(username, code, expire_at) VALUES (?,?,?)", (username, code, exp))
+    con.commit(); con.close()
+    _write_sms(username, code, "admin-verify")
+    return code
+
+# 挂载扩展
+try:
+    app.include_router(ext)
+except Exception:
+    pass
+# ======== 扩展结束 ========
 
 # ------------------ Run ------------------
 if __name__ == "__main__":

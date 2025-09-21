@@ -18,6 +18,7 @@ const Pages = {
           <div class="kv"><div class="k">法币</div><div class="v">${d.fiat}</div></div>
           <div class="kv"><div class="k">钥匙</div><div class="v">${d.keys}</div></div>
           <div class="kv"><div class="k">未开砖</div><div class="v">${d.unopened_bricks}</div></div>
+          <div class="kv"><div class="k">是否管理员</div><div class="v">${d.is_admin ? '是' : '否'}</div></div>
         </div></div>`;
     }, bind:()=>{}
   },
@@ -42,6 +43,20 @@ function renderNav() { $nav().innerHTML = Nav.render(); Nav.bind(); }
 
 async function renderRoute() {
   const r = (location.hash.replace(/^#\//,"") || "home");
+
+  // 若已登录，每次进入路由前刷新一次 /me，获取 is_admin 并供导航显示
+  if (API.token) {
+    try { await API.me(); } catch(e) { /* 忽略 */ }
+  } else {
+    API._me = null;
+  }
+
+  // 非管理员访问 admin -> 跳回首页
+  if (r === "admin" && !API._me?.is_admin) {
+    location.hash = "#/home";
+    return;
+  }
+
   renderNav();
   const p = Pages[r] || Pages.home;
   const html = await (p.render?.() ?? "");
