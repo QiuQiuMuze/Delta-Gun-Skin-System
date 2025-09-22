@@ -49,3 +49,5 @@ phone=18079154273 purpose=login2 code=195888 ts=2025-09-21 20:52:54
 1758502397	wallet-topup	mz	681190	amount=10
 1758502467	wallet-topup	mz	298812	amount=10
 phone=18079154272 purpose=login2 code=562698 ts=2025-09-21 20:55:37
+phone=18079154273 purpose=login2 code=700106 ts=2025-09-21 21:14:04
+phone=18079154273 purpose=login2 code=507480 ts=2025-09-21 21:14:43
