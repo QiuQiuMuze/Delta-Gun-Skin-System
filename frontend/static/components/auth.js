@@ -5,7 +5,7 @@ const AuthPage = {
       <div class="input-row">
         <input id="login-u" placeholder="用户名"/>
         <input id="login-p" type="password" placeholder="密码"/>
-        <button class="btn" id="login-btn">开始登录</button>
+        <button class="btn" id="login-btn">获取验证码</button>
       </div>
       <div class="input-row">
         <input id="login-code" placeholder="短信验证码（第二步）"/>
