@@ -53,7 +53,7 @@ const API = {
     if (!res.ok) {
       const msg = (data && (data.detail || data.msg)) || data?.raw || txt || "请求失败";
 
-      // ★ 被别处登录顶下线
+      // ★ 被别处登录顶下线（后端返回 401 且 detail=SESSION_REVOKED）
       if (msg === "SESSION_REVOKED") {
         try { this.setToken(null); } catch (_) {}
         alert("账号在其他设备/标签页登录，你已下线（为保证账号安全请重新登录）");
@@ -66,19 +66,24 @@ const API = {
     return data;
   },
 
-
   // ---- Auth ----
-  register: (username, phone, password, want_admin = false) =>
-    API.json("/auth/register", "POST", { username, phone, password, want_admin }),
+  // 发送“注册验证码”
+  sendRegisterCode: (phone) => API.sendCode(phone, "register"),
+
+  // 发送任意 purpose 的短信（login/reset/register）
+  sendCode: (phone, purpose) =>
+    API.json("/auth/send-code", "POST", { phone, purpose }),
+
+  // 注册（新增 code）
+  // 服务器端 /auth/register 需要：username, phone, password, code, want_admin
+  register: (username, phone, password, code, want_admin = false) =>
+    API.json("/auth/register", "POST", { username, phone, password, code, want_admin }),
 
   loginStart: (username, password) =>
     API.json("/auth/login/start", "POST", { username, password }),
 
   loginVerify: (username, code) =>
     API.json("/auth/login/verify", "POST", { username, code }),
-
-  sendCode: (phone, purpose) =>
-    API.json("/auth/send-code", "POST", { phone, purpose }),
 
   resetPassword: (phone, code, new_password) =>
     API.json("/auth/reset-password", "POST", { phone, code, new_password }),
@@ -93,14 +98,14 @@ const API = {
   },
 
   // ---- Wallet ----
-  // 申请验证码和确认都带金额，兼容你后端的 422 校验
+  // 申请验证码（带金额） & 确认（带 code 和金额以兼容后端）
   topupRequest: (amount_fiat) =>
     API.json("/wallet/topup/request", "POST", { amount_fiat }),
 
   topupConfirm: (code, amount_fiat) =>
     API.json("/wallet/topup/confirm", "POST", { code, amount_fiat }),
 
-  // 兑换固定 1:10
+  // 兑换固定档位（由后端校验）
   exchange: (amount_fiat) => API.json("/wallet/exchange", "POST", { amount_fiat }),
 
   // ---- Shop / Gacha / Inventory / Craft ----
