@@ -216,6 +216,36 @@ def mk_jwt(username: str, session_ver: int, exp_min: int = 60*24) -> str:
     payload = {"sub": username, "sv": int(session_ver), "exp": datetime.utcnow() + timedelta(minutes=exp_min)}
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
+# ---- OTP 发送频率限制（同一 purpose+tag 60 秒一次）----
+import sqlite3 as _sqlite3
+
+def _sms_rate_guard(purpose: str, tag: str, min_interval: int = 60):
+    """
+    purpose: 验证码用途；tag: 手机号或用户名（视用途而定）
+    若 60s 内同一 (purpose, tag) 已发送过，则抛出 429。
+    """
+    db_path = DB_PATH_FS  # 复用现有数据库
+    con = _sqlite3.connect(db_path)
+    cur = con.cursor()
+    cur.execute("""CREATE TABLE IF NOT EXISTS sms_rate(
+        purpose TEXT NOT NULL,
+        tag     TEXT NOT NULL,
+        last_ts INTEGER NOT NULL,
+        PRIMARY KEY (purpose, tag)
+    )""")
+    now = int(time.time())
+    cur.execute("SELECT last_ts FROM sms_rate WHERE purpose=? AND tag=?", (purpose, tag))
+    row = cur.fetchone()
+    if row:
+        last_ts = int(row[0])
+        remain = min_interval - (now - last_ts)
+        if remain > 0:
+            con.close()
+            raise HTTPException(status_code=429, detail=f"发送过于频繁，请 {remain} 秒后再试")
+    # 允许发送：更新最后发送时间
+    cur.execute("REPLACE INTO sms_rate(purpose, tag, last_ts) VALUES (?,?,?)", (purpose, tag, now))
+    con.commit(); con.close()
+
 
 def user_from_token(creds: HTTPAuthorizationCredentials = Depends(http_bearer),
                     db: Session = Depends(get_db)) -> User:
@@ -414,6 +444,8 @@ def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
     if not u: raise HTTPException(401, "用户不存在")
     if not verify_pw(data.password, u.password_hash):
         raise HTTPException(401, "密码错误")
+    # 60s 限流：同一手机号 login2
+    _sms_rate_guard("login2", u.phone)
     code = f"{secrets.randbelow(1_000_000):06d}"
     write_sms_line(u.phone, code, "login2")
     save_otp(db, u.phone, "login2", code)
@@ -453,6 +485,9 @@ def send_code(inp: SendCodeIn, db: Session = Depends(get_db)):
             raise HTTPException(400, "该手机号已被占用")
     else:
         raise HTTPException(400, "不支持的验证码用途")
+    # 60s 限流：同一手机号+用途
+    _sms_rate_guard(purpose, phone)
+
 
     # 生成并写入
     code = f"{secrets.randbelow(1_000_000):06d}"
@@ -1020,6 +1055,7 @@ def admin_verify(payload: dict):
 
 # 提供给 /auth/register 调用：把申请管理员的验证码写入 admin_pending
 def put_admin_pending(username: str):
+    _sms_rate_guard("admin-verify", username)
     con=_conn(); cur=con.cursor()
     code = _gen_code(6); exp = _ts()+15*60
     cur.execute("REPLACE INTO admin_pending(username, code, expire_at) VALUES (?,?,?)", (username, code, exp))
@@ -1033,6 +1069,7 @@ def topup_request(payload: dict, u=_Depends(_require_user)):
     amount = int((payload or {}).get("amount_fiat", 0) or 0)
     if amount <= 0:
         raise _HTTPException(400, "amount_fiat required")
+    _sms_rate_guard("wallet-topup", u["username"])
     code = _gen_code(6)
     con=_conn(); cur=con.cursor()
     cur.execute("DELETE FROM topup_codes WHERE username=?", (u["username"],))
@@ -1160,7 +1197,8 @@ def admin_sms_log(limit: int = 200, admin=_Depends(_require_admin)):
             continue
         purpose, tag, code, ts_int, amount = parsed
         # 隐藏：删号验证码只允许后端可见，不在前端“短信验证码日志”里展示
-        if purpose == "admin-deluser":
+        # 隐藏：删号/管理员验证 的验证码只允许后端可见，不在前端列表展示
+        if purpose in ("admin-deluser", "admin-verify"):
             continue
 
         keep = False
@@ -1302,6 +1340,8 @@ def admin_delete_user_request(payload: dict, admin=_Depends(_require_admin)):
     row = cur.fetchone()
     if not row:
         con.close(); raise _HTTPException(404, "user not found")
+    _sms_rate_guard("admin-deluser", target)
+
 
     # 生成并落库验证码（10 分钟）
     code = _gen_code(6)
