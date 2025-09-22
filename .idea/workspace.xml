@@ -10,7 +10,7 @@
       <change beforePath="$PROJECT_DIR$/backend/server.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/server.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/sms_codes.txt" beforeDir="false" afterPath="$PROJECT_DIR$/backend/sms_codes.txt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/static/api.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/static/api.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/static/components/auth.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/static/components/auth.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/static/components/admin.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/static/components/admin.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -89,7 +89,7 @@
       <option name="presentableId" value="Default" />
       <updated>1758337116796</updated>
       <workItem from="1758337117557" duration="17714000" />
-      <workItem from="1758484949194" duration="18563000" />
+      <workItem from="1758484949194" duration="20615000" />
     </task>
     <servers />
   </component>

@@ -53,7 +53,7 @@ const API = {
     if (!res.ok) {
       const msg = (data && (data.detail || data.msg)) || data?.raw || txt || "请求失败";
 
-      // ★ 被别处登录顶下线（后端返回 401 且 detail=SESSION_REVOKED）
+      // ★ 被别处登录顶下线（后端返回 401 + "SESSION_REVOKED"）
       if (msg === "SESSION_REVOKED") {
         try { this.setToken(null); } catch (_) {}
         alert("账号在其他设备/标签页登录，你已下线（为保证账号安全请重新登录）");
@@ -67,23 +67,23 @@ const API = {
   },
 
   // ---- Auth ----
-  // 发送“注册验证码”
-  sendRegisterCode: (phone) => API.sendCode(phone, "register"),
+  // 注册第一步：下发手机验证码（purpose 固定 "register"）
+  sendRegisterCode: (phone) =>
+    API.json("/auth/send-code", "POST", { phone, purpose: "register" }),
 
-  // 发送任意 purpose 的短信（login/reset/register）
-  sendCode: (phone, purpose) =>
-    API.json("/auth/send-code", "POST", { phone, purpose }),
-
-  // 注册（新增 code）
-  // 服务器端 /auth/register 需要：username, phone, password, code, want_admin
-  register: (username, phone, password, code, want_admin = false) =>
-    API.json("/auth/register", "POST", { username, phone, password, code, want_admin }),
+  // 注册第二步：提交用户名/手机号/短信码/密码（后端会校验短信码）
+  register: (username, phone, code, password, want_admin = false) =>
+    API.json("/auth/register", "POST", { username, phone, code, password, want_admin }),
 
   loginStart: (username, password) =>
     API.json("/auth/login/start", "POST", { username, password }),
 
   loginVerify: (username, code) =>
     API.json("/auth/login/verify", "POST", { username, code }),
+
+  // 通用短信（目前用于“重置密码”）
+  sendCode: (phone, purpose) =>
+    API.json("/auth/send-code", "POST", { phone, purpose }),
 
   resetPassword: (phone, code, new_password) =>
     API.json("/auth/reset-password", "POST", { phone, code, new_password }),
@@ -98,14 +98,15 @@ const API = {
   },
 
   // ---- Wallet ----
-  // 申请验证码（带金额） & 确认（带 code 和金额以兼容后端）
+  // 申请验证码（带金额）
   topupRequest: (amount_fiat) =>
     API.json("/wallet/topup/request", "POST", { amount_fiat }),
 
+  // 确认充值（带验证码 & 金额，兼容你后端的校验）
   topupConfirm: (code, amount_fiat) =>
     API.json("/wallet/topup/confirm", "POST", { code, amount_fiat }),
 
-  // 兑换固定档位（由后端校验）
+  // 兑换固定套餐（由后端校验档位）
   exchange: (amount_fiat) => API.json("/wallet/exchange", "POST", { amount_fiat }),
 
   // ---- Shop / Gacha / Inventory / Craft ----
@@ -113,8 +114,10 @@ const API = {
   buyBricks: (count) => API.json("/shop/buy-bricks", "POST", { count }),
   odds: () => API.json("/odds"),
   open: (count) => API.json("/gacha/open", "POST", { count }),
-  inventory: () => API.json("/inventory"),
-  inventoryByColor: () => API.json("/inventory/by-color"),
+  inventory: (show_on_market = false) =>
+    API.json("/inventory" + (show_on_market ? "?show_on_market=true" : "")),
+  inventoryByColor: (show_on_market = false) =>
+    API.json("/inventory/by-color" + (show_on_market ? "?show_on_market=true" : "")),
   craft: (from_rarity, inv_ids) =>
     API.json("/craft/compose", "POST", { from_rarity, inv_ids }),
 
@@ -149,6 +152,24 @@ const API = {
     API.json("/admin/grant-fiat", "POST", { username, amount_fiat }),
 
   adminTopupRequests: () => API.json("/admin/topup-requests"),
+
+    // 管理员：读取短信验证码日志
+  adminSmsLog: (limit = 200) => {
+    const usp = new URLSearchParams();
+    usp.append("limit", limit);
+    return API.json("/admin/sms-log" + (usp.toString() ? "?" + usp.toString() : ""));
+  },
+
+
+  // ★ 新增：加/扣 三角币、扣 法币
+  adminGrantCoins: (username, amount_coins) =>
+    API.json("/admin/grant-coins", "POST", { username, amount_coins }),
+
+  adminDeductCoins: (username, amount_coins) =>
+    API.json("/admin/deduct-coins", "POST", { username, amount_coins }),
+
+  adminDeductFiat: (username, amount_fiat) =>
+    API.json("/admin/deduct-fiat", "POST", { username, amount_fiat }),
 
   // 旧 X-Admin-Key 配置接口（兼容保留）
   adminGetConfig: (xkey) =>
@@ -189,3 +210,6 @@ const API = {
       body: JSON.stringify({ skin_id, active }),
     }).then((r) => r.json()),
 };
+
+// 页面入口初始化一次
+API.initSession();
