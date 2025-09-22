@@ -15,6 +15,14 @@ const AdminPage = {
           <button class="btn" id="do-q">搜索</button>
           <button class="btn" id="do-all">全部</button>
         </div>
+
+        <!-- 分页控制：一组 5 个 -->
+        <div class="input-row" style="align-items:center;gap:8px;">
+          <button class="btn" id="pg-prev">上一组</button>
+          <span id="pg-info" class="muted"></span>
+          <button class="btn" id="pg-next">下一组</button>
+        </div>
+
         <div id="list"></div>
       </div>
 
@@ -74,6 +82,7 @@ const AdminPage = {
   async bind() {
     if (!API._me?.is_admin) { alert("非管理员"); location.hash="#/home"; return; }
 
+    // —— 渲染函数们 —— //
     const renderUsers = (items=[])=>{
       const rows = items.map(u=>`
         <tr>
@@ -124,8 +133,7 @@ const AdminPage = {
         </table>`;
     };
 
-    // 初次加载：全部用户 + 充值申请 + 短信日志
-    try { const d = await API.adminUsers("",1,50); renderUsers(d.items||[]); } catch(e){ /* 忽略 */ }
+    // —— 充值申请首屏 & 短信日志加载 —— //
     try { const r = await API.adminTopupRequests(); renderReqs(r.items||[]); } catch(e){ /* 忽略 */ }
 
     const loadSms = async ()=>{
@@ -140,16 +148,48 @@ const AdminPage = {
     };
     try { await loadSms(); } catch(e){ /* 忽略 */ }
 
-    // 搜索
-    byId("do-q").onclick = async ()=>{
-      const q = byId("q").value.trim();
-      try { const d = await API.adminUsers(q,1,50); renderUsers(d.items||[]); } catch(e){ alert(e.message); }
+    // —— 分页状态 & 加载函数（每组 5 个） —— //
+    let page = 1;
+    const pageSize = 5;
+    let lastCount = 0;
+    let curQuery = "";
+
+    async function loadUsers() {
+      try {
+        const d = await API.adminUsers(curQuery, page, pageSize);
+        const items = d.items || [];
+        lastCount = items.length;
+        renderUsers(items);
+
+        byId("pg-info").textContent = `第 ${page} 组（每组 ${pageSize} 人）`;
+        byId("pg-prev").disabled = page <= 1;
+        byId("pg-next").disabled = lastCount < pageSize;
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    // 首屏：第一页
+    await loadUsers();
+
+    // 分页按钮
+    byId("pg-prev").onclick = () => { if (page > 1) { page -= 1; loadUsers(); } };
+    byId("pg-next").onclick = () => { if (lastCount === pageSize) { page += 1; loadUsers(); } };
+
+    // —— 搜索/全部 —— //
+    byId("do-q").onclick = () => {
+      curQuery = byId("q").value.trim();
+      page = 1;
+      loadUsers();
     };
-    byId("do-all").onclick = async ()=>{
-      try { const d = await API.adminUsers("",1,50); renderUsers(d.items||[]); } catch(e){ alert(e.message); }
+    byId("do-all").onclick = () => {
+      byId("q").value = "";
+      curQuery = "";
+      page = 1;
+      loadUsers();
     };
 
-    // 余额操作
+    // —— 余额操作 —— //
     const getUserAndNum = (idUser, idAmt) => {
       const u = byId(idUser).value.trim();
       const n = parseInt(byId(idAmt).value, 10) || 0;
@@ -159,33 +199,33 @@ const AdminPage = {
     byId("fiat-grant").onclick = async ()=>{
       const {u, n} = getUserAndNum("op-username", "fiat-amt");
       if (!u || n<=0) return alert("请填写用户名与金额（法币）");
-      try { await API.adminGrantFiat(u, n); alert("已发放"); } catch(e){ alert(e.message); }
+      try { await API.adminGrantFiat(u, n); alert("已发放"); await loadUsers(); } catch(e){ alert(e.message); }
     };
 
     byId("fiat-deduct").onclick = async ()=>{
       const {u, n} = getUserAndNum("op-username", "fiat-amt");
       if (!u || n<=0) return alert("请填写用户名与金额（法币）");
-      try { await API.adminDeductFiat(u, n); alert("已扣除"); } catch(e){ alert(e.message); }
+      try { await API.adminDeductFiat(u, n); alert("已扣除"); await loadUsers(); } catch(e){ alert(e.message); }
     };
 
     byId("coin-grant").onclick = async ()=>{
       const {u, n} = getUserAndNum("op-username", "coin-amt");
       if (!u || n<=0) return alert("请填写用户名与数量（三角币）");
-      try { await API.adminGrantCoins(u, n); alert("已发放"); } catch(e){ alert(e.message); }
+      try { await API.adminGrantCoins(u, n); alert("已发放"); await loadUsers(); } catch(e){ alert(e.message); }
     };
 
     byId("coin-deduct").onclick = async ()=>{
       const {u, n} = getUserAndNum("op-username", "coin-amt");
       if (!u || n<=0) return alert("请填写用户名与数量（三角币）");
-      try { await API.adminDeductCoins(u, n); alert("已扣除"); } catch(e){ alert(e.message); }
+      try { await API.adminDeductCoins(u, n); alert("已扣除"); await loadUsers(); } catch(e){ alert(e.message); }
     };
 
-    // 充值申请刷新
+    // —— 充值申请刷新 —— //
     byId("req-refresh").onclick = async ()=>{
       try { const r = await API.adminTopupRequests(); renderReqs(r.items||[]); } catch(e){ alert(e.message); }
     };
 
-    // 短信日志刷新 + 目的筛选
+    // —— 短信日志刷新 + 目的筛选 —— //
     byId("sms-refresh").onclick = loadSms;
     byId("sms-purpose").onchange = loadSms;
   }
