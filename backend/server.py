@@ -1137,6 +1137,8 @@ def admin_sms_log(limit: int = 200, admin=_Depends(_require_admin)):
             except: pass
         return purpose, tag, code, ts_int, amount
 
+    seen_keys = set()  # 新增：去重 (purpose, tag)
+
     for line in reversed(lines):
         parsed = parse_line(line)
         if not parsed:
@@ -1158,6 +1160,11 @@ def admin_sms_log(limit: int = 200, admin=_Depends(_require_admin)):
             keep = False
 
         if keep:
+            key = (purpose, tag)
+            if key in seen_keys:
+                continue  # 同一 purpose+tag 已收录过（最新一条），跳过旧的
+            seen_keys.add(key)
+
             items.append({
                 "purpose": purpose,
                 "tag": tag,
