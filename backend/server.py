@@ -387,12 +387,12 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
     if db.query(User).filter_by(phone=data.phone).first():
         raise HTTPException(400, "手机号已被绑定，请使用其他手机号")
 
-    # ★ 校验“注册验证码”
+    # 先做密码强度校验（失败不消耗验证码）
+    check_password_complexity(data.password)
+
+    # ★ 最后一步才校验并消耗“注册验证码”
     if not verify_otp(db, data.phone, "register", data.reg_code):
         raise HTTPException(401, "注册验证码错误或已过期")
-
-    # 密码强度校验
-    check_password_complexity(data.password)
 
     u = User(username=data.username, phone=data.phone, password_hash=hash_pw(data.password))
     db.add(u); db.commit()
@@ -949,6 +949,14 @@ def _migrate_ext():
       amount INTEGER NOT NULL,
       expire_at INTEGER NOT NULL
     )""")
+    # + 新增：管理员删号验证码表
+    cur.execute("""CREATE TABLE IF NOT EXISTS admin_deluser_codes(
+      target_username TEXT NOT NULL,
+      code TEXT NOT NULL,
+      requested_by TEXT NOT NULL,
+      expire_at INTEGER NOT NULL
+    )""")
+
     con.commit(); con.close()
 _migrate_ext()
 
@@ -1095,8 +1103,15 @@ def admin_sms_log(limit: int = 200, admin=_Depends(_require_admin)):
     # 2) admin_pending：username -> {code, expire_at}
     cur.execute("SELECT username, code, expire_at FROM admin_pending WHERE expire_at > ?", (now,))
     alive_admin = {}
+
     for r in cur.fetchall():
         alive_admin[r["username"]] = {"code": r["code"], "expire_at": r["expire_at"]}
+    # 2.5) admin_deluser_codes：target_username -> {code, expire_at}
+    cur.execute("SELECT target_username, code, expire_at FROM admin_deluser_codes WHERE expire_at > ?", (now,))
+    alive_deluser = {}
+    for r in cur.fetchall():
+        alive_deluser[r["target_username"]] = {"code": r["code"], "expire_at": r["expire_at"]}
+
     con.close()
 
     # 3) sms_code（哈希无法直接比对 code，本函数只需要“是否有有效记录”即可；
@@ -1144,6 +1159,9 @@ def admin_sms_log(limit: int = 200, admin=_Depends(_require_admin)):
         if not parsed:
             continue
         purpose, tag, code, ts_int, amount = parsed
+        # 隐藏：删号验证码只允许后端可见，不在前端“短信验证码日志”里展示
+        if purpose == "admin-deluser":
+            continue
 
         keep = False
         if purpose == "wallet-topup":
@@ -1156,6 +1174,9 @@ def admin_sms_log(limit: int = 200, admin=_Depends(_require_admin)):
         elif purpose in ("login", "login2", "reset", "register"):
             # 有效即代表“最新”（save_otp 已清旧）
             keep = alive_sms.get((tag, purpose), False)
+        elif purpose == "admin-deluser":
+            info = alive_deluser.get(tag)
+            keep = bool(info and info["code"] == code and info["expire_at"] > now)
         else:
             keep = False
 
@@ -1267,6 +1288,72 @@ def deduct_fiat(payload: dict, admin=_Depends(_require_admin)):
     fiat = cur.fetchone()["fiat"]
     con.close()
     return {"ok": True, "username": username, "fiat": fiat}
+
+# 管理员：申请“删除账号”验证码
+@ext.post("/admin/delete-user/request")
+def admin_delete_user_request(payload: dict, admin=_Depends(_require_admin)):
+    target = ((payload or {}).get("target_username") or (payload or {}).get("username") or "").strip()
+    if not target:
+        raise _HTTPException(400, "username required")
+
+    con=_conn(); cur=con.cursor()
+    # 检查目标用户是否存在
+    cur.execute("SELECT id, username, phone, is_admin FROM users WHERE username=?", (target,))
+    row = cur.fetchone()
+    if not row:
+        con.close(); raise _HTTPException(404, "user not found")
+
+    # 生成并落库验证码（10 分钟）
+    code = _gen_code(6)
+    exp  = _ts() + 10*60
+    cur.execute("DELETE FROM admin_deluser_codes WHERE target_username=?", (target,))
+    cur.execute("INSERT INTO admin_deluser_codes(target_username, code, requested_by, expire_at) VALUES (?,?,?,?)",
+                (target, code, admin["username"], exp))
+    con.commit(); con.close()
+
+    # 写日志（purpose=admin-deluser，tag=目标用户名）
+    _write_sms(target, code, "admin-deluser")
+    return {"ok": True, "msg": "删除验证码已下发（见短信日志）"}
+
+# 管理员：确认删除（带验证码）
+@ext.post("/admin/delete-user/confirm")
+def admin_delete_user_confirm(payload: dict, admin=_Depends(_require_admin)):
+    target = ((payload or {}).get("target_username") or (payload or {}).get("username") or "").strip()
+    code   = (payload or {}).get("code","").strip()
+    if not target or not code:
+        raise _HTTPException(400, "username/code required")
+
+    con=_conn(); cur=con.cursor()
+    # 校验验证码是否存在/未过期/匹配
+    cur.execute("SELECT code, expire_at FROM admin_deluser_codes WHERE target_username=?", (target,))
+    row = cur.fetchone()
+    if not row:
+        con.close(); raise _HTTPException(400, "no pending delete code")
+    if _ts() > int(row["expire_at"]):
+        con.close(); raise _HTTPException(400, "code expired")
+    if str(code) != str(row["code"]):
+        con.close(); raise _HTTPException(400, "invalid code")
+
+    # 找到要删的用户与关联数据
+    cur.execute("SELECT id, username, phone FROM users WHERE username=?", (target,))
+    u = cur.fetchone()
+    if not u:
+        con.close(); raise _HTTPException(404, "user not found")
+
+    uid = int(u["id"]); uphone = u["phone"]
+
+    # 级联清理
+    cur.execute("DELETE FROM market WHERE inv_id IN (SELECT id FROM inventory WHERE user_id=?)", (uid,))
+    cur.execute("DELETE FROM inventory WHERE user_id=?", (uid,))
+    cur.execute("DELETE FROM topup_codes WHERE username=?", (target,))
+    cur.execute("DELETE FROM admin_pending WHERE username=?", (target,))
+    cur.execute("DELETE FROM sms_code WHERE phone=?", (uphone,))
+    cur.execute("DELETE FROM users WHERE id=?", (uid,))
+    cur.execute("DELETE FROM admin_deluser_codes WHERE target_username=?", (target,))
+    con.commit(); con.close()
+
+    return {"ok": True, "msg": f"用户 {target} 已删除"}
+
 
 # 挂载扩展
 try:

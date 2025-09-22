@@ -51,6 +51,23 @@ const AdminPage = {
         </div>
         <div class="muted">提示：扣除会先校验余额，不足会失败并提示；不会出现负数。</div>
       </div>
+      
+            <div class="card">
+        <h3>删除账号（需验证码）</h3>
+        <div class="muted">
+          操作流程：1）输入要删除的用户名，点“获取删除验证码”；2）到后台查看验证码";
+          3）把验证码填到下框，点“确认删除”。<br>
+          <b>危险操作：</b>删除后不可恢复，请谨慎！
+        </div>
+        <div class="input-row">
+          <input id="del-username" placeholder="要删除的用户名"/>
+          <button class="btn danger" id="del-req-btn">获取删除验证码</button>
+        </div>
+        <div class="input-row">
+          <input id="del-code" placeholder="删除验证码（admin-deluser）"/>
+          <button class="btn danger" id="del-do-btn">确认删除</button>
+        </div>
+      </div>
 
       <div class="card">
         <h3>充值申请（未使用/未过期）</h3>
@@ -228,5 +245,31 @@ const AdminPage = {
     // —— 短信日志刷新 + 目的筛选 —— //
     byId("sms-refresh").onclick = loadSms;
     byId("sms-purpose").onchange = loadSms;
+        // ===== 删号：请求验证码 =====
+    byId("del-req-btn").onclick = async () => {
+      const u = byId("del-username").value.trim();
+      if (!u) return alert("请输入要删除的用户名");
+      try {
+        await API.adminDeleteUserRequest(u);
+        alert("删除验证码已下发，请到后台查看 purpose=admin-deluser 的验证码");
+        try { await loadSms(); } catch (_) {}
+      } catch (e) { alert(e.message); }
+    };
+
+    // ===== 删号：携带验证码确认 =====
+    byId("del-do-btn").onclick = async () => {
+      const u = byId("del-username").value.trim();
+      const code = byId("del-code").value.trim();
+      if (!u || !code) return alert("请填写用户名和验证码");
+      if (!confirm(`确认删除用户「${u}」？此操作不可恢复！`)) return;
+      try {
+        await API.adminDeleteUserConfirm(u, code);
+        alert("已删除该账号");
+        // 删除成功后刷新用户列表
+        try { const d = await API.adminUsers("",1,50); renderUsers(d.items||[]); } catch (_) {}
+        try { await loadSms(); } catch (_) {}
+      } catch (e) { alert(e.message); }
+    };
+
   }
 };
