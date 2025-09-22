@@ -273,8 +273,12 @@ def verify_otp(db: Session, phone: str, purpose: str, code: str) -> bool:
     ).all()
     for r in rows:
         if verify_pw(code, r.code_hash):
+            # ★ 命中即视为“已使用”，删除该条记录（可选：同 purpose 其他旧记录也可删）
+            db.delete(r)
+            db.commit()
             return True
     return False
+
 
 # ---- Seed ----
 with SessionLocal() as _db:
@@ -1052,6 +1056,128 @@ def admin_topup_requests(admin=_Depends(_require_admin)):
     con.close()
     return {"items": items}
 
+# 管理员：读取短信验证码日志（来自 sms_codes.txt）
+@ext.get("/admin/sms-log")
+def admin_sms_log(limit: int = 200, admin=_Depends(_require_admin)):
+    """
+    只返回“还有效、且未被使用”的验证码：
+    - wallet-topup: 以 topup_codes 表为准（未过期且未使用，使用后已删除）
+    - admin-verify: 以 admin_pending 表为准（未过期且未使用，使用后已删除）
+    - login / login2 / reset / register: 以 sms_code 表为准（未过期且未删除。第1步改动后，使用成功会从表中删除）
+    日志来源兼容两种文件写法：
+      A) 老格式：phone=... purpose=... code=... ts=...
+      B) 新格式：<ts>\t<purpose>\t<tag>\t<code>\t[amount=xxx]
+    """
+    items = []
+    try:
+        with open(SMS_FILE, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        lines = []
+
+    now = _ts()
+    # 工具：解析老格式时间（人类可读）到时间戳，失败则用 now
+    def _ts_from_text(s: str) -> int:
+        try:
+            # 你的老格式来自 write_sms_line： "%Y-%m-%d %H:%M:%S"
+            from datetime import datetime as _dt
+            return int(_dt.strptime(s.strip(), "%Y-%m-%d %H:%M:%S").timestamp())
+        except Exception:
+            return now  # 解析失败就当现在时间，后续还会再做 DB 校验
+
+    # 逐行从最新往旧筛选
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+
+        raw = line
+        rec = {"raw": raw, "purpose": "", "tag": "", "code": "", "ts": "", "amount": None}
+
+        # 解析行 —— 兼容两种写法
+        if "phone=" in line and "purpose=" in line and "code=" in line:
+            # 老格式：phone=... purpose=... code=... ts=...
+            parts = {}
+            for tok in line.replace("\t", " ").split():
+                if "=" in tok:
+                    k, v = tok.split("=", 1)
+                    parts[k] = v
+            rec["purpose"] = parts.get("purpose", "")
+            rec["tag"] = parts.get("phone", "")  # 老格式这里是手机号
+            rec["code"] = parts.get("code", "")
+            rec["ts"] = parts.get("ts", "")
+            ts_val = _ts_from_text(rec["ts"]) if rec["ts"] else now
+        else:
+            # 新格式：ts \t purpose \t tag \t code [\t amount=xxx]
+            cols = line.split("\t")
+            if len(cols) < 4:
+                continue
+            rec["ts"] = cols[0]
+            rec["purpose"] = cols[1]
+            rec["tag"] = cols[2]
+            rec["code"] = cols[3]
+            ts_val = int(rec["ts"]) if rec["ts"].isdigit() else now
+            if len(cols) >= 5 and cols[4].startswith("amount="):
+                try:
+                    rec["amount"] = int(cols[4].split("=",1)[1])
+                except Exception:
+                    pass
+
+        # --------- 只保留“未过期 + 未使用”的记录 ----------
+        purpose = (rec["purpose"] or "").strip()
+        tag = (rec["tag"] or "").strip()
+        code = (rec["code"] or "").strip()
+
+        keep = False
+
+        # （1）充值验证码 wallet-topup —— topup_codes 明文保存，使用后会从表删除
+        if purpose == "wallet-topup":
+            con=_conn(); cur=con.cursor()
+            cur.execute("""SELECT 1 FROM topup_codes
+                           WHERE username=? AND code=? AND expire_at>?""",
+                        (tag, code, now))
+            row=cur.fetchone()
+            con.close()
+            keep = bool(row)
+
+        # （2）管理员验证 admin-verify —— admin_pending 明文保存，使用后删除
+        elif purpose == "admin-verify":
+            con=_conn(); cur=con.cursor()
+            cur.execute("""SELECT 1 FROM admin_pending
+                           WHERE username=? AND code=? AND expire_at>?""",
+                        (tag, code, now))
+            row=cur.fetchone()
+            con.close()
+            keep = bool(row)
+
+        # （3）登录/注册/重置类（表 sms_code 存的是哈希）
+        #     第1步我们改了 verify_otp：使用成功后会删库，所以“存在且未过期”即可视为未使用。
+        #     老格式里 tag=phone，新格式里我保持 tag 即可（此处也按 phone 用）。
+        elif purpose in ("login", "login2", "reset", "register"):
+            try:
+                # 用 SQLAlchemy 的 SessionLocal 走 ORM
+                with SessionLocal() as db:
+                    alive = db.query(SmsCode).filter(
+                        SmsCode.phone == tag,
+                        SmsCode.purpose == purpose,
+                        SmsCode.expire_ts > now
+                    ).first()
+                    keep = bool(alive)
+            except Exception:
+                keep = False
+
+        # （4）其他 purpose（未知）默认丢弃，避免误导
+        else:
+            keep = False
+
+        if keep:
+            items.append(rec)
+            if len(items) >= max(1, min(limit, 1000)):
+                break
+
+    return {"items": items}
+
+
 # 管理员：搜索用户
 @ext.get("/admin/users")
 def admin_users(q: _Optional[str]=None, page: int=1, page_size: int=20, admin=_Depends(_require_admin)):
@@ -1081,6 +1207,65 @@ def grant_fiat(payload: dict, admin=_Depends(_require_admin)):
         con.close(); raise _HTTPException(404, "user not found")
     con.commit(); con.close()
     return {"ok":True}
+
+# --- 管理员：发放/扣减 三角币 & 扣减法币（拒绝出现负数） ---
+
+@ext.post("/admin/grant-coins")
+def grant_coins(payload: dict, admin=_Depends(_require_admin)):
+    username = (payload or {}).get("username","")
+    amount = int((payload or {}).get("amount_coins",0) or 0)
+    if not username or amount <= 0:
+        raise _HTTPException(400, "username/amount_coins required (>0)")
+    con=_conn(); cur=con.cursor()
+    cur.execute("UPDATE users SET coins = coins + ? WHERE username=?", (amount, username))
+    if cur.rowcount == 0:
+        con.close(); raise _HTTPException(404, "user not found")
+    con.commit()
+    # 返回新余额
+    cur.execute("SELECT coins FROM users WHERE username=?", (username,))
+    coins = cur.fetchone()["coins"]
+    con.close()
+    return {"ok": True, "username": username, "coins": coins}
+
+@ext.post("/admin/deduct-coins")
+def deduct_coins(payload: dict, admin=_Depends(_require_admin)):
+    username = (payload or {}).get("username","")
+    amount = int((payload or {}).get("amount_coins",0) or 0)
+    if not username or amount <= 0:
+        raise _HTTPException(400, "username/amount_coins required (>0)")
+    con=_conn(); cur=con.cursor()
+    cur.execute("SELECT coins FROM users WHERE username=?", (username,))
+    row = cur.fetchone()
+    if not row:
+        con.close(); raise _HTTPException(404, "user not found")
+    if row["coins"] < amount:
+        con.close(); raise _HTTPException(400, "三角币不足，无法扣减")
+    cur.execute("UPDATE users SET coins = coins - ? WHERE username=?", (amount, username))
+    con.commit()
+    cur.execute("SELECT coins FROM users WHERE username=?", (username,))
+    coins = cur.fetchone()["coins"]
+    con.close()
+    return {"ok": True, "username": username, "coins": coins}
+
+@ext.post("/admin/deduct-fiat")
+def deduct_fiat(payload: dict, admin=_Depends(_require_admin)):
+    username = (payload or {}).get("username","")
+    amount = int((payload or {}).get("amount_fiat",0) or 0)
+    if not username or amount <= 0:
+        raise _HTTPException(400, "username/amount_fiat required (>0)")
+    con=_conn(); cur=con.cursor()
+    cur.execute("SELECT fiat FROM users WHERE username=?", (username,))
+    row = cur.fetchone()
+    if not row:
+        con.close(); raise _HTTPException(404, "user not found")
+    if row["fiat"] < amount:
+        con.close(); raise _HTTPException(400, "法币不足，无法扣减")
+    cur.execute("UPDATE users SET fiat = fiat - ? WHERE username=?", (amount, username))
+    con.commit()
+    cur.execute("SELECT fiat FROM users WHERE username=?", (username,))
+    fiat = cur.fetchone()["fiat"]
+    con.close()
+    return {"ok": True, "username": username, "fiat": fiat}
 
 # 挂载扩展
 try:
