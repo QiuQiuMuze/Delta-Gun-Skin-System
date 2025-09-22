@@ -59,3 +59,16 @@ phone=17730294776 purpose=register code=891177 ts=2025-09-21 21:29:22
 phone=17730294776 purpose=login2 code=639367 ts=2025-09-21 21:30:29
 phone=18079154272 purpose=login2 code=214089 ts=2025-09-21 21:32:03
 1758504727	wallet-topup	111	325766	amount=100000000
+phone=18079154273 purpose=login2 code=799970 ts=2025-09-21 22:22:06
+phone=15556695188 purpose=register code=332262 ts=2025-09-21 22:22:18
+phone=15556695188 purpose=register code=687703 ts=2025-09-21 22:22:55
+phone=18079154273 purpose=login2 code=367630 ts=2025-09-21 22:23:01
+phone=15556695188 purpose=register code=190961 ts=2025-09-21 22:23:25
+phone=15556695188 purpose=register code=599555 ts=2025-09-21 22:25:42
+phone=11111111113 purpose=register code=638029 ts=2025-09-21 22:27:51
+phone=15279162691 purpose=register code=355911 ts=2025-09-21 22:30:10
+phone=11111111113 purpose=register code=613568 ts=2025-09-21 22:32:43
+phone=11111111113 purpose=register code=661050 ts=2025-09-21 22:37:46
+phone=11111111113 purpose=register code=545454 ts=2025-09-21 22:41:30
+phone=11111111113 purpose=register code=359755 ts=2025-09-21 22:45:24
+phone=15556695188 purpose=register code=665658 ts=2025-09-21 22:46:20

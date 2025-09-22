@@ -51,7 +51,7 @@ const API = {
     catch (_) { data = { raw: txt }; }
 
     if (!res.ok) {
-      const msg = (data && (data.detail || data.msg)) || data?.raw || txt || "请求失败";
+      let msg = (data && (data.detail || data.msg)) || data?.raw || txt || "请求失败";
 
       // ★ 被别处登录顶下线（后端返回 401 + "SESSION_REVOKED"）
       if (msg === "SESSION_REVOKED") {
@@ -61,8 +61,17 @@ const API = {
         throw new Error("SESSION_REVOKED");
       }
 
+      // ★ detail 可能是数组/对象，这里统一序列化，避免 [object Object]
+      if (Array.isArray(msg)) {
+        // FastAPI 422: [{loc:[...], msg:"...", type:"..."}...]
+        msg = msg.map(i => (i && i.msg) ? i.msg : JSON.stringify(i)).join("；");
+      } else if (typeof msg !== "string") {
+        try { msg = JSON.stringify(msg); } catch (_) { msg = String(msg); }
+      }
+
       throw new Error(msg);
     }
+
     return data;
   },
 
@@ -72,8 +81,8 @@ const API = {
     API.json("/auth/send-code", "POST", { phone, purpose: "register" }),
 
   // 注册第二步：提交用户名/手机号/短信码/密码（后端会校验短信码）
-  register: (username, phone, code, password, want_admin = false) =>
-    API.json("/auth/register", "POST", { username, phone, code, password, want_admin }),
+register: (username, phone, code, password, want_admin = false) =>
+  API.json("/auth/register", "POST", { username, phone, reg_code: code, password, want_admin }),
 
   loginStart: (username, password) =>
     API.json("/auth/login/start", "POST", { username, password }),
@@ -103,8 +112,9 @@ const API = {
     API.json("/wallet/topup/request", "POST", { amount_fiat }),
 
   // 确认充值（带验证码 & 金额，兼容你后端的校验）
-  topupConfirm: (code, amount_fiat) =>
-    API.json("/wallet/topup/confirm", "POST", { code, amount_fiat }),
+  topupConfirm: (code) =>
+    API.json("/wallet/topup/confirm", "POST", { code }),
+
 
   // 兑换固定套餐（由后端校验档位）
   exchange: (amount_fiat) => API.json("/wallet/exchange", "POST", { amount_fiat }),

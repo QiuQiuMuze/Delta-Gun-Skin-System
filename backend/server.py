@@ -118,7 +118,6 @@ def _ensure_user_sessionver():
     con.close()
 
 Base.metadata.create_all(engine)
-Base.metadata.create_all(engine)
 _ensure_user_sessionver()
 
 # ------------------ Pydantic ------------------
@@ -128,7 +127,7 @@ class RegisterIn(BaseModel):
     username: str
     phone: str
     password: str
-    code: str  # ★ 新增：注册短信验证码
+    reg_code: str  # ★ 新增：注册短信验证码
     # 新增：是否申请管理员（默认否，保持兼容）
     want_admin: bool = False
 
@@ -261,10 +260,22 @@ def write_sms_line(phone: str, code: str, purpose: str):
         f.write(f"phone={phone} purpose={purpose} code={code} ts={ts}\n")
 
 def save_otp(db: Session, phone: str, purpose: str, code: str):
+    """
+    保存验证码前，先删除同手机号+同 purpose 的旧验证码，
+    确保数据库里“当前有效验证码”只有一条。
+    """
+    # 先清掉旧的（无论是否过期）
+    db.query(SmsCode).filter(
+        SmsCode.phone == phone,
+        SmsCode.purpose == purpose
+    ).delete(synchronize_session=False)
+
+    # 新验证码入库
     h = hash_pw(code)
     expire_ts = int(time.time()) + OTP_EXPIRE_SEC
     db.add(SmsCode(phone=phone, purpose=purpose, code_hash=h, expire_ts=expire_ts))
     db.commit()
+
 
 def verify_otp(db: Session, phone: str, purpose: str, code: str) -> bool:
     now = int(time.time())
@@ -377,7 +388,7 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
         raise HTTPException(400, "手机号已被绑定，请使用其他手机号")
 
     # ★ 校验“注册验证码”
-    if not verify_otp(db, data.phone, "register", data.code):
+    if not verify_otp(db, data.phone, "register", data.reg_code):
         raise HTTPException(401, "注册验证码错误或已过期")
 
     # 密码强度校验
@@ -1060,13 +1071,10 @@ def admin_topup_requests(admin=_Depends(_require_admin)):
 @ext.get("/admin/sms-log")
 def admin_sms_log(limit: int = 200, admin=_Depends(_require_admin)):
     """
-    只返回“还有效、且未被使用”的验证码：
-    - wallet-topup: 以 topup_codes 表为准（未过期且未使用，使用后已删除）
-    - admin-verify: 以 admin_pending 表为准（未过期且未使用，使用后已删除）
-    - login / login2 / reset / register: 以 sms_code 表为准（未过期且未删除。第1步改动后，使用成功会从表中删除）
-    日志来源兼容两种文件写法：
-      A) 老格式：phone=... purpose=... code=... ts=...
-      B) 新格式：<ts>\t<purpose>\t<tag>\t<code>\t[amount=xxx]
+    仅返回：未过期 + 未使用（库中仍存在）+ 对应（phone,purpose）的“当前最新”验证码。
+    - wallet-topup：匹配 topup_codes 表（仍存在且未过期即未使用；request 时会清旧，confirm/使用后会删）
+    - admin-verify：匹配 admin_pending 表（同上）
+    - login / login2 / reset / register：匹配 sms_code 表（save_otp 现在会清旧、verify_otp 成功会删）
     """
     items = []
     try:
@@ -1076,106 +1084,92 @@ def admin_sms_log(limit: int = 200, admin=_Depends(_require_admin)):
         lines = []
 
     now = _ts()
-    # 工具：解析老格式时间（人类可读）到时间戳，失败则用 now
-    def _ts_from_text(s: str) -> int:
-        try:
-            # 你的老格式来自 write_sms_line： "%Y-%m-%d %H:%M:%S"
-            from datetime import datetime as _dt
-            return int(_dt.strptime(s.strip(), "%Y-%m-%d %H:%M:%S").timestamp())
-        except Exception:
-            return now  # 解析失败就当现在时间，后续还会再做 DB 校验
 
-    # 逐行从最新往旧筛选
-    for line in reversed(lines):
+    # 预取三张表的“当前有效”索引，方便 O(1) 判断
+    # 1) topup_codes：username -> {code, expire_at}
+    con = _conn(); cur = con.cursor()
+    cur.execute("SELECT username, code, expire_at FROM topup_codes WHERE expire_at > ?", (now,))
+    alive_topup = {}
+    for r in cur.fetchall():
+        alive_topup[r["username"]] = {"code": r["code"], "expire_at": r["expire_at"]}
+    # 2) admin_pending：username -> {code, expire_at}
+    cur.execute("SELECT username, code, expire_at FROM admin_pending WHERE expire_at > ?", (now,))
+    alive_admin = {}
+    for r in cur.fetchall():
+        alive_admin[r["username"]] = {"code": r["code"], "expire_at": r["expire_at"]}
+    con.close()
+
+    # 3) sms_code（哈希无法直接比对 code，本函数只需要“是否有有效记录”即可；
+    #    因为 save_otp 发送前会把旧记录全部清掉，所以存在即代表“最新”）
+    from sqlalchemy import and_
+    with SessionLocal() as db:
+        alive_sms = {}  # key=(phone,purpose) -> True
+        rows = db.query(SmsCode.phone, SmsCode.purpose).filter(SmsCode.expire_ts > now).all()
+        for ph, pc in rows:
+            alive_sms[(ph, pc)] = True
+
+    def parse_line(line: str):
+        # 返回 (purpose, tag, code, ts_int, amount)
         line = line.strip()
         if not line:
-            continue
-
-        raw = line
-        rec = {"raw": raw, "purpose": "", "tag": "", "code": "", "ts": "", "amount": None}
-
-        # 解析行 —— 兼容两种写法
+            return None
+        # 老格式：phone=... purpose=... code=... ts=...
         if "phone=" in line and "purpose=" in line and "code=" in line:
-            # 老格式：phone=... purpose=... code=... ts=...
             parts = {}
             for tok in line.replace("\t", " ").split():
                 if "=" in tok:
                     k, v = tok.split("=", 1)
                     parts[k] = v
-            rec["purpose"] = parts.get("purpose", "")
-            rec["tag"] = parts.get("phone", "")  # 老格式这里是手机号
-            rec["code"] = parts.get("code", "")
-            rec["ts"] = parts.get("ts", "")
-            ts_val = _ts_from_text(rec["ts"]) if rec["ts"] else now
-        else:
-            # 新格式：ts \t purpose \t tag \t code [\t amount=xxx]
-            cols = line.split("\t")
-            if len(cols) < 4:
-                continue
-            rec["ts"] = cols[0]
-            rec["purpose"] = cols[1]
-            rec["tag"] = cols[2]
-            rec["code"] = cols[3]
-            ts_val = int(rec["ts"]) if rec["ts"].isdigit() else now
-            if len(cols) >= 5 and cols[4].startswith("amount="):
-                try:
-                    rec["amount"] = int(cols[4].split("=",1)[1])
-                except Exception:
-                    pass
+            purpose = parts.get("purpose", "")
+            tag = parts.get("phone", "")      # 老格式 tag=手机号
+            code = parts.get("code", "")
+            # ts 为人类时间，这里不依赖它做有效性判断
+            return purpose, tag, code, now, None
+        # 新格式：ts \t purpose \t tag \t code [\t amount=xxx]
+        cols = line.split("\t")
+        if len(cols) < 4:
+            return None
+        ts_int = int(cols[0]) if cols[0].isdigit() else now
+        purpose = cols[1]; tag = cols[2]; code = cols[3]
+        amount = None
+        if len(cols) >= 5 and cols[4].startswith("amount="):
+            try: amount = int(cols[4].split("=",1)[1])
+            except: pass
+        return purpose, tag, code, ts_int, amount
 
-        # --------- 只保留“未过期 + 未使用”的记录 ----------
-        purpose = (rec["purpose"] or "").strip()
-        tag = (rec["tag"] or "").strip()
-        code = (rec["code"] or "").strip()
+    for line in reversed(lines):
+        parsed = parse_line(line)
+        if not parsed:
+            continue
+        purpose, tag, code, ts_int, amount = parsed
 
         keep = False
-
-        # （1）充值验证码 wallet-topup —— topup_codes 明文保存，使用后会从表删除
         if purpose == "wallet-topup":
-            con=_conn(); cur=con.cursor()
-            cur.execute("""SELECT 1 FROM topup_codes
-                           WHERE username=? AND code=? AND expire_at>?""",
-                        (tag, code, now))
-            row=cur.fetchone()
-            con.close()
-            keep = bool(row)
-
-        # （2）管理员验证 admin-verify —— admin_pending 明文保存，使用后删除
+            # 仅当数据库里“当前有效”的那条 code 与文件行一致才保留
+            info = alive_topup.get(tag)
+            keep = bool(info and info["code"] == code and info["expire_at"] > now)
         elif purpose == "admin-verify":
-            con=_conn(); cur=con.cursor()
-            cur.execute("""SELECT 1 FROM admin_pending
-                           WHERE username=? AND code=? AND expire_at>?""",
-                        (tag, code, now))
-            row=cur.fetchone()
-            con.close()
-            keep = bool(row)
-
-        # （3）登录/注册/重置类（表 sms_code 存的是哈希）
-        #     第1步我们改了 verify_otp：使用成功后会删库，所以“存在且未过期”即可视为未使用。
-        #     老格式里 tag=phone，新格式里我保持 tag 即可（此处也按 phone 用）。
+            info = alive_admin.get(tag)
+            keep = bool(info and info["code"] == code and info["expire_at"] > now)
         elif purpose in ("login", "login2", "reset", "register"):
-            try:
-                # 用 SQLAlchemy 的 SessionLocal 走 ORM
-                with SessionLocal() as db:
-                    alive = db.query(SmsCode).filter(
-                        SmsCode.phone == tag,
-                        SmsCode.purpose == purpose,
-                        SmsCode.expire_ts > now
-                    ).first()
-                    keep = bool(alive)
-            except Exception:
-                keep = False
-
-        # （4）其他 purpose（未知）默认丢弃，避免误导
+            # 有效即代表“最新”（save_otp 已清旧）
+            keep = alive_sms.get((tag, purpose), False)
         else:
             keep = False
 
         if keep:
-            items.append(rec)
+            items.append({
+                "purpose": purpose,
+                "tag": tag,
+                "code": code,
+                "ts": ts_int,
+                "amount": amount
+            })
             if len(items) >= max(1, min(limit, 1000)):
                 break
 
     return {"items": items}
+
 
 
 # 管理员：搜索用户
