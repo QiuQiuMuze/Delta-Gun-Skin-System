@@ -180,6 +180,14 @@ register: (username, phone, code, password, want_admin = false) =>
 
   adminDeductFiat: (username, amount_fiat) =>
     API.json("/admin/deduct-fiat", "POST", { username, amount_fiat }),
+  // 删号：请求验证码 & 确认删除
+  adminDeleteUserRequest: (target_username) =>
+    API.json("/admin/delete-user/request", "POST", { target_username }),
+
+  adminDeleteUserConfirm: (target_username, code) =>
+    API.json("/admin/delete-user/confirm", "POST", { target_username, code }),
+
+
 
   // 旧 X-Admin-Key 配置接口（兼容保留）
   adminGetConfig: (xkey) =>
