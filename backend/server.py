@@ -128,6 +128,7 @@ class RegisterIn(BaseModel):
     username: str
     phone: str
     password: str
+    code: str  # ★ 新增：注册短信验证码
     # 新增：是否申请管理员（默认否，保持兼容）
     want_admin: bool = False
 
@@ -141,7 +142,8 @@ class LoginVerifyIn(BaseModel):
 
 class SendCodeIn(BaseModel):
     phone: str
-    purpose: Literal["login", "reset"]
+    purpose: Literal["login", "reset", "register"]   # ★ 新增 register
+
 
 class ResetPwdIn(BaseModel):
     phone: str
@@ -362,22 +364,34 @@ def compute_odds(u: User, cfg: PoolConfig) -> OddsOut:
 def register(data: RegisterIn, db: Session = Depends(get_db)):
     if db.query(User).filter_by(username=data.username).first():
         raise HTTPException(400, "用户名已存在，请更换用户名")
-    # 手机号校验：以1开头的11位纯数字
+
+    # 手机号校验：以1开头11位
     if not PHONE_RE.fullmatch(data.phone):
         raise HTTPException(400, "手机号无效：必须以1开头且为11位纯数字")
+    # 不能占用已绑定手机号
     if db.query(User).filter_by(phone=data.phone).first():
         raise HTTPException(400, "手机号已被绑定，请使用其他手机号")
+
+    # ★ 校验“注册验证码”
+    if not verify_otp(db, data.phone, "register", data.code):
+        raise HTTPException(401, "注册验证码错误或已过期")
+
+    # 密码强度校验
     check_password_complexity(data.password)
+
     u = User(username=data.username, phone=data.phone, password_hash=hash_pw(data.password))
     db.add(u); db.commit()
-    # 若申请管理员：下发管理员验证码至 sms_codes.txt（写入 admin_pending）
+
+    # 若申请管理员：下发管理员验证码（写入 admin_pending）
     try:
         if data.want_admin:
             put_admin_pending(data.username)
             return {"ok": True, "admin_verify_required": True, "msg": "已申请管理员，请查看 sms_codes.txt 并在登录页验证"}
     except NameError:
         pass
+
     return {"ok": True, "msg": "注册成功，请登录"}
+
 
 @app.post("/auth/login/start")
 def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
@@ -406,12 +420,31 @@ def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
 
 @app.post("/auth/send-code")
 def send_code(inp: SendCodeIn, db: Session = Depends(get_db)):
-    if not db.query(User).filter_by(phone=inp.phone).first():
-        raise HTTPException(404, "手机号尚未注册")
+    phone = inp.phone
+    purpose = inp.purpose  # "login" | "reset" | "register"
+
+    # 基本格式校验
+    if not PHONE_RE.fullmatch(phone):
+        raise HTTPException(400, "手机号格式不正确")
+
+    # 分用途校验
+    if purpose in ("login", "reset"):
+        # 登录 / 重置密码：要求手机号已经绑定
+        if not db.query(User).filter_by(phone=phone).first():
+            raise HTTPException(404, "手机号尚未注册")
+    elif purpose == "register":
+        # 注册：要求手机号目前未被占用
+        if db.query(User).filter_by(phone=phone).first():
+            raise HTTPException(400, "该手机号已被占用")
+    else:
+        raise HTTPException(400, "不支持的验证码用途")
+
+    # 生成并写入
     code = f"{secrets.randbelow(1_000_000):06d}"
-    write_sms_line(inp.phone, code, inp.purpose)
-    save_otp(db, inp.phone, inp.purpose, code)
-    return {"ok": True, "msg": "验证码已发送（请查看项目目录下 sms_codes.txt）"}
+    write_sms_line(phone, code, purpose)
+    save_otp(db, phone, purpose, code)
+    return {"ok": True, "msg": "验证码已发送"}
+
 
 @app.post("/auth/reset-password")
 def reset_password(inp: ResetPwdIn, db: Session = Depends(get_db)):
