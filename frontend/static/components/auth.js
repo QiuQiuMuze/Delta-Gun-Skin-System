@@ -102,7 +102,7 @@ const AuthPage = {
         return alert("请填写完整信息再注册");
 
       try {
-        const r = await API.register(u, ph, pw, code, want_admin);
+        const r = await API.register(u, ph, code, pw, want_admin);
         if (want_admin) {
           regAdminUser = u;
           byId("admin-verify-box").style.display = "";
