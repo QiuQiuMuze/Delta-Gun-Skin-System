@@ -1,17 +1,39 @@
 // 统一封装所有 REST 调用；同域访问
 const API = {
-  token: localStorage.getItem("token") || null,
+  // —— 使用 sessionStorage 做“每标签页独立会话” —— //
+  _tokenKey: "token",
   _me: null,
 
+  // 初始化：若发现旧 localStorage token，则迁移到本标签页的 sessionStorage
+  initSession() {
+    try {
+      const ssTok = sessionStorage.getItem(this._tokenKey);
+      const lsTok = localStorage.getItem(this._tokenKey);
+      if (!ssTok && lsTok) {
+        sessionStorage.setItem(this._tokenKey, lsTok);
+        localStorage.removeItem(this._tokenKey);
+      }
+    } catch (_) { /* 忽略 */ }
+  },
+
+  get token() {
+    try { return sessionStorage.getItem(this._tokenKey) || null; }
+    catch (_) { return null; }
+  },
+
   setToken(t) {
-    this.token = t;
-    if (t) localStorage.setItem("token", t);
-    else localStorage.removeItem("token");
+    try {
+      if (t) sessionStorage.setItem(this._tokenKey, t);
+      else sessionStorage.removeItem(this._tokenKey);
+      // 同时把旧 localStorage 清干净，避免误读
+      localStorage.removeItem(this._tokenKey);
+    } catch (_) { /* 忽略 */ }
   },
 
   headers() {
     const h = { "Content-Type": "application/json", "Accept": "application/json" };
-    if (this.token) h["Authorization"] = "Bearer " + this.token;
+    const tok = this.token;
+    if (tok) h["Authorization"] = "Bearer " + tok;
     return h;
   },
 
@@ -61,14 +83,14 @@ const API = {
   },
 
   // ---- Wallet ----
-  // 兼容两种后端：申请阶段也传 amount_fiat，确认阶段传 code + amount_fiat
+  // 申请验证码和确认都带金额，兼容你后端的 422 校验
   topupRequest: (amount_fiat) =>
     API.json("/wallet/topup/request", "POST", { amount_fiat }),
 
   topupConfirm: (code, amount_fiat) =>
     API.json("/wallet/topup/confirm", "POST", { code, amount_fiat }),
 
-  // 兑换固定 1:10，后端已固化汇率
+  // 兑换固定 1:10
   exchange: (amount_fiat) => API.json("/wallet/exchange", "POST", { amount_fiat }),
 
   // ---- Shop / Gacha / Inventory / Craft ----
@@ -87,9 +109,7 @@ const API = {
     Object.entries(params).forEach(
       ([k, v]) => v !== undefined && v !== null && v !== "" && usp.append(k, v)
     );
-    return API.json(
-      "/market/browse" + (usp.toString() ? "?" + usp.toString() : "")
-    );
+    return API.json("/market/browse" + (usp.toString() ? "?" + usp.toString() : ""));
   },
 
   marketList: (inv_id, price) =>

@@ -1,8 +1,11 @@
 // 简易路由与页面调度
 const $page = () => document.getElementById("page");
-const $nav  = () => document.getElementById("nav");
-const byId  = (id) => document.getElementById(id);
+const $nav = () => document.getElementById("nav");
+const byId = (id) => document.getElementById(id);
 const escapeHtml = (s)=> String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+
+// ★★★ 关键：让 API 使用“每标签页独立会话”并迁移旧 token
+API.initSession();
 
 const Pages = {
   home: { render: () => `<div class="card"><h2>欢迎</h2><p>这是三角洲砖皮模拟器的网站版，我终于给他弄出来啦，快夸我~</p></div>`, bind: ()=>{} },
@@ -29,19 +32,13 @@ const Pages = {
   craft: CraftPage,
   market: MarketPage,
   odds: {
-    async render(){
-      const o = await API.odds();
-      return `<div class="card"><h2>当前概率</h2><pre>${escapeHtml(JSON.stringify(o,null,2))}</pre></div>`;
-    },
+    async render(){ const o = await API.odds(); return `<div class="card"><h2>当前概率</h2><pre>${escapeHtml(JSON.stringify(o,null,2))}</pre></div>`; },
     bind:()=>{}
   },
   admin: AdminPage,
   logout: {
     render(){ return `<div class="card"><h2>退出</h2><p>已退出。</p></div>`; },
-    bind(){
-      API.setToken(null);   // 只清当前标签页
-      setTimeout(()=>location.hash="#/home", 300);
-    }
+    bind(){ API.setToken(null); setTimeout(()=>location.hash="#/home", 300); }
   }
 };
 
@@ -50,14 +47,12 @@ function renderNav() { $nav().innerHTML = Nav.render(); Nav.bind(); }
 async function renderRoute() {
   const r = (location.hash.replace(/^#\//,"") || "home");
 
-  // 若已登录，每次进入路由前刷新一次 /me，获取 is_admin 并供导航显示
   if (API.token) {
     try { await API.me(); } catch(e) { /* 忽略 */ }
   } else {
     API._me = null;
   }
 
-  // 非管理员访问 admin -> 跳回首页
   if (r === "admin" && !API._me?.is_admin) {
     location.hash = "#/home";
     return;

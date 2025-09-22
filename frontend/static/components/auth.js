@@ -13,7 +13,7 @@ const AuthPage = {
       </div>
       <div class="kv">
         <div class="k">说明</div>
-        <div class="v">第一步成功后，验证码会写到 <code>sms_codes.txt</code>（后端根目录）</div>
+        <div class="v">第一步成功后，验证码会写到后端中</div>
       </div>
     </div>
 
@@ -33,7 +33,7 @@ const AuthPage = {
         <input id="admin-code" placeholder="管理员验证码（注册第二步）"/>
         <button class="btn" id="admin-verify">提交验证码成为管理员</button>
       </div>
-      <div class="muted">若申请管理员，注册后会下发一个验证码（写入后端 sms_codes.txt），验证通过后此账号成为管理员。</div>
+      <div class="muted">若申请管理员，请联系作者，验证通过后此账号成为管理员。</div>
     </div>
 
     <div class="card"><h2>重置密码</h2>
