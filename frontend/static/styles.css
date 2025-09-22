@@ -67,3 +67,11 @@ main#page { padding:16px; max-width:1100px; margin:0 auto; }
 /* 翻牌表格的行高亮 */
 .row-reveal { animation: rowIn .25s ease-out both; }
 @keyframes rowIn { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform:none; } }
+
+/* ---- currency colors ---- */
+.c-fiat  { color: #4da3ff; }   /* 蓝色：法币 */
+.c-coins { color: #f8d06b; }   /* 金色：三角币 */
+/* 更高权重，保证覆盖 kv 默认色 */
+.kv .k .c-fiat,  .kv .v.c-fiat  { color: #4da3ff; }
+.kv .k .c-coins, .kv .v.c-coins { color: #f8d06b; }
+

@@ -417,15 +417,35 @@ def topup(op: WalletOp, user: User = Depends(user_from_token), db: Session = Dep
 
 @app.post("/wallet/exchange")
 def exchange(op: WalletOp, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
-    # 固定 1:10（忽略传入 coin_rate；保持路由不变）
-    if op.amount_fiat <= 0:
-        raise HTTPException(400, "兑换金额必须大于 0")
-    if user.fiat < op.amount_fiat:
+    """
+    固定套餐兑换：
+      6  ->  60
+      30 -> 320
+      68 -> 750
+      128-> 1480
+      328-> 3950
+      648-> 8100
+    其余金额一律拒绝。
+    """
+    bundles = {6: 60, 30: 320, 68: 750, 128: 1480, 328: 3950, 648: 8100}
+    amt = int(op.amount_fiat or 0)
+    if amt not in bundles:
+        raise HTTPException(400, "只允许固定档位兑换：6/30/68/128/328/648 法币")
+    if user.fiat < amt:
         raise HTTPException(400, "法币余额不足")
-    rate = 10
-    user.fiat -= op.amount_fiat
-    user.coins += op.amount_fiat * rate
-    db.commit(); return {"ok": True, "coins": user.coins, "fiat": user.fiat, "rate": rate}
+
+    coins_gain = bundles[amt]
+    user.fiat -= amt
+    user.coins += coins_gain
+    db.commit()
+    return {
+        "ok": True,
+        "fiat": user.fiat,
+        "coins": user.coins,
+        "exchanged_fiat": amt,
+        "gained_coins": coins_gain
+    }
+
 
 @app.post("/shop/buy-keys")
 def buy_keys(inp: CountIn, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
