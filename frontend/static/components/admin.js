@@ -85,7 +85,6 @@ const AdminPage = {
             <option value="register">register（注册）</option>
             <option value="login2">login2（登录第二步）</option>
             <option value="reset">reset（重置密码）</option>
-            <option value="admin-verify">admin-verify（管理员验证）</option>
             <option value="wallet-topup">wallet-topup（充值）</option>
           </select>
           <input id="sms-limit" type="number" min="1" max="1000" value="200" style="width:120px" />
