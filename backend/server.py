@@ -19,8 +19,10 @@ from sqlalchemy import (
     ForeignKey
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
+import sqlite3
 
 # ------------------ Config ------------------
+DB_PATH_FS = os.path.join(os.path.dirname(__file__), "delta_brick.db")
 DB_URL = os.environ.get("DELTA_DB", "sqlite:///./delta_brick.db")
 JWT_SECRET = os.environ.get("DELTA_JWT_SECRET", "dev-secret-change-me")
 ADMIN_KEY = os.environ.get("DELTA_ADMIN_KEY", "dev-admin-key")
@@ -47,8 +49,9 @@ class User(Base):
     unopened_bricks = Column(Integer, default=0)
     pity_brick = Column(Integer, default=0)
     pity_purple = Column(Integer, default=0)
-    # 新增：管理员标记
     is_admin = Column(Boolean, default=False)
+    # ★ 新增：会话版本，用于单点登录
+    session_ver = Column(Integer, default=0)
 
 class Skin(Base):
     __tablename__ = "skins"
@@ -104,7 +107,19 @@ class MarketItem(Base):
     created_at = Column(Integer, default=lambda: int(time.time()))
     active = Column(Boolean, default=True)
 
+def _ensure_user_sessionver():
+    con = sqlite3.connect(DB_PATH_FS)
+    cur = con.cursor()
+    cur.execute("PRAGMA table_info(users)")
+    cols = [row[1] for row in cur.fetchall()]
+    if "session_ver" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN session_ver INTEGER NOT NULL DEFAULT 0")
+        con.commit()
+    con.close()
+
 Base.metadata.create_all(engine)
+Base.metadata.create_all(engine)
+_ensure_user_sessionver()
 
 # ------------------ Pydantic ------------------
 RarityT = Literal["BRICK", "PURPLE", "BLUE", "GREEN"]
@@ -196,21 +211,27 @@ def hash_pw(p: str) -> str:
 def verify_pw(p: str, h: str) -> bool:
     return pwd_context.verify(p, h)
 
-def mk_jwt(username: str, exp_min: int = 60*24) -> str:
-    payload = {"sub": username, "exp": datetime.utcnow() + timedelta(minutes=exp_min)}
+def mk_jwt(username: str, session_ver: int, exp_min: int = 60*24) -> str:
+    payload = {"sub": username, "sv": int(session_ver), "exp": datetime.utcnow() + timedelta(minutes=exp_min)}
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
 
 def user_from_token(creds: HTTPAuthorizationCredentials = Depends(http_bearer),
                     db: Session = Depends(get_db)) -> User:
     try:
         payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=["HS256"])
         username = payload.get("sub")
+        token_sv = int(payload.get("sv", -1))
     except Exception:
         raise HTTPException(401, "令牌无效，请重新登录")
     user = db.query(User).filter_by(username=username).first()
     if not user:
         raise HTTPException(401, "用户不存在")
+    # ★ 关键：单点登录校验
+    if int(user.session_ver or 0) != token_sv:
+        raise HTTPException(status_code=401, detail="SESSION_REVOKED")
     return user
+
 
 # ---- Password/Phone checks ----
 SPECIAL_RE = re.compile(r"[^A-Za-z0-9]")
@@ -375,8 +396,13 @@ def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
     if not u: raise HTTPException(401, "用户不存在")
     if not verify_otp(db, u.phone, "login2", data.code):
         raise HTTPException(401, "验证码错误或已过期")
-    token = mk_jwt(u.username)
+    # ★ 每次登录成功都会话版本 +1
+    u.session_ver = int(u.session_ver or 0) + 1
+    db.commit()
+    # ★ token 携带 sv
+    token = mk_jwt(u.username, u.session_ver)
     return {"ok": True, "token": token, "msg": "登录成功"}
+
 
 @app.post("/auth/send-code")
 def send_code(inp: SendCodeIn, db: Session = Depends(get_db)):
@@ -884,22 +910,33 @@ ext = APIRouter()
 from fastapi import Depends as _Depends, HTTPException as _HTTPException
 from fastapi.security import HTTPBearer as _HTTPBearer, HTTPAuthorizationCredentials as _Creds
 _auth = _HTTPBearer(auto_error=False)
+
 def _require_user(cred: _Creds = _Depends(_auth)):
     if not cred:
         raise _HTTPException(401, "Unauthorized")
     try:
         data = _jwt.decode(cred.credentials, JWT_SECRET, algorithms=[JWT_ALGO])
         username = data.get("sub")
+        token_sv = int(data.get("sv", -1))
     except Exception:
         raise _HTTPException(401, "Unauthorized")
+
     if not username:
         raise _HTTPException(401, "Unauthorized")
+
     con=_conn(); cur=con.cursor()
     cur.execute("SELECT * FROM users WHERE username=?", (username,))
-    u=cur.fetchone(); con.close()
+    u=cur.fetchone()
+    con.close()
     if not u:
         raise _HTTPException(401, "Unauthorized")
+
+    # ★ 单点登录校验
+    if int(u["session_ver"] or 0) != token_sv:
+        raise _HTTPException(status_code=401, detail="SESSION_REVOKED")
+
     return u
+
 def _require_admin(u=_Depends(_require_user)):
     if not bool(u["is_admin"]):
         raise _HTTPException(403, "Forbidden")

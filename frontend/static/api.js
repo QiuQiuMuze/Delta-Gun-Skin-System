@@ -52,10 +52,20 @@ const API = {
 
     if (!res.ok) {
       const msg = (data && (data.detail || data.msg)) || data?.raw || txt || "请求失败";
+
+      // ★ 被别处登录顶下线
+      if (msg === "SESSION_REVOKED") {
+        try { this.setToken(null); } catch (_) {}
+        alert("账号在其他设备/标签页登录，你已下线（为保证账号安全请重新登录）");
+        location.hash = "#/auth";
+        throw new Error("SESSION_REVOKED");
+      }
+
       throw new Error(msg);
     }
     return data;
   },
+
 
   // ---- Auth ----
   register: (username, phone, password, want_admin = false) =>
