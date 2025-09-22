@@ -32,7 +32,7 @@ const API = {
       const msg = (data && (data.detail || data.msg)) || data?.raw || txt || "请求失败";
       throw new Error(msg);
     }
-    return data; // 可能是对象，也可能是 {raw: "..."}，调用方要按需读取
+    return data;
   },
 
   // ---- Auth ----
@@ -61,11 +61,12 @@ const API = {
   },
 
   // ---- Wallet ----
-  // 你的后端实现：/wallet/topup/request 接收 amount_fiat，/wallet/topup/confirm 仅接收 code
+  // 兼容两种后端：申请阶段也传 amount_fiat，确认阶段传 code + amount_fiat
   topupRequest: (amount_fiat) =>
     API.json("/wallet/topup/request", "POST", { amount_fiat }),
 
-  topupConfirm: (code) => API.json("/wallet/topup/confirm", "POST", { code }),
+  topupConfirm: (code, amount_fiat) =>
+    API.json("/wallet/topup/confirm", "POST", { code, amount_fiat }),
 
   // 兑换固定 1:10，后端已固化汇率
   exchange: (amount_fiat) => API.json("/wallet/exchange", "POST", { amount_fiat }),
@@ -139,7 +140,7 @@ const API = {
         "X-Admin-Key": xkey,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(skins), // 你的后端是直接接收 List[SkinIn]
+      body: JSON.stringify(skins),
     }).then((r) => r.json()),
 
   adminActivateSkin: (xkey, skin_id, active) =>

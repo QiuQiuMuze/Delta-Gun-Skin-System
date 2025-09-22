@@ -1,7 +1,7 @@
 // 简易路由与页面调度
 const $page = () => document.getElementById("page");
-const $nav = () => document.getElementById("nav");
-const byId = (id) => document.getElementById(id);
+const $nav  = () => document.getElementById("nav");
+const byId  = (id) => document.getElementById(id);
 const escapeHtml = (s)=> String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 
 const Pages = {
@@ -29,13 +29,19 @@ const Pages = {
   craft: CraftPage,
   market: MarketPage,
   odds: {
-    async render(){ const o = await API.odds(); return `<div class="card"><h2>当前概率</h2><pre>${escapeHtml(JSON.stringify(o,null,2))}</pre></div>`; },
+    async render(){
+      const o = await API.odds();
+      return `<div class="card"><h2>当前概率</h2><pre>${escapeHtml(JSON.stringify(o,null,2))}</pre></div>`;
+    },
     bind:()=>{}
   },
   admin: AdminPage,
   logout: {
     render(){ return `<div class="card"><h2>退出</h2><p>已退出。</p></div>`; },
-    bind(){ API.setToken(null); setTimeout(()=>location.hash="#/home", 300); }
+    bind(){
+      API.setToken(null);   // 只清当前标签页
+      setTimeout(()=>location.hash="#/home", 300);
+    }
   }
 };
 

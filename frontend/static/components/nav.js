@@ -14,9 +14,11 @@ const Nav = {
     return `<div class="nav">${links.map(([k,t]) => `<a href="#/${k}" data-route="${k}">${t}</a>`).join("")}</div>`;
   },
   bind() {
-    document.querySelectorAll('nav a').forEach(a => {
-      const r = location.hash.replace(/^#\//,"") || "home";
+    // 修正：你的容器是 <div class="nav">，不能选 'nav a'
+    const r = location.hash.replace(/^#\//,"") || "home";
+    document.querySelectorAll('.nav a').forEach(a => {
       if (a.dataset.route === r) a.classList.add("active");
+      else a.classList.remove("active");
     });
   }
-}
+};
