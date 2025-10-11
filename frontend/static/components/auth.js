@@ -1,11 +1,8 @@
 const AuthPage = {
   render() {
     return `
-    <div class="card"><h2>模式切换</h2>
-      <div class="input-row">
-        <label><input id="mode-switch" type="checkbox" checked /> 管理员模式</label>
-      </div>
-      <div class="muted" id="mode-hint">管理员模式：使用手机号 + 短信验证码进行注册和登录。</div>
+    <div class="card"><h2>当前模式</h2>
+      <div class="muted" id="mode-hint">正在获取当前模式...</div>
     </div>
 
     <div class="card"><h2>登录</h2>
@@ -67,14 +64,16 @@ const AuthPage = {
   bind() {
     let loginUser = "";
     let regAdminUser = "";
+    let adminMode = true;
+    let modeReady = false;
 
-    const modeSwitch = byId("mode-switch");
     const adminVerifyBox = byId("admin-verify-box");
     const adminSections = Array.from(document.querySelectorAll(".mode-admin")).filter(el => el.id !== "admin-verify-box");
-    const getAdminMode = () => !!modeSwitch.checked;
+    adminSections.forEach(el => { el.style.display = "none"; });
+    adminVerifyBox.style.display = "none";
 
-    const updateModeUI = () => {
-      const adminMode = getAdminMode();
+    const applyMode = (isAdminMode) => {
+      adminMode = !!isAdminMode;
       adminSections.forEach(el => { el.style.display = adminMode ? "" : "none"; });
       if (adminMode && regAdminUser) {
         adminVerifyBox.style.display = "";
@@ -83,9 +82,12 @@ const AuthPage = {
       }
 
       byId("login-btn").textContent = adminMode ? "获取验证码" : "登录";
-      byId("mode-hint").textContent = adminMode
-        ? "管理员模式：使用手机号 + 短信验证码进行注册和登录。"
-        : "玩家模式：仅凭用户名和密码即可注册登录，新账号自动获得 20000 法币。";
+      const modeHint = byId("mode-hint");
+      if (modeHint) {
+        modeHint.textContent = adminMode
+          ? "管理员模式：使用手机号 + 短信验证码进行注册和登录。"
+          : "玩家模式：仅凭用户名和密码即可注册登录，新账号自动获得 20000 法币。";
+      }
       byId("login-hint").textContent = adminMode
         ? "点击开始登录后，验证码请联系作者获取。"
         : "免验证码，直接输入用户名和密码即可完成登录。";
@@ -107,11 +109,35 @@ const AuthPage = {
       }
     };
 
-    modeSwitch.onchange = () => updateModeUI();
-    updateModeUI();
+    const ensureModeReady = () => {
+      if (!modeReady) {
+        alert("正在获取当前登录/注册模式，请稍候重试");
+        return false;
+      }
+      return true;
+    };
+
+    const loadMode = async () => {
+      try {
+        const resp = await API.authMode();
+        modeReady = true;
+        applyMode(!!(resp && resp.admin_mode));
+      } catch (e) {
+        modeReady = true;
+        applyMode(true);
+        const modeHint = byId("mode-hint");
+        if (modeHint) {
+          modeHint.textContent += `（获取模式失败：${e?.message || e}，已默认开启管理员模式）`;
+        }
+      }
+    };
+
+    loadMode();
+    const getAdminMode = () => adminMode;
 
     // ===== 登录 =====
     byId("login-btn").onclick = async () => {
+      if (!ensureModeReady()) return;
       const u = byId("login-u").value.trim();
       const p = byId("login-p").value;
       if (!u || !p) return alert("请输入用户名和密码");
@@ -130,6 +156,7 @@ const AuthPage = {
     };
 
     byId("verify-btn").onclick = async () => {
+      if (!ensureModeReady()) return;
       if (!getAdminMode()) return;
       const code = byId("login-code").value.trim();
       if (!loginUser) return alert("请先执行登录第一步");
@@ -143,6 +170,7 @@ const AuthPage = {
 
     // ===== 注册：发送注册验证码 =====
     byId("reg-send-code").onclick = async () => {
+      if (!ensureModeReady()) return;
       if (!getAdminMode()) return;
       const ph = byId("reg-phone").value.trim();
       if (!ph) return alert("请输入手机号");
@@ -154,6 +182,7 @@ const AuthPage = {
 
     // ===== 注册提交 =====
     byId("reg-btn").onclick = async () => {
+      if (!ensureModeReady()) return;
       const adminMode = getAdminMode();
       const u = byId("reg-u").value.trim();
       const pw = byId("reg-p").value;
@@ -168,7 +197,7 @@ const AuthPage = {
           const r = await API.register(u, ph, code, pw, want_admin, true);
           if (want_admin) {
             regAdminUser = u;
-            updateModeUI();
+            applyMode(true);
             alert("已申请管理员，请联系作者获取管理员验证码并在下方输入");
           } else {
             alert("注册成功，请去登录");
@@ -184,6 +213,7 @@ const AuthPage = {
 
     // ===== 管理员验证码第二步 =====
     byId("admin-verify").onclick = async () => {
+      if (!ensureModeReady()) return;
       if (!getAdminMode()) return;
       const code = byId("admin-code").value.trim();
       if (!regAdminUser) return alert("请先执行管理员注册");
@@ -192,12 +222,13 @@ const AuthPage = {
         await API.adminVerify(regAdminUser, code);
         alert("管理员开通成功，请使用该账号登录");
         regAdminUser = "";
-        updateModeUI();
+        applyMode(true);
       } catch (e) { alert(e.message); }
     };
 
     // ===== 重置密码（短信）=====
     byId("rp-send").onclick = async () => {
+      if (!ensureModeReady()) return;
       if (!getAdminMode()) return;
       const ph = byId("rp-phone").value.trim();
       if (!ph) return alert("请输入手机号");
@@ -208,6 +239,7 @@ const AuthPage = {
     };
 
     byId("rp-do").onclick = async () => {
+      if (!ensureModeReady()) return;
       if (!getAdminMode()) return;
       const ph = byId("rp-phone").value.trim();
       const code = byId("rp-code").value.trim();

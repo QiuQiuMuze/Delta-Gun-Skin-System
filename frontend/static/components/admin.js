@@ -9,6 +9,14 @@ const AdminPage = {
       </div>
 
       <div class="card">
+        <h3>登录/注册模式</h3>
+        <div class="input-row">
+          <label><input id="admin-mode-toggle" type="checkbox" /> 启用管理员模式</label>
+        </div>
+        <div class="muted" id="admin-mode-hint">管理员模式开启后，注册/登录需要手机号与短信验证码。</div>
+      </div>
+
+      <div class="card">
         <h3>所有用户</h3>
         <div class="input-row">
           <input id="q" placeholder="按用户名/手机号搜索"/>
@@ -97,6 +105,49 @@ const AdminPage = {
 
   async bind() {
     if (!API._me?.is_admin) { alert("非管理员"); location.hash="#/home"; return; }
+
+    const modeToggle = byId("admin-mode-toggle");
+    const modeHint = byId("admin-mode-hint");
+    let currentAdminMode = true;
+
+    const renderModeToggle = (enabled) => {
+      currentAdminMode = !!enabled;
+      if (modeToggle) modeToggle.checked = currentAdminMode;
+      if (modeHint) {
+        modeHint.textContent = currentAdminMode
+          ? "管理员模式开启：注册/登录需要手机号与短信验证码。"
+          : "管理员模式关闭：注册/登录无需验证码，新注册账号自动获得 20000 法币。";
+      }
+    };
+
+    renderModeToggle(true);
+    try {
+      const status = await API.adminAuthMode();
+      renderModeToggle(!!(status && status.admin_mode));
+    } catch (e) {
+      renderModeToggle(true);
+      if (modeHint) {
+        modeHint.textContent += `（读取失败：${e?.message || e}）`;
+      }
+    }
+
+    if (modeToggle) {
+      modeToggle.onchange = async () => {
+        const next = !!modeToggle.checked;
+        const prev = currentAdminMode;
+        modeToggle.disabled = true;
+        try {
+          await API.adminSetAuthMode(next);
+          renderModeToggle(next);
+          alert(next ? "已开启管理员模式" : "已关闭管理员模式");
+        } catch (e) {
+          alert(e.message);
+          renderModeToggle(prev);
+        } finally {
+          modeToggle.disabled = false;
+        }
+      };
+    }
 
     // —— 渲染函数们 —— //
     const renderUsers = (items=[])=>{

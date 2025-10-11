@@ -114,6 +114,11 @@ class MarketItem(Base):
     created_at = Column(Integer, default=lambda: int(time.time()))
     active = Column(Boolean, default=True)
 
+class SiteFlag(Base):
+    __tablename__ = "site_flags"
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=False)
+
 def _ensure_user_sessionver():
     con = sqlite3.connect(DB_PATH_FS)
     cur = con.cursor()
@@ -156,6 +161,41 @@ Base.metadata.create_all(engine)
 _ensure_user_sessionver()
 _ensure_inventory_visual_columns()
 _ensure_fast_registered_flag()
+
+ADMIN_MODE_FLAG_KEY = "admin_mode_required"
+
+def _get_admin_mode_required(db: Session | None = None) -> bool:
+    close = False
+    if db is None:
+        db = SessionLocal()
+        close = True
+    try:
+        row = db.query(SiteFlag).filter_by(key=ADMIN_MODE_FLAG_KEY).first()
+        if not row:
+            row = SiteFlag(key=ADMIN_MODE_FLAG_KEY, value="1")
+            db.add(row)
+            db.commit()
+        return str(row.value) == "1"
+    finally:
+        if close:
+            db.close()
+
+def _set_admin_mode_required(enabled: bool, db: Session | None = None) -> None:
+    close = False
+    if db is None:
+        db = SessionLocal()
+        close = True
+    try:
+        row = db.query(SiteFlag).filter_by(key=ADMIN_MODE_FLAG_KEY).first()
+        value = "1" if enabled else "0"
+        if row:
+            row.value = value
+        else:
+            db.add(SiteFlag(key=ADMIN_MODE_FLAG_KEY, value=value))
+        db.commit()
+    finally:
+        if close:
+            db.close()
 
 # ------------------ Pydantic ------------------
 RarityT = Literal["BRICK", "PURPLE", "BLUE", "GREEN"]
@@ -611,7 +651,12 @@ def compute_odds(u: User, cfg: PoolConfig) -> OddsOut:
 # ------------------ Auth ------------------
 @app.post("/auth/register")
 def register(data: RegisterIn, db: Session = Depends(get_db)):
+    admin_required = _get_admin_mode_required(db)
     admin_mode = bool(getattr(data, "admin_mode", True))
+    if admin_required and not admin_mode:
+        raise HTTPException(400, "当前仅开放管理员模式注册，请使用手机号+验证码")
+    if not admin_required:
+        admin_mode = False
     if db.query(User).filter_by(username=data.username).first():
         raise HTTPException(400, "用户名已存在，请更换用户名")
 
@@ -674,7 +719,12 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
 
 @app.post("/auth/login/start")
 def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
+    admin_required = _get_admin_mode_required(db)
     admin_mode = bool(getattr(data, "admin_mode", True))
+    if admin_required and not admin_mode:
+        raise HTTPException(400, "当前仅开放管理员模式登录，请使用验证码流程")
+    if not admin_required:
+        admin_mode = False
     u = db.query(User).filter_by(username=data.username).first()
     if not u: raise HTTPException(401, "用户不存在")
     if not verify_pw(data.password, u.password_hash):
@@ -704,6 +754,11 @@ def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
     # ★ token 携带 sv
     token = mk_jwt(u.username, u.session_ver)
     return {"ok": True, "token": token, "msg": "登录成功"}
+
+
+@app.get("/auth/mode")
+def auth_mode_status():
+    return {"admin_mode": _get_admin_mode_required()}
 
 
 @app.post("/auth/send-code")
@@ -1403,6 +1458,22 @@ def put_admin_pending(username: str):
     con.commit(); con.close()
     _write_sms(username, code, "admin-verify")
     return code
+
+
+@ext.get("/admin/admin-mode")
+def admin_mode_status(admin=_Depends(_require_admin)):
+    return {"admin_mode": _get_admin_mode_required()}
+
+
+class AdminModeToggle(_BM):
+    admin_mode: bool
+
+
+@ext.post("/admin/admin-mode")
+def admin_mode_toggle(payload: AdminModeToggle, admin=_Depends(_require_admin)):
+    _set_admin_mode_required(bool(payload.admin_mode))
+    return {"ok": True, "admin_mode": _get_admin_mode_required()}
+
 
 # 充值两段式：请求验证码（携带金额）
 @ext.post("/wallet/topup/request")

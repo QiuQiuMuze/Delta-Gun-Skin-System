@@ -90,6 +90,8 @@ const API = {
   loginVerify: (username, code) =>
     API.json("/auth/login/verify", "POST", { username, code }),
 
+  authMode: () => API.json("/auth/mode"),
+
   // 通用短信（目前用于“重置密码”）
   sendCode: (phone, purpose) =>
     API.json("/auth/send-code", "POST", { phone, purpose }),
@@ -157,6 +159,11 @@ const API = {
     usp.append("page_size", page_size);
     return API.json("/admin/users" + (usp.toString() ? "?" + usp.toString() : ""));
   },
+
+  adminAuthMode: () => API.json("/admin/admin-mode"),
+
+  adminSetAuthMode: (enabled) =>
+    API.json("/admin/admin-mode", "POST", { admin_mode: !!enabled }),
 
   adminGrantFiat: (username, amount_fiat) =>
     API.json("/admin/grant-fiat", "POST", { username, amount_fiat }),
