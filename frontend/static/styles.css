@@ -89,10 +89,10 @@ main#page { padding:16px; max-width:1100px; margin:0 auto; }
   box-shadow:0 8px 20px rgba(10,14,22,0.45);
   overflow:hidden;
   transition:transform .25s ease, box-shadow .25s ease;
-  min-width:160px;
+  min-width:calc(var(--preview-width, 240px) + 24px);
 }
 .skin-preview:hover { transform:translateY(-2px); box-shadow:0 12px 28px rgba(20,32,52,0.55); }
-.skin-preview--compact { padding:8px; min-width:140px; }
+.skin-preview--compact { padding:8px; min-width:calc(var(--preview-width, 220px) + 18px); }
 .skin-preview__canvas {
   width:var(--preview-width, 240px);
   height:var(--preview-height, 86px);
@@ -170,9 +170,16 @@ main#page { padding:16px; max-width:1100px; margin:0 auto; }
 .m7-template--diamond path { mix-blend-mode:screen; filter:saturate(1.2); }
 .m7-template-hidden circle { mix-blend-mode:screen; filter:blur(0.35px); animation:diamondPulse 2.4s ease-in-out infinite; }
 .m7-sparks circle { mix-blend-mode:screen; animation:baseSpark 5.6s ease-in-out infinite alternate; }
+.m7-stock-ribs line { mix-blend-mode:screen; }
 .m7-body-detail rect { mix-blend-mode:screen; }
+.m7-body path, .m7-body line { vector-effect:non-scaling-stroke; }
 .m7-rail-teeth rect { mix-blend-mode:screen; }
+.m7-rail-grooves line { mix-blend-mode:multiply; }
 .m7-grip-ridges path { mix-blend-mode:multiply; }
+.m7-fore-lines line { mix-blend-mode:screen; }
+.m7-scope-lines line { mix-blend-mode:screen; }
+.m7-body path, .m7-body circle { transition:fill .3s ease, opacity .3s ease; }
+.m7-body line { transition:stroke .3s ease, opacity .3s ease; }
 .m7-effect--sparkle circle { mix-blend-mode:screen; animation:sparklePulse 3.4s ease-in-out infinite; }
 .m7-effect--sheen rect { mix-blend-mode:screen; opacity:0; }
 .m7-effect--trail { opacity:0; mix-blend-mode:screen; }
