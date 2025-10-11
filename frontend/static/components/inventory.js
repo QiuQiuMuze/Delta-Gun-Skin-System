@@ -1,4 +1,6 @@
 const InventoryPage = {
+  _cache: {},
+  _activePreviewBtn: null,
   async render() {
     const blocks = `
       <div class="card">
@@ -36,6 +38,7 @@ const InventoryPage = {
   async _loadAndRender(force=false) {
     const host = document.getElementById("inv-panels");
     if (!host) return;
+    this._activePreviewBtn = null;
 
     // ① 优先尝试 by-color
     let grouped = await this._tryByColor().catch(()=>null);
@@ -48,6 +51,7 @@ const InventoryPage = {
 
     // 渲染
     host.innerHTML = this._renderGroups(grouped);
+    this._bindPreviewEvents();
   },
 
   async _tryByColor() {
@@ -92,18 +96,29 @@ const InventoryPage = {
     const serial  = x.serial ?? x.sn ?? "";
     // 砖皮才有 exquisite（有些后端也可能给所有稀有度一个布尔）
     const exquisite = x.exquisite === true;
+    const template = x.template ?? (x.visual?.template);
+    const hidden_template = x.hidden_template ?? x.visual?.hidden_template ?? false;
+    const effects = x.effects ?? x.visual?.effects ?? [];
+    const visual = x.visual || {
+      body: [], attachments: [], template, hidden_template, effects
+    };
 
-    return { inv_id, name, rarity, wear, grade, serial, exquisite };
+    return { inv_id, name, rarity, wear, grade, serial, exquisite, template, hidden_template, effects, visual };
   },
 
   _renderGroups(g) {
+    this._cache = {};
     const sec = (title, key) => {
       const arr = (g[key] || []).map(x => this._normalizeRow(x));
+      for (const item of arr) {
+        if (item.inv_id) this._cache[item.inv_id] = item;
+      }
       const rows = arr.map(x => {
         const rc = this._rarityClass(x.rarity);
         const ex = (x.rarity === "BRICK")
           ? (x.exquisite ? `<span class="badge badge-exq">极品</span>` : `<span class="badge badge-prem">优品</span>`)
           : "-";
+        const btn = `<button class="btn btn-mini" data-preview="${x.inv_id}">查看</button>`;
         return `<tr>
           <td>${x.inv_id}</td>
           <td class="${rc}">${x.name}</td>
@@ -112,6 +127,7 @@ const InventoryPage = {
           <td>${x.wear}</td>
           <td>${x.grade}</td>
           <td>${x.serial}</td>
+          <td>${btn}</td>
         </tr>`;
       }).join("");
 
@@ -119,7 +135,7 @@ const InventoryPage = {
       <div class="card">
         <h3>${title}（${arr.length}）</h3>
         <table class="table">
-          <thead><tr><th>inv_id</th><th>名称</th><th>稀有度</th><th>极品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
+          <thead><tr><th>inv_id</th><th>名称</th><th>稀有度</th><th>极品</th><th>磨损</th><th>品质</th><th>编号</th><th>外观</th></tr></thead>
           <tbody>${rows || ""}</tbody>
         </table>
       </div>`;
@@ -131,5 +147,55 @@ const InventoryPage = {
       sec("蓝",   "BLUE"),
       sec("绿",   "GREEN"),
     ].join("");
+  },
+
+  _bindPreviewEvents() {
+    const host = document.getElementById("inv-panels");
+    if (!host) return;
+    host.querySelectorAll('[data-preview]').forEach(btn => {
+      btn.onclick = () => this._togglePreview(btn);
+    });
+  },
+
+  _togglePreview(btn) {
+    const invId = btn.getAttribute('data-preview');
+    const tr = btn.closest('tr');
+    if (!invId || !tr) return;
+
+    if (this._activePreviewBtn && this._activePreviewBtn !== btn) {
+      const prevRow = this._activePreviewBtn.closest('tr')?.nextElementSibling;
+      if (prevRow && prevRow.classList.contains('preview-row')) prevRow.remove();
+      this._activePreviewBtn.textContent = '查看';
+      this._activePreviewBtn = null;
+    }
+
+    const existing = tr.nextElementSibling;
+    if (existing && existing.classList.contains('preview-row') && existing.dataset.for === invId) {
+      existing.remove();
+      btn.textContent = '查看';
+      this._activePreviewBtn = null;
+      return;
+    }
+    if (existing && existing.classList.contains('preview-row')) existing.remove();
+
+    const data = this._cache[invId];
+    if (!data) return;
+    const visual = data.visual || { body: [], attachments: [], template: data.template, hidden_template: data.hidden_template, effects: data.effects };
+    let previewHtml = '-';
+    let detail = '';
+    if (window.SkinVisuals) {
+      const info = SkinVisuals.describe(visual);
+      const meta = SkinVisuals.formatMeta(visual);
+      previewHtml = SkinVisuals.render(visual, { label: data.name, meta });
+      detail = `主体：${info.bodyText} · 配件：${info.attachmentText}`;
+    }
+
+    const detailRow = document.createElement('tr');
+    detailRow.className = 'preview-row';
+    detailRow.dataset.for = invId;
+    detailRow.innerHTML = `<td colspan="8">${previewHtml}${detail ? `<div class="preview-info">${detail}</div>` : ''}</td>`;
+    tr.after(detailRow);
+    btn.textContent = '收起';
+    this._activePreviewBtn = btn;
   }
 };
