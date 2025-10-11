@@ -12,6 +12,13 @@
   }
   function gradeClass(g) { var m={S:"grade-s",A:"grade-a",B:"grade-b",C:"grade-c"}; return m[g]||""; }
 
+  function previewCell(item, opts){
+    if (!window.SkinVisuals) return '';
+    const visual = item.visual || { body: [], attachments: [], template: item.template, hidden_template: item.hidden_template, effects: item.effects };
+    const meta = (opts && opts.meta === false) ? false : (opts && opts.meta) || SkinVisuals.formatMeta(visual);
+    return `<div class="market-preview-cell">${SkinVisuals.render(visual, { compact:true, meta })}</div>`;
+  }
+
   function mapRarity(v){
     const s = String(v || "").trim();
     const up = s.toUpperCase();
@@ -65,7 +72,11 @@
     const serial    = x.serial ?? x.sn ?? "";
     const exquisite = isExq(x);
     const on_market = !!x.on_market;
-    return { inv_id, name, rarity, wear, grade, serial, exquisite, on_market };
+    const template = x.template ?? x.visual?.template;
+    const hidden_template = x.hidden_template ?? x.visual?.hidden_template ?? false;
+    const effects = x.effects ?? x.visual?.effects ?? [];
+    const visual = x.visual || { body: [], attachments: [], template, hidden_template, effects };
+    return { inv_id, name, rarity, wear, grade, serial, exquisite, on_market, template, hidden_template, effects, visual };
   }
 
   function btn(label, active, attrs){
@@ -370,7 +381,11 @@
               exquisite: isExq(x),
               grade: x.grade ?? x.quality ?? "",
               wear: normalizeWear(x),
-              serial: x.serial
+              serial: x.serial,
+              template: x.template ?? x.visual?.template,
+              hidden_template: x.hidden_template ?? x.visual?.hidden_template ?? false,
+              effects: x.effects ?? x.visual?.effects ?? [],
+              visual: x.visual || { body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects }
             };
           });
 
@@ -378,9 +393,11 @@
           for (var i=0;i<items.length;i++){
             var x=items[i], rc=rarityClass(x.rarity);
             var ex=(x.rarity==="BRICK") ? (x.exquisite?'<span class="badge badge-exq">极品</span>':'<span class="badge badge-prem">优品</span>') : '-';
+            var preview = previewCell(x);
             rows += '<tr>'+
               '<td>'+esc(x.seller||"玩家")+'</td>'+
               '<td class="'+rc+'">'+esc(x.name)+'</td>'+
+              '<td>'+preview+'</td>'+
               '<td class="'+rc+'">'+esc(x.rarity)+'</td>'+
               '<td>'+ex+'</td>'+
               '<td>'+(isNaN(x.wear)?'-':x.wear)+'</td>'+
@@ -392,7 +409,7 @@
           }
           $id('mk-browse-list').innerHTML =
             '<table class="table">'+
-            '<thead><tr><th>上架玩家</th><th>名称</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th><th>价格</th><th>操作</th></tr></thead>'+
+            '<thead><tr><th>上架玩家</th><th>名称</th><th>外观</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th><th>价格</th><th>操作</th></tr></thead>'+
             '<tbody>'+rows+'</tbody></table>';
 
           $id('mk-browse-list').querySelectorAll('[data-buy]').forEach((btn)=>{
@@ -424,14 +441,20 @@
               exquisite: isExq(x),
               grade: x.grade ?? x.quality ?? "",
               wear: normalizeWear(x),
-              serial: x.serial
+              serial: x.serial,
+              template: x.template ?? x.visual?.template,
+              hidden_template: x.hidden_template ?? x.visual?.hidden_template ?? false,
+              effects: x.effects ?? x.visual?.effects ?? [],
+              visual: x.visual || { body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects }
             };
           });
           for (var i=0;i<list.length;i++){
             var x=list[i], rc=rarityClass(x.rarity);
             var ex=(x.rarity==="BRICK")?(x.exquisite?'<span class="badge badge-exq">极品</span>':'<span class="badge badge-prem">优品</span>'):'-';
+            var preview = previewCell(x);
             rows+='<tr>'+
               '<td class="'+rc+'">'+esc(x.name)+'</td>'+
+              '<td>'+preview+'</td>'+
               '<td class="'+rc+'">'+esc(x.rarity)+'</td>'+
               '<td>'+ex+'</td>'+
               '<td>'+(isNaN(x.wear)?'-':x.wear)+'</td>'+
@@ -442,7 +465,7 @@
             '</tr>';
           }
           $id('mk-mine-list').innerHTML =
-            '<table class="table"><thead><tr><th>名称</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th><th>价格</th><th>操作</th></tr></thead>'+
+            '<table class="table"><thead><tr><th>名称</th><th>外观</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th><th>价格</th><th>操作</th></tr></thead>'+
             '<tbody>'+rows+'</tbody></table>';
 
           $id('mk-mine-list').querySelectorAll('[data-off]').forEach((btn)=>{
