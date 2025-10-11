@@ -35,6 +35,7 @@ const Pages = {
     async render(){ const o = await API.odds(); return `<div class="card"><h2>当前概率</h2><pre>${escapeHtml(JSON.stringify(o,null,2))}</pre></div>`; },
     bind:()=>{}
   },
+  "admin-mode": AdminAuthModePage,
   admin: AdminPage,
   logout: {
     render(){ return `<div class="card"><h2>退出</h2><p>已退出。</p></div>`; },
@@ -53,7 +54,8 @@ async function renderRoute() {
     API._me = null;
   }
 
-  if (r === "admin" && !API._me?.is_admin) {
+  const adminOnlyRoutes = new Set(["admin", "admin-mode"]);
+  if (adminOnlyRoutes.has(r) && !API._me?.is_admin) {
     location.hash = "#/home";
     return;
   }
