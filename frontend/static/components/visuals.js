@@ -114,6 +114,51 @@
     return { hex, name };
   }
 
+  function hexToRgb(hex){
+    const sanitized = sanitizeHex(hex).replace('#', '');
+    const str = sanitized.length === 3
+      ? sanitized.split('').map(ch => ch + ch).join('')
+      : sanitized.padEnd(6, '0').slice(0, 6);
+    const r = parseInt(str.slice(0, 2), 16);
+    const g = parseInt(str.slice(2, 4), 16);
+    const b = parseInt(str.slice(4, 6), 16);
+    return {
+      r: Number.isFinite(r) ? r : 0,
+      g: Number.isFinite(g) ? g : 0,
+      b: Number.isFinite(b) ? b : 0
+    };
+  }
+
+  function toCssColor(rgb, alpha){
+    const a = typeof alpha === 'number' ? Math.max(0, Math.min(1, alpha)) : 1;
+    const { r, g, b } = rgb;
+    if (a >= 1) return `rgb(${r}, ${g}, ${b})`;
+    return `rgba(${r}, ${g}, ${b}, ${a})`;
+  }
+
+  function mixRgb(a, b, ratio){
+    const t = Math.max(0, Math.min(1, ratio));
+    return {
+      r: Math.round(a.r + (b.r - a.r) * t),
+      g: Math.round(a.g + (b.g - a.g) * t),
+      b: Math.round(a.b + (b.b - a.b) * t)
+    };
+  }
+
+  function mixWith(hex, targetRgb, ratio, alpha){
+    const base = hexToRgb(hex);
+    const mixed = mixRgb(base, targetRgb, ratio);
+    return toCssColor(mixed, alpha);
+  }
+
+  function lighten(hex, ratio, alpha){
+    return mixWith(hex, { r: 255, g: 255, b: 255 }, ratio, alpha);
+  }
+
+  function darken(hex, ratio, alpha){
+    return mixWith(hex, { r: 0, g: 0, b: 0 }, ratio, alpha);
+  }
+
   function gradientFrom(list){
     const colors = list.map(c => c.hex);
     if (colors.length === 0) return DEFAULT_COLOR.hex;
@@ -167,19 +212,54 @@
     const width = opts.width || (opts.compact ? 150 : 220);
     const height = opts.height || (opts.compact ? 52 : 78);
     const bodyGradient = gradientFrom(info.bodyColors);
-    const attachColor = info.attachmentColors[0] || DEFAULT_COLOR;
+    const bodyPrimary = info.bodyColors[0] || DEFAULT_COLOR;
+    const bodySecondary = info.bodyColors[1] || bodyPrimary;
+    const attachPrimary = info.attachmentColors[0] || DEFAULT_COLOR;
+    const attachSecondary = info.attachmentColors[1] || attachPrimary;
+    const accentGradient = gradientFrom([attachPrimary, attachSecondary]);
+    const canvasClasses = ["skin-preview__canvas", `tpl-${info.template}`];
+    const canvasStyle = [
+      `--preview-width:${width}px`,
+      `--preview-height:${height}px`,
+      `--body-gradient:${bodyGradient}`,
+      `--body-secondary:${bodySecondary.hex}`,
+      `--body-highlight:${lighten(bodySecondary.hex, 0.45, 0.85)}`,
+      `--body-edge:${darken(bodyPrimary.hex, 0.55)}`,
+      `--body-glow:${lighten(bodyPrimary.hex, 0.35, 0.35)}`,
+      `--accent-color:${attachPrimary.hex}`,
+      `--accent-secondary:${attachSecondary.hex}`,
+      `--accent-gradient:${accentGradient}`,
+      `--accent-highlight:${lighten(attachPrimary.hex, 0.65, 0.9)}`,
+      `--accent-shadow:${darken(attachPrimary.hex, 0.55)}`,
+      `--detail-line:${lighten(bodySecondary.hex, 0.65, 0.7)}`,
+      `--scope-glass:${lighten(attachPrimary.hex, 0.35, 0.55)}`,
+      `--scope-glow:${lighten(attachSecondary.hex, 0.8, 0.4)}`,
+      `--muzzle-heat:${lighten(attachPrimary.hex, 0.45, 0.65)}`
+    ].join(';');
     const label = opts.label ? `<div class="skin-preview__label">${esc(opts.label)}</div>` : "";
     const metaText = opts.meta === false ? "" : (opts.meta || formatMeta(visual));
     const meta = metaText ? `<div class="skin-preview__meta">${esc(metaText)}</div>` : "";
 
     return `
-      <div class="${classes.join(' ')}" style="--preview-width:${width}px;--preview-height:${height}px;">
-        <div class="skin-preview__canvas">
-          <div class="skin-preview__body" style="background:${bodyGradient};"></div>
-          <div class="skin-preview__barrel" style="background:${attachColor.hex};"></div>
-          <div class="skin-preview__stock" style="background:${info.bodyColors[0].hex};"></div>
-          <div class="skin-preview__mag" style="background:${attachColor.hex};"></div>
-          <div class="skin-preview__rail" style="background:${attachColor.hex};"></div>
+      <div class="${classes.join(' ')}">
+        <div class="${canvasClasses.join(' ')}" style="${canvasStyle}">
+          <div class="skin-preview__gun">
+            <div class="skin-preview__layer skin-preview__layer--shadow"></div>
+            <div class="skin-preview__layer skin-preview__layer--body"></div>
+            <div class="skin-preview__layer skin-preview__layer--core"></div>
+            <div class="skin-preview__layer skin-preview__layer--stock"></div>
+            <div class="skin-preview__layer skin-preview__layer--stock-cut"></div>
+            <div class="skin-preview__layer skin-preview__layer--rail"></div>
+            <div class="skin-preview__layer skin-preview__layer--fore"></div>
+            <div class="skin-preview__layer skin-preview__layer--barrel"></div>
+            <div class="skin-preview__layer skin-preview__layer--muzzle"></div>
+            <div class="skin-preview__layer skin-preview__layer--mag"></div>
+            <div class="skin-preview__layer skin-preview__layer--scope"></div>
+            <div class="skin-preview__layer skin-preview__layer--scope-glass"></div>
+            <div class="skin-preview__layer skin-preview__layer--detail"></div>
+            <div class="skin-preview__layer skin-preview__layer--spark"></div>
+            <div class="skin-preview__layer skin-preview__layer--accent-line"></div>
+          </div>
         </div>
         ${label}
         ${meta}
