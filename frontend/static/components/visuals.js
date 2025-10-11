@@ -162,28 +162,70 @@
   const PATHS = {
     body: "M174 94 L406 64 L452 70 L498 88 L528 116 L520 166 L262 192 L208 162 Z",
     bodyPanel: "M198 108 L402 78 L456 88 L498 112 L490 152 L284 176 L226 150 Z",
+    bodyInset: "M210 118 L432 90 L474 104 L466 146 L286 170 L234 148 Z",
     bodyMid: "M224 134 L468 104 L470 122 L272 162 Z",
+    bodyCut: "M246 126 L310 116 L440 102 L456 118 L308 152 Z",
     upper: "M214 78 L388 48 L432 54 L452 72 L264 96 Z",
     rail: "M232 70 L382 42 L394 50 L242 78 Z",
     railInset: "M254 64 L366 44 L372 52 L260 70 Z",
+    railShadow: "M238 72 L384 40 L392 48 L246 80 Z",
     vent: "M334 84 L440 68 L458 82 L446 102 L350 118 Z",
+    ejectionPort: "M330 118 L390 110 L392 130 L332 138 Z",
+    chargingHandle: "M288 100 L338 92 L340 102 L290 110 Z",
     stock: "M38 146 L150 104 L182 112 L170 170 L76 206 L34 188 Z",
     stockPanel: "M64 150 L148 118 L170 124 L162 160 L84 190 L56 178 Z",
+    stockButt: "M36 166 L92 140 L146 118 L158 122 L150 166 L90 198 L44 182 Z",
+    stockCore: "M74 162 L136 132 L150 134 L142 166 L92 192 L68 182 Z",
     grip: "M292 156 L334 154 L360 210 L310 216 Z",
+    gripFront: "M334 154 L352 154 L374 210 L354 214 Z",
     trigger: "M310 156 Q332 162 328 186 L304 186 Q296 172 310 156 Z",
+    triggerGuard: "M296 160 C300 150 318 148 340 150 L348 154 C360 170 360 196 350 210 L320 214 C298 204 290 184 296 166 Z",
     mag: "M330 152 L384 150 L368 214 L314 214 Z",
     magLight: "M338 164 L364 162 L352 206 L328 208 Z",
+    magPlate: "M320 206 L372 202 L360 226 L314 226 Z",
+    magLatch: "M350 168 L366 166 L360 196 L346 198 Z",
     fore: "M380 126 L512 110 L514 156 L392 174 Z",
+    foreChamfer: "M388 122 L500 108 L506 124 L396 140 Z",
+    foreLower: "M384 150 L508 132 L508 166 L394 180 Z",
     barrel: "M510 126 L586 124 L602 132 L600 150 L512 158 Z",
     barrelTop: "M512 118 L584 116 L592 122 L516 130 Z",
+    barrelBottom: "M514 136 L584 134 L592 140 L516 146 Z",
     muzzle: "M586 122 L626 122 L628 152 L586 152 Z",
     muzzleCore: "M596 132 L618 132 L620 144 L596 142 Z",
+    muzzleCap: "M604 128 L624 128 L626 150 L604 150 Z",
     scopeBody: "M262 74 L332 52 L360 58 L330 86 Z",
     scopeRing: "M288 56 L344 44 L354 50 L302 68 Z",
     scopeGlass: "M296 56 L340 46 L344 54 L300 68 Z",
     scopeMount: "M250 94 L344 80 L352 90 L258 106 Z",
+    scopeBracket: "M248 110 L340 96 L346 104 L254 118 Z",
     bolt: "M322 106 L368 98 L374 112 L328 120 Z"
   };
+
+  const RAIL_TEETH = Array.from({ length: 9 }).map((_, i) => ({
+    x: 244 + i * 18,
+    y: 56,
+    width: 14,
+    height: 8
+  }));
+
+  const FORE_VENTS = [
+    { x: 402, y: 132, width: 18, height: 30 },
+    { x: 430, y: 128, width: 20, height: 34 },
+    { x: 460, y: 126, width: 20, height: 36 },
+    { x: 490, y: 124, width: 22, height: 36 }
+  ];
+
+  const GRIP_RIDGES = [
+    { x1: 300, y1: 168, x2: 332, y2: 214 },
+    { x1: 308, y1: 164, x2: 340, y2: 212 },
+    { x1: 316, y1: 162, x2: 348, y2: 210 }
+  ];
+
+  const MAG_RIVETS = [
+    { cx: 336, cy: 178 },
+    { cx: 356, cy: 176 },
+    { cx: 348, cy: 196 }
+  ];
 
   const SCREWS = [
     { cx: 236, cy: 140 },
@@ -481,8 +523,22 @@
     const muzzleGradientId = `muzzle-${uniq}`;
     const glassGradientId = `glass-${uniq}`;
     const sparkGradientId = `spark-${uniq}`;
+    const bodyDepthId = `body-depth-${uniq}`;
+    const bodyEdgeId = `body-edge-${uniq}`;
+    const stockGradientId = `stock-${uniq}`;
+    const stockDetailId = `stock-detail-${uniq}`;
+    const gripGradientId = `grip-${uniq}`;
+    const gripDetailId = `grip-detail-${uniq}`;
+    const ventGradientId = `vent-${uniq}`;
+    const foreGradientId = `fore-${uniq}`;
+    const barrelSteelId = `barrel-steel-${uniq}`;
+    const magDetailId = `mag-detail-${uniq}`;
+    const lensShineId = `lens-${uniq}`;
     const bodyClipId = `body-clip-${uniq}`;
     const foreClipId = `fore-clip-${uniq}`;
+    const stockClipId = `stock-clip-${uniq}`;
+    const gripClipId = `grip-clip-${uniq}`;
+    const magClipId = `mag-clip-${uniq}`;
 
     const template = buildTemplateAssets(info, uniq, base, derived, bodyClipId);
     const effects = buildEffectLayers(info.effects, uniq, base, derived, bodyClipId);
@@ -492,6 +548,15 @@
         `<stop offset="0%" stop-color="${base.bodyPrimary}"/>` +
         `<stop offset="55%" stop-color="${base.bodySecondary}"/>` +
         `<stop offset="100%" stop-color="${derived.bodyTail}"/>` +
+      "</linearGradient>",
+      `<linearGradient id="${bodyDepthId}" x1="8%" y1="20%" x2="92%" y2="80%">` +
+        `<stop offset="0%" stop-color="${lighten(base.bodyPrimary, 0.35)}" stop-opacity="0.95"/>` +
+        `<stop offset="55%" stop-color="${lighten(base.bodySecondary, 0.18)}" stop-opacity="0.7"/>` +
+        `<stop offset="100%" stop-color="${darken(base.bodySecondary, 0.28)}" stop-opacity="0.55"/>` +
+      "</linearGradient>",
+      `<linearGradient id="${bodyEdgeId}" x1="0%" y1="0%" x2="0%" y2="100%">` +
+        `<stop offset="0%" stop-color="${lighten(base.bodySecondary, 0.42)}" stop-opacity="0.8"/>` +
+        `<stop offset="100%" stop-color="${darken(base.bodyPrimary, 0.42)}" stop-opacity="0.65"/>` +
       "</linearGradient>",
       `<linearGradient id="${sheenGradientId}" x1="0%" y1="0%" x2="100%" y2="100%">` +
         `<stop offset="0%" stop-color="${derived.bodySheen}" stop-opacity="0.9"/>` +
@@ -506,6 +571,40 @@
         `<stop offset="0%" stop-color="${derived.accentHighlight}"/>` +
         `<stop offset="100%" stop-color="${derived.accentShadow}"/>` +
       "</linearGradient>",
+      `<linearGradient id="${stockGradientId}" x1="0%" y1="0%" x2="100%" y2="0%">` +
+        `<stop offset="0%" stop-color="${darken(base.bodyPrimary, 0.25)}"/>` +
+        `<stop offset="60%" stop-color="${base.bodyPrimary}"/>` +
+        `<stop offset="100%" stop-color="${lighten(base.bodySecondary, 0.18)}"/>` +
+      "</linearGradient>",
+      `<linearGradient id="${stockDetailId}" x1="0%" y1="0%" x2="0%" y2="100%">` +
+        `<stop offset="0%" stop-color="${lighten(base.bodySecondary, 0.5)}" stop-opacity="0.6"/>` +
+        `<stop offset="100%" stop-color="${darken(base.bodyPrimary, 0.4)}" stop-opacity="0.0"/>` +
+      "</linearGradient>",
+      `<linearGradient id="${gripGradientId}" x1="20%" y1="0%" x2="80%" y2="100%">` +
+        `<stop offset="0%" stop-color="${darken(base.attachmentPrimary, 0.35)}"/>` +
+        `<stop offset="60%" stop-color="${base.attachmentPrimary}"/>` +
+        `<stop offset="100%" stop-color="${lighten(base.attachmentSecondary, 0.28)}"/>` +
+      "</linearGradient>",
+      `<linearGradient id="${gripDetailId}" x1="0%" y1="0%" x2="100%" y2="100%">` +
+        `<stop offset="0%" stop-color="${lighten(base.attachmentSecondary, 0.55)}" stop-opacity="0.85"/>` +
+        `<stop offset="100%" stop-color="${darken(base.attachmentPrimary, 0.5)}" stop-opacity="0.4"/>` +
+      "</linearGradient>",
+      `<linearGradient id="${ventGradientId}" x1="0%" y1="0%" x2="100%" y2="0%">` +
+        `<stop offset="0%" stop-color="${lighten(base.attachmentSecondary, 0.45)}" stop-opacity="0.8"/>` +
+        `<stop offset="100%" stop-color="${darken(base.attachmentPrimary, 0.45)}" stop-opacity="0.6"/>` +
+      "</linearGradient>",
+      `<linearGradient id="${foreGradientId}" x1="0%" y1="0%" x2="100%" y2="0%">` +
+        `<stop offset="0%" stop-color="${lighten(base.attachmentPrimary, 0.25)}" stop-opacity="0.85"/>` +
+        `<stop offset="100%" stop-color="${darken(base.attachmentPrimary, 0.4)}" stop-opacity="0.7"/>` +
+      "</linearGradient>",
+      `<linearGradient id="${barrelSteelId}" x1="0%" y1="0%" x2="100%" y2="0%">` +
+        `<stop offset="0%" stop-color="${darken(base.attachmentPrimary, 0.45)}" stop-opacity="0.8"/>` +
+        `<stop offset="100%" stop-color="${lighten(base.attachmentSecondary, 0.4)}" stop-opacity="0.45"/>` +
+      "</linearGradient>",
+      `<linearGradient id="${magDetailId}" x1="0%" y1="0%" x2="100%" y2="100%">` +
+        `<stop offset="0%" stop-color="${lighten(base.attachmentSecondary, 0.4)}" stop-opacity="0.9"/>` +
+        `<stop offset="100%" stop-color="${darken(base.attachmentPrimary, 0.35)}" stop-opacity="0.4"/>` +
+      "</linearGradient>",
       `<radialGradient id="${muzzleGradientId}" cx="0%" cy="50%" r="120%">` +
         `<stop offset="0%" stop-color="${derived.muzzleHeat}" stop-opacity="0.85"/>` +
         `<stop offset="90%" stop-color="${derived.muzzleHeat}" stop-opacity="0"/>` +
@@ -519,14 +618,36 @@
         `<stop offset="0%" stop-color="${derived.sparkStrong}" stop-opacity="0.75"/>` +
         `<stop offset="100%" stop-color="${derived.sparkSoft}" stop-opacity="0"/>` +
       "</radialGradient>",
+      `<radialGradient id="${lensShineId}" cx="45%" cy="40%" r="65%">` +
+        `<stop offset="0%" stop-color="${lighten(base.attachmentSecondary, 0.65)}" stop-opacity="0.9"/>` +
+        `<stop offset="70%" stop-color="${lighten(base.attachmentSecondary, 0.2)}" stop-opacity="0.2"/>` +
+        `<stop offset="100%" stop-color="rgba(255,255,255,0)"/>` +
+      "</radialGradient>",
       `<clipPath id="${bodyClipId}"><path d="${PATHS.body}"/></clipPath>`,
       `<clipPath id="${foreClipId}"><path d="${PATHS.fore}"/></clipPath>`,
+      `<clipPath id="${stockClipId}"><path d="${PATHS.stock}"/></clipPath>`,
+      `<clipPath id="${gripClipId}"><path d="${PATHS.grip}"/></clipPath>`,
+      `<clipPath id="${magClipId}"><path d="${PATHS.mag}"/></clipPath>`,
       template.defs,
       effects.defs
     ].join("");
 
     const screws = SCREWS.map(s => `<circle cx="${s.cx}" cy="${s.cy}" r="4.2" fill="${derived.detailShadow}" stroke="${derived.bodyHighlight}" stroke-width="1.6" opacity="0.85"/>`).join("");
     const sparks = SPARK_POINTS.map(p => `<circle cx="${p.cx}" cy="${p.cy}" r="${p.r}" fill="url(#${sparkGradientId})" opacity="0.35"/>`).join("");
+    const railTeeth = RAIL_TEETH.map(t => `<rect x="${t.x}" y="${t.y}" width="${t.width}" height="${t.height}" rx="1.6" fill="${darken(base.attachmentPrimary, 0.45)}" stroke="${lighten(base.attachmentSecondary, 0.4)}" stroke-width="0.8" opacity="0.65"/>`).join("");
+    const foreSlots = FORE_VENTS.map(v => `
+        <g opacity="0.75">
+          <rect x="${v.x}" y="${v.y}" width="${v.width}" height="${v.height}" rx="3.2" fill="${darken(base.attachmentPrimary, 0.55)}"/>
+          <rect x="${v.x + 3}" y="${v.y + 3}" width="${Math.max(0, v.width - 6)}" height="${Math.max(0, v.height - 6)}" rx="2.4" fill="${lighten(base.attachmentSecondary, 0.55, 0.35)}"/>
+        </g>`).join("");
+    const gripRidges = GRIP_RIDGES.map(r => `<path d="M${r.x1} ${r.y1} L${r.x2} ${r.y2}" stroke="${darken(base.attachmentPrimary, 0.4)}" stroke-width="3.4" stroke-linecap="round" opacity="0.4"/>`).join("");
+    const magRivets = MAG_RIVETS.map(p => `<circle cx="${p.cx}" cy="${p.cy}" r="2.6" fill="${darken(base.attachmentPrimary, 0.45)}" stroke="${lighten(base.attachmentSecondary, 0.45)}" stroke-width="1" opacity="0.8"/>`).join("");
+    const panelGlow = lighten(base.bodySecondary, 0.55, 0.22);
+
+    const stockEdge = darken(base.bodyPrimary, 0.55);
+    const stockHighlight = lighten(base.bodySecondary, 0.45, 0.55);
+    const gripShadow = darken(base.attachmentPrimary, 0.6);
+    const muzzleCapColor = darken(base.attachmentPrimary, 0.45);
 
     const aria = `${info.templateLabel} · ${info.effectsLabel}${info.hidden ? " · 隐藏模板" : ""}`;
 
@@ -535,54 +656,85 @@
         <defs>${defs}</defs>
         <g class="m7-shadow"><ellipse cx="320" cy="192" rx="228" ry="26" fill="rgba(0,0,0,0.38)"/></g>
         <g class="m7-stock">
-          <path d="${PATHS.stock}" fill="url(#${bodyGradientId})" stroke="${derived.bodyShadow}" stroke-width="4" stroke-linejoin="round"/>
-          <path d="${PATHS.stockPanel}" fill="url(#${sheenGradientId})" opacity="0.55"/>
+          <path d="${PATHS.stock}" fill="url(#${stockGradientId})" stroke="${stockEdge}" stroke-width="4" stroke-linejoin="round"/>
+          <g clip-path="url(#${stockClipId})">
+            <path d="${PATHS.stockPanel}" fill="url(#${stockDetailId})" opacity="0.85"/>
+            <path d="${PATHS.stockCore}" fill="${stockHighlight}" opacity="0.28"/>
+          </g>
+          <path d="${PATHS.stockButt}" fill="${stockEdge}" opacity="0.45"/>
         </g>
         <g class="m7-body">
           <path d="${PATHS.body}" fill="url(#${bodyGradientId})" stroke="${derived.bodyShadow}" stroke-width="4" stroke-linejoin="round"/>
+          <path d="${PATHS.bodyInset}" fill="url(#${bodyDepthId})" opacity="0.9"/>
           <path d="${PATHS.bodyPanel}" fill="url(#${sheenGradientId})" opacity="0.65"/>
-          <path d="${PATHS.upper}" fill="${derived.bodyHighlight}" opacity="0.22"/>
-          <path d="${PATHS.vent}" fill="url(#${accentEdgeId})" opacity="0.38"/>
+          <path d="${PATHS.bodyCut}" fill="url(#${bodyEdgeId})" opacity="0.65"/>
+          <path d="${PATHS.upper}" fill="${derived.bodyHighlight}" opacity="0.24"/>
+          <path d="${PATHS.vent}" fill="url(#${ventGradientId})" opacity="0.5"/>
+          <path d="${PATHS.ejectionPort}" fill="${darken(base.bodyPrimary, 0.4)}" stroke="${derived.bodyHighlight}" stroke-width="1.5" opacity="0.82"/>
+          <path d="${PATHS.chargingHandle}" fill="${darken(base.bodyPrimary, 0.55)}" opacity="0.75"/>
         </g>
         <g class="m7-rail">
+          <path d="${PATHS.railShadow}" fill="${darken(base.attachmentPrimary, 0.55)}" opacity="0.28"/>
           <path d="${PATHS.rail}" fill="url(#${accentGradientId})" stroke="${derived.accentShadow}" stroke-width="3" stroke-linejoin="round"/>
-          <path d="${PATHS.railInset}" fill="${derived.accentHighlight}" opacity="0.45"/>
+          <path d="${PATHS.railInset}" fill="${derived.accentHighlight}" opacity="0.5"/>
+          <g class="m7-rail-teeth">${railTeeth}</g>
         </g>
         <g class="m7-scope">
           <path d="${PATHS.scopeMount}" fill="${derived.scopeMetal}" stroke="${derived.accentShadow}" stroke-width="3" stroke-linejoin="round"/>
+          <path d="${PATHS.scopeBracket}" fill="${darken(base.attachmentPrimary, 0.45)}" opacity="0.55"/>
           <path d="${PATHS.scopeBody}" fill="url(#${accentEdgeId})" stroke="${derived.accentShadow}" stroke-width="3" stroke-linejoin="round"/>
-          <path d="${PATHS.scopeRing}" fill="${derived.accentHighlight}" opacity="0.6"/>
+          <path d="${PATHS.scopeRing}" fill="${derived.accentHighlight}" opacity="0.65"/>
           <path d="${PATHS.scopeGlass}" fill="url(#${glassGradientId})" opacity="0.92"/>
+          <circle cx="318" cy="64" r="12" fill="url(#${lensShineId})" opacity="0.8"/>
         </g>
         <g class="m7-bolt">
-          <path d="${PATHS.bolt}" fill="${derived.accentHighlight}" stroke="${derived.bodyShadow}" stroke-width="3" stroke-linejoin="round" opacity="0.8"/>
+          <path d="${PATHS.bolt}" fill="${derived.accentHighlight}" stroke="${derived.bodyShadow}" stroke-width="3" stroke-linejoin="round" opacity="0.82"/>
+        </g>
+        <g class="m7-body-detail" clip-path="url(#${bodyClipId})">
+          <rect x="214" y="112" width="238" height="66" fill="${panelGlow}" opacity="0.16"/>
         </g>
         <g class="m7-fore" clip-path="url(#${foreClipId})">
-          <rect x="380" y="112" width="140" height="52" fill="url(#${accentGradientId})"/>
+          <path d="${PATHS.fore}" fill="url(#${accentGradientId})"/>
+          <path d="${PATHS.foreChamfer}" fill="url(#${foreGradientId})" opacity="0.6"/>
+          <path d="${PATHS.foreLower}" fill="${darken(base.attachmentPrimary, 0.35)}" opacity="0.55"/>
+          ${foreSlots}
           <path d="${PATHS.fore}" fill="none" stroke="${derived.accentShadow}" stroke-width="4"/>
         </g>
         <g class="m7-mag">
           <path d="${PATHS.mag}" fill="url(#${accentEdgeId})" stroke="${derived.accentShadow}" stroke-width="4" stroke-linejoin="round"/>
-          <path d="${PATHS.magLight}" fill="${derived.accentSheen}" opacity="0.7"/>
+          <g clip-path="url(#${magClipId})">
+            <path d="${PATHS.magLight}" fill="url(#${magDetailId})" opacity="0.9"/>
+          </g>
+          <path d="${PATHS.magPlate}" fill="${darken(base.attachmentPrimary, 0.45)}" opacity="0.72"/>
+          <path d="${PATHS.magLatch}" fill="${darken(base.attachmentPrimary, 0.55)}" opacity="0.82"/>
+          ${magRivets}
         </g>
         <g class="m7-grip">
-          <path d="${PATHS.grip}" fill="url(#${accentEdgeId})" stroke="${derived.accentShadow}" stroke-width="4" stroke-linejoin="round"/>
+          <path d="${PATHS.grip}" fill="url(#${gripGradientId})" stroke="${derived.accentShadow}" stroke-width="4" stroke-linejoin="round"/>
+          <g clip-path="url(#${gripClipId})">
+            <path d="${PATHS.gripFront}" fill="url(#${gripDetailId})" opacity="0.78"/>
+          </g>
+          <g class="m7-grip-ridges">${gripRidges}</g>
         </g>
         <g class="m7-trigger">
-          <path d="${PATHS.trigger}" fill="${derived.accentShadow}" stroke="${derived.accentHighlight}" stroke-width="2" stroke-linejoin="round" opacity="0.85"/>
+          <path d="${PATHS.triggerGuard}" fill="${gripShadow}" stroke="${derived.accentShadow}" stroke-width="2.4" stroke-linejoin="round" opacity="0.82"/>
+          <path d="${PATHS.trigger}" fill="${derived.accentShadow}" stroke="${derived.accentHighlight}" stroke-width="2" stroke-linejoin="round" opacity="0.9"/>
         </g>
         <g class="m7-barrel">
           <path d="${PATHS.barrel}" fill="url(#${accentGradientId})" stroke="${derived.accentShadow}" stroke-width="4" stroke-linejoin="round"/>
-          <path d="${PATHS.barrelTop}" fill="${derived.accentHighlight}" opacity="0.45"/>
+          <path d="${PATHS.barrelBottom}" fill="url(#${barrelSteelId})" opacity="0.65"/>
+          <path d="${PATHS.barrelTop}" fill="${derived.accentHighlight}" opacity="0.5"/>
         </g>
         <g class="m7-muzzle">
           <path d="${PATHS.muzzle}" fill="url(#${accentEdgeId})" stroke="${derived.accentShadow}" stroke-width="4" stroke-linejoin="round"/>
-          <path d="${PATHS.muzzleCore}" fill="${derived.muzzleCore}" opacity="0.82"/>
+          <path d="${PATHS.muzzleCap}" fill="${muzzleCapColor}" opacity="0.6"/>
+          <path d="${PATHS.muzzleCore}" fill="${derived.muzzleCore}" opacity="0.85"/>
           <path d="${PATHS.muzzle}" fill="url(#${muzzleGradientId})" opacity="0.55"/>
         </g>
         <g class="m7-lines">
-          <path d="${PATHS.bodyPanel}" fill="none" stroke="${derived.detailLine}" stroke-width="3" stroke-linejoin="round" opacity="0.58"/>
-          <path d="${PATHS.bodyMid}" fill="none" stroke="${derived.detailShadow}" stroke-width="3" stroke-linecap="round" opacity="0.4"/>
+          <path d="${PATHS.bodyPanel}" fill="none" stroke="${derived.detailLine}" stroke-width="3" stroke-linejoin="round" opacity="0.6"/>
+          <path d="${PATHS.bodyMid}" fill="none" stroke="${derived.detailShadow}" stroke-width="3" stroke-linecap="round" opacity="0.45"/>
+          <path d="${PATHS.bodyCut}" fill="none" stroke="${derived.detailShadow}" stroke-width="2.2" stroke-linecap="round" opacity="0.4"/>
         </g>
         <g class="m7-screws">${screws}</g>
         ${template.overlay}

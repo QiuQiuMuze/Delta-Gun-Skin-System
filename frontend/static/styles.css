@@ -170,6 +170,9 @@ main#page { padding:16px; max-width:1100px; margin:0 auto; }
 .m7-template--diamond path { mix-blend-mode:screen; filter:saturate(1.2); }
 .m7-template-hidden circle { mix-blend-mode:screen; filter:blur(0.35px); animation:diamondPulse 2.4s ease-in-out infinite; }
 .m7-sparks circle { mix-blend-mode:screen; animation:baseSpark 5.6s ease-in-out infinite alternate; }
+.m7-body-detail rect { mix-blend-mode:screen; }
+.m7-rail-teeth rect { mix-blend-mode:screen; }
+.m7-grip-ridges path { mix-blend-mode:multiply; }
 .m7-effect--sparkle circle { mix-blend-mode:screen; animation:sparklePulse 3.4s ease-in-out infinite; }
 .m7-effect--sheen rect { mix-blend-mode:screen; opacity:0; }
 .m7-effect--trail { opacity:0; mix-blend-mode:screen; }
