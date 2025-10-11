@@ -9,9 +9,9 @@ from __future__ import annotations
 from fastapi import FastAPI, Depends, HTTPException, Header, Query, Path
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from typing import Optional, Literal, List
+from typing import Optional, Literal, List, Dict, Any
 from datetime import datetime, timedelta
-import time, os, secrets, jwt, re
+import time, os, secrets, jwt, re, json, random
 
 from passlib.context import CryptContext
 from sqlalchemy import (
@@ -74,6 +74,11 @@ class Inventory(Base):
     serial = Column(String)       # 全局 8 位编号 = id 格式化
     acquired_at = Column(Integer) # 时间戳
     on_market = Column(Boolean, default=False)
+    body_colors = Column(String, default="")        # JSON: ["#xxxxxx", ...]
+    attachment_colors = Column(String, default="")  # JSON: ["#xxxxxx", ...]
+    template_name = Column(String, default="")
+    effect_tags = Column(String, default="")        # JSON: ["glow", ...]
+    hidden_template = Column(Boolean, default=False)
 
 class PoolConfig(Base):
     __tablename__ = "pool_config"
@@ -117,8 +122,27 @@ def _ensure_user_sessionver():
         con.commit()
     con.close()
 
+def _ensure_inventory_visual_columns():
+    con = sqlite3.connect(DB_PATH_FS)
+    cur = con.cursor()
+    cur.execute("PRAGMA table_info(inventory)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "body_colors" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN body_colors TEXT DEFAULT ''")
+    if "attachment_colors" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN attachment_colors TEXT DEFAULT ''")
+    if "template_name" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN template_name TEXT DEFAULT ''")
+    if "effect_tags" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN effect_tags TEXT DEFAULT ''")
+    if "hidden_template" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN hidden_template INTEGER NOT NULL DEFAULT 0")
+    con.commit()
+    con.close()
+
 Base.metadata.create_all(engine)
 _ensure_user_sessionver()
+_ensure_inventory_visual_columns()
 
 # ------------------ Pydantic ------------------
 RarityT = Literal["BRICK", "PURPLE", "BLUE", "GREEN"]
@@ -195,6 +219,10 @@ class MarketBrowseOut(BaseModel):
     wear: float
     serial: str
     created_at: int
+    template: str
+    hidden_template: bool
+    effects: List[str]
+    visual: Dict[str, Any]
 
 # ------------------ App & Utils ------------------
 app = FastAPI(title="三角洲砖皮模拟器 (SQLite+JWT+手机验证码+合成+交易行)")
@@ -366,6 +394,156 @@ def wear_random_bp() -> int:
 
 def rng_ppm() -> int: return secrets.randbelow(1_000_000)
 def ppm(percent: float) -> int: return int(round(percent * 10_000))
+
+# ---- Visual Generator ----
+COLOR_PALETTE = [
+    {"hex": "#f06449", "name": "熔岩橙"},
+    {"hex": "#f9a620", "name": "流金黄"},
+    {"hex": "#ffd166", "name": "暖阳金"},
+    {"hex": "#ff6b6b", "name": "燃焰红"},
+    {"hex": "#ef476f", "name": "曦粉"},
+    {"hex": "#5b5f97", "name": "紫曜蓝"},
+    {"hex": "#577590", "name": "风暴蓝"},
+    {"hex": "#118ab2", "name": "极地蓝"},
+    {"hex": "#06d6a0", "name": "量子绿"},
+    {"hex": "#0ead69", "name": "热带绿"},
+    {"hex": "#26547c", "name": "暗夜蓝"},
+    {"hex": "#4cc9f0", "name": "星辉青"},
+    {"hex": "#845ec2", "name": "霓虹紫"},
+    {"hex": "#ff9671", "name": "霞光橘"},
+    {"hex": "#ffc75f", "name": "琥珀金"},
+    {"hex": "#d65db1", "name": "星云粉"},
+    {"hex": "#4b8b3b", "name": "密林绿"},
+    {"hex": "#8c7ae6", "name": "暮光紫"},
+    {"hex": "#2f4858", "name": "石墨蓝"},
+]
+
+TEMPLATE_POOLS = {
+    "BRICK_PREMIUM": ["prism_flux", "ember_strata", "ion_tessellate"],
+    "BRICK_EXQUISITE": ["diamond_veil", "aurora_matrix", "nebula_glass"],
+    "PURPLE": ["ion_glaze", "vapor_trace", "phase_shift"],
+    "BLUE": ["urban_mesh", "fiber_wave", "midnight_line"],
+    "GREEN": ["field_classic", "steel_ridge", "matte_guard"],
+}
+
+EFFECT_POOLS = {
+    "BRICK_PREMIUM": ["glow", "pulse", "sheen"],
+    "BRICK_EXQUISITE": ["glow", "pulse", "sparkle", "trail", "refraction"],
+    "PURPLE": ["glow", "sheen", "flux"],
+    "BLUE": ["sheen", "pulse"],
+    "GREEN": ["sheen"],
+}
+
+def _pick_color() -> Dict[str, str]:
+    base = secrets.choice(COLOR_PALETTE)
+    return {"hex": base["hex"], "name": base["name"]}
+
+def _ensure_unique_effects(options, min_count, max_count):
+    if not options:
+        return []
+    hi = min(len(options), max_count)
+    lo = min(min_count, hi)
+    if hi <= 0:
+        return []
+    if lo > hi:
+        lo = hi
+    count = lo if lo == hi else random.randint(lo, hi)
+    if count <= 0:
+        return []
+    return random.sample(options, count)
+
+def generate_visual_profile(rarity: str, exquisite: bool) -> Dict[str, object]:
+    body_layers = 2 if secrets.randbelow(100) < 55 else 1
+    body = [_pick_color() for _ in range(body_layers)]
+    attachments = [_pick_color()]
+
+    rarity = (rarity or "").upper()
+    template_key = "matte_guard"
+    effects_key = "GREEN"
+    hidden_template = False
+
+    if rarity == "BRICK":
+        if exquisite:
+            template_key = secrets.choice(TEMPLATE_POOLS["BRICK_EXQUISITE"])
+            effects_key = "BRICK_EXQUISITE"
+            hidden_template = True
+        else:
+            template_key = secrets.choice(TEMPLATE_POOLS["BRICK_PREMIUM"])
+            effects_key = "BRICK_PREMIUM"
+    elif rarity == "PURPLE":
+        template_key = secrets.choice(TEMPLATE_POOLS["PURPLE"])
+        effects_key = "PURPLE"
+    elif rarity == "BLUE":
+        template_key = secrets.choice(TEMPLATE_POOLS["BLUE"])
+        effects_key = "BLUE"
+    else:
+        template_key = secrets.choice(TEMPLATE_POOLS["GREEN"])
+        effects_key = "GREEN"
+
+    if rarity == "BRICK" and exquisite:
+        effects = _ensure_unique_effects(EFFECT_POOLS[effects_key], 3, 4)
+    elif rarity == "BRICK":
+        effects = _ensure_unique_effects(EFFECT_POOLS[effects_key], 1, 2)
+    else:
+        effects = _ensure_unique_effects(EFFECT_POOLS.get(effects_key, []), 0, 2)
+
+    return {
+        "body": body,
+        "attachments": attachments,
+        "template": template_key,
+        "hidden_template": hidden_template,
+        "effects": effects,
+    }
+
+def _load_json_field(raw: str, default):
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except Exception:
+        return default
+
+def ensure_visual(inv: Inventory) -> Dict[str, object]:
+    body = _load_json_field(inv.body_colors, [])
+    attachments = _load_json_field(inv.attachment_colors, [])
+    effects = _load_json_field(inv.effect_tags, [])
+    template = inv.template_name or "matte_guard"
+    hidden_template = bool(inv.hidden_template)
+    changed = False
+
+    if not body or not attachments:
+        profile = generate_visual_profile(inv.rarity, bool(inv.exquisite))
+        body = profile["body"]
+        attachments = profile["attachments"]
+        template = profile["template"]
+        effects = profile["effects"]
+        hidden_template = profile["hidden_template"]
+        inv.body_colors = json.dumps(body, ensure_ascii=False)
+        inv.attachment_colors = json.dumps(attachments, ensure_ascii=False)
+        inv.template_name = template
+        inv.effect_tags = json.dumps(effects, ensure_ascii=False)
+        inv.hidden_template = hidden_template
+        changed = True
+    else:
+        # 兼容旧版：如果 effect/template 缺失，生成默认值
+        if not template:
+            profile = generate_visual_profile(inv.rarity, bool(inv.exquisite))
+            template = profile["template"]
+            inv.template_name = template
+            if not effects:
+                effects = profile["effects"]
+                inv.effect_tags = json.dumps(effects, ensure_ascii=False)
+            inv.hidden_template = profile["hidden_template"]
+            changed = True
+
+    return {
+        "body": body,
+        "attachments": attachments,
+        "template": template,
+        "hidden_template": hidden_template,
+        "effects": effects,
+        "changed": changed,
+    }
 
 from pydantic import BaseModel as _BM
 class OddsOut(_BM):
@@ -623,11 +801,17 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
         exquisite = (secrets.randbelow(100) < 15) if rarity == "BRICK" else False
         wear_bp = wear_random_bp()
         grade = grade_from_wear_bp(wear_bp)
+        profile = generate_visual_profile(skin.rarity, exquisite)
 
         inv = Inventory(
             user_id=user.id, skin_id=skin.skin_id, name=skin.name, rarity=skin.rarity,
             exquisite=exquisite, wear_bp=wear_bp, grade=grade, serial="",
-            acquired_at=int(time.time())
+            acquired_at=int(time.time()),
+            body_colors=json.dumps(profile["body"], ensure_ascii=False),
+            attachment_colors=json.dumps(profile["attachments"], ensure_ascii=False),
+            template_name=profile["template"],
+            effect_tags=json.dumps(profile["effects"], ensure_ascii=False),
+            hidden_template=profile["hidden_template"],
         )
         db.add(inv); db.flush()
         inv.serial = f"{inv.id:08d}"
@@ -635,7 +819,17 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
         results.append({
             "inv_id": inv.id,
             "skin_id": skin.skin_id, "name": skin.name, "rarity": skin.rarity,
-            "exquisite": exquisite, "wear": f"{wear_bp/100:.2f}", "grade": grade, "serial": inv.serial
+            "exquisite": exquisite, "wear": f"{wear_bp/100:.2f}", "grade": grade, "serial": inv.serial,
+            "template": profile["template"],
+            "hidden_template": profile["hidden_template"],
+            "effects": profile["effects"],
+            "visual": {
+                "body": profile["body"],
+                "attachments": profile["attachments"],
+                "template": profile["template"],
+                "hidden_template": profile["hidden_template"],
+                "effects": profile["effects"],
+            },
         })
 
     db.commit()
@@ -658,7 +852,18 @@ def inventory(
 
     rows = q.order_by(Inventory.id.desc()).all()
     items = []
+    changed = False
     for x in rows:
+        vis = ensure_visual(x)
+        changed = changed or vis["changed"]
+        visual_payload = {
+            "body": vis["body"],
+            "attachments": vis["attachments"],
+            "template": vis["template"],
+            "hidden_template": vis["hidden_template"],
+            "effects": vis["effects"],
+        }
+
         items.append({
             "inv_id": x.id,
             "skin_id": x.skin_id, "name": x.name, "rarity": x.rarity,
@@ -668,8 +873,14 @@ def inventory(
             "serial": x.serial,
             "acquired_at": x.acquired_at,
             "on_market": x.on_market,               # 继续返回状态，前端可用来显示角标
-            "status": "on_market" if x.on_market else "in_bag"
+            "status": "on_market" if x.on_market else "in_bag",
+            "template": vis["template"],
+            "hidden_template": vis["hidden_template"],
+            "effects": vis["effects"],
+            "visual": visual_payload,
         })
+    if changed:
+        db.commit()
     return {"count": len(items), "items": items}
 
 
@@ -686,7 +897,18 @@ def inventory_by_color(
     rows = q.all()
 
     grouped = {"BRICK": [], "PURPLE": [], "BLUE": [], "GREEN": []}
+    changed = False
     for x in rows:
+        vis = ensure_visual(x)
+        changed = changed or vis["changed"]
+        visual_payload = {
+            "body": vis["body"],
+            "attachments": vis["attachments"],
+            "template": vis["template"],
+            "hidden_template": vis["hidden_template"],
+            "effects": vis["effects"],
+        }
+
         grouped[x.rarity].append({
             "inv_id": x.id,
             "skin_id": x.skin_id, "name": x.name, "rarity": x.rarity,
@@ -696,9 +918,15 @@ def inventory_by_color(
             "serial": x.serial,
             "acquired_at": x.acquired_at,
             "on_market": x.on_market,
-            "status": "on_market" if x.on_market else "in_bag"
+            "status": "on_market" if x.on_market else "in_bag",
+            "template": vis["template"],
+            "hidden_template": vis["hidden_template"],
+            "effects": vis["effects"],
+            "visual": visual_payload,
         })
     summary = {r: len(v) for r, v in grouped.items()}
+    if changed:
+        db.commit()
     return {"summary": summary, "buckets": grouped}
 
 # ------------------ Crafting ------------------
@@ -729,11 +957,17 @@ def craft_compose(inp: ComposeIn,
     skin = pick_skin(db, to_rarity)
     exquisite = (secrets.randbelow(100) < 15) if to_rarity == "BRICK" else False
     grade = grade_from_wear_bp(avg_bp)
+    profile = generate_visual_profile(skin.rarity, exquisite)
 
     inv = Inventory(
         user_id=user.id, skin_id=skin.skin_id, name=skin.name, rarity=skin.rarity,
         exquisite=exquisite, wear_bp=avg_bp, grade=grade, serial="",
-        acquired_at=int(time.time())
+        acquired_at=int(time.time()),
+        body_colors=json.dumps(profile["body"], ensure_ascii=False),
+        attachment_colors=json.dumps(profile["attachments"], ensure_ascii=False),
+        template_name=profile["template"],
+        effect_tags=json.dumps(profile["effects"], ensure_ascii=False),
+        hidden_template=profile["hidden_template"],
     )
     db.add(inv); db.flush()
     inv.serial = f"{inv.id:08d}"
@@ -741,7 +975,17 @@ def craft_compose(inp: ComposeIn,
     return {"ok": True, "result": {
         "inv_id": inv.id,
         "skin_id": skin.skin_id, "name": skin.name, "rarity": skin.rarity,
-        "exquisite": exquisite, "wear": f"{avg_bp/100:.2f}", "grade": grade, "serial": inv.serial
+        "exquisite": exquisite, "wear": f"{avg_bp/100:.2f}", "grade": grade, "serial": inv.serial,
+        "template": profile["template"],
+        "hidden_template": profile["hidden_template"],
+        "effects": profile["effects"],
+        "visual": {
+            "body": profile["body"],
+            "attachments": profile["attachments"],
+            "template": profile["template"],
+            "hidden_template": profile["hidden_template"],
+            "effects": profile["effects"],
+        }
     }}
 
 # ------------------ Market 交易行 ------------------
@@ -807,12 +1051,29 @@ def market_my(user: User = Depends(user_from_token), db: Session = Depends(get_d
     q = db.query(MarketItem, Inventory).join(Inventory, MarketItem.inv_id==Inventory.id)\
         .filter(MarketItem.active==True, MarketItem.user_id==user.id, Inventory.on_market==True)
     items = []
+    changed = False
     for mi, inv in q.all():
+        vis = ensure_visual(inv)
+        changed = changed or vis["changed"]
+        visual_payload = {
+            "body": vis["body"],
+            "attachments": vis["attachments"],
+            "template": vis["template"],
+            "hidden_template": vis["hidden_template"],
+            "effects": vis["effects"],
+        }
+
         items.append({
             "market_id": mi.id, "price": mi.price, "created_at": mi.created_at,
             "name": inv.name, "rarity": inv.rarity, "exquisite": bool(inv.exquisite),
-            "grade": inv.grade, "wear": round(inv.wear_bp/100, 2), "serial": inv.serial, "inv_id": inv.id
+            "grade": inv.grade, "wear": round(inv.wear_bp/100, 2), "serial": inv.serial, "inv_id": inv.id,
+            "template": vis["template"],
+            "hidden_template": vis["hidden_template"],
+            "effects": vis["effects"],
+            "visual": visual_payload,
         })
+    if changed:
+        db.commit()
     return {"count": len(items), "items": items}
 
 @app.post("/market/delist/{market_id}")
@@ -860,13 +1121,28 @@ def market_browse(rarity: Optional[RarityT] = None,
         q = q.order_by(MarketItem.created_at.desc())
 
     out: List[MarketBrowseOut] = []
+    changed = False
     for mi, inv, seller in q.all():
+        vis = ensure_visual(inv)
+        changed = changed or vis["changed"]
+        visual_payload = {
+            "body": vis["body"],
+            "attachments": vis["attachments"],
+            "template": vis["template"],
+            "hidden_template": vis["hidden_template"],
+            "effects": vis["effects"],
+        }
+
         out.append(MarketBrowseOut(
             id=mi.id, inv_id=inv.id, seller=seller.username, price=mi.price,
             name=inv.name, skin_id=inv.skin_id, rarity=inv.rarity,
             exquisite=bool(inv.exquisite), grade=inv.grade,
-            wear=round(inv.wear_bp/100, 2), serial=inv.serial, created_at=mi.created_at
+            wear=round(inv.wear_bp/100, 2), serial=inv.serial, created_at=mi.created_at,
+            template=vis["template"], hidden_template=vis["hidden_template"],
+            effects=vis["effects"], visual=visual_payload
         ))
+    if changed:
+        db.commit()
     return {"count": len(out), "items": [o.dict() for o in out]}
 
 @app.post("/market/buy/{market_id}")
