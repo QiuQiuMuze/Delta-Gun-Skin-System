@@ -29,6 +29,17 @@ const AdminPage = {
     </div>
 
     <div class="card">
+      <h3>登录/注册模式开关</h3>
+      <div class="muted">
+        该功能已迁移到专用的“管理员模式”页面，只有管理员登录后才能访问。
+        如果没有在导航栏看到入口，可点击下方按钮直接跳转。
+      </div>
+      <div class="input-row">
+        <button class="btn" id="open-admin-mode">前往管理员模式页面</button>
+      </div>
+    </div>
+
+    <div class="card">
       <h3>余额操作</h3>
       <div class="input-row">
         <input id="op-username" placeholder="用户名"/>
@@ -98,6 +109,13 @@ const AdminPage = {
 
   async bind() {
     if (!API._me?.is_admin) { alert("非管理员"); location.hash="#/home"; return; }
+
+    const openAdminModeBtn = byId("open-admin-mode");
+    if (openAdminModeBtn) {
+      openAdminModeBtn.onclick = () => {
+        location.hash = "#/admin-mode";
+      };
+    }
 
     // —— 渲染函数们 —— //
     const renderUsers = (items=[])=>{
