@@ -209,8 +209,8 @@
       if (cls) classes.push(cls);
     });
 
-    const width = opts.width || (opts.compact ? 150 : 220);
-    const height = opts.height || (opts.compact ? 52 : 78);
+    const width = opts.width || (opts.compact ? 168 : 240);
+    const height = opts.height || (opts.compact ? 58 : 86);
     const bodyGradient = gradientFrom(info.bodyColors);
     const bodyPrimary = info.bodyColors[0] || DEFAULT_COLOR;
     const bodySecondary = info.bodyColors[1] || bodyPrimary;
@@ -225,16 +225,29 @@
       `--body-secondary:${bodySecondary.hex}`,
       `--body-highlight:${lighten(bodySecondary.hex, 0.45, 0.85)}`,
       `--body-edge:${darken(bodyPrimary.hex, 0.55)}`,
-      `--body-glow:${lighten(bodyPrimary.hex, 0.35, 0.35)}`,
+      `--body-glow:${lighten(bodyPrimary.hex, 0.35, 0.42)}`,
+      `--body-depth:${darken(bodyPrimary.hex, 0.65)}`,
+      `--body-panel:${lighten(bodySecondary.hex, 0.25)}`,
+      `--body-specular:${lighten(bodySecondary.hex, 0.75, 0.82)}`,
+      `--body-shadow:${darken(bodyPrimary.hex, 0.8, 0.85)}`,
       `--accent-color:${attachPrimary.hex}`,
       `--accent-secondary:${attachSecondary.hex}`,
       `--accent-gradient:${accentGradient}`,
-      `--accent-highlight:${lighten(attachPrimary.hex, 0.65, 0.9)}`,
-      `--accent-shadow:${darken(attachPrimary.hex, 0.55)}`,
-      `--detail-line:${lighten(bodySecondary.hex, 0.65, 0.7)}`,
-      `--scope-glass:${lighten(attachPrimary.hex, 0.35, 0.55)}`,
-      `--scope-glow:${lighten(attachSecondary.hex, 0.8, 0.4)}`,
-      `--muzzle-heat:${lighten(attachPrimary.hex, 0.45, 0.65)}`
+      `--accent-highlight:${lighten(attachPrimary.hex, 0.6, 0.88)}`,
+      `--accent-shadow:${darken(attachPrimary.hex, 0.62)}`,
+      `--accent-metal:${darken(attachPrimary.hex, 0.48)}`,
+      `--accent-gloss:${lighten(attachSecondary.hex, 0.7, 0.92)}`,
+      `--accent-emissive:${lighten(attachSecondary.hex, 0.8, 0.65)}`,
+      `--detail-line:${lighten(bodySecondary.hex, 0.58, 0.72)}`,
+      `--detail-engrave:${darken(bodySecondary.hex, 0.25)}`,
+      `--scope-glass:${lighten(attachPrimary.hex, 0.4, 0.52)}`,
+      `--scope-glow:${lighten(attachSecondary.hex, 0.85, 0.48)}`,
+      `--scope-metal:${darken(attachPrimary.hex, 0.35)}`,
+      `--muzzle-heat:${lighten(attachPrimary.hex, 0.45, 0.65)}`,
+      `--muzzle-inner:${darken(attachPrimary.hex, 0.15)}`,
+      `--bolt-metal:${lighten(bodyPrimary.hex, 0.22)}`,
+      `--bolt-shadow:${darken(bodyPrimary.hex, 0.45)}`,
+      `--accent-stripe:${lighten(attachSecondary.hex, 0.45)}`
     ].join(';');
     const label = opts.label ? `<div class="skin-preview__label">${esc(opts.label)}</div>` : "";
     const metaText = opts.meta === false ? "" : (opts.meta || formatMeta(visual));
@@ -245,20 +258,35 @@
         <div class="${canvasClasses.join(' ')}" style="${canvasStyle}">
           <div class="skin-preview__gun">
             <div class="skin-preview__layer skin-preview__layer--shadow"></div>
+            <div class="skin-preview__layer skin-preview__layer--backglow"></div>
             <div class="skin-preview__layer skin-preview__layer--body"></div>
-            <div class="skin-preview__layer skin-preview__layer--core"></div>
+            <div class="skin-preview__layer skin-preview__layer--body-panel"></div>
+            <div class="skin-preview__layer skin-preview__layer--receiver"></div>
+            <div class="skin-preview__layer skin-preview__layer--vent"></div>
+            <div class="skin-preview__layer skin-preview__layer--spine"></div>
             <div class="skin-preview__layer skin-preview__layer--stock"></div>
-            <div class="skin-preview__layer skin-preview__layer--stock-cut"></div>
-            <div class="skin-preview__layer skin-preview__layer--rail"></div>
-            <div class="skin-preview__layer skin-preview__layer--fore"></div>
-            <div class="skin-preview__layer skin-preview__layer--barrel"></div>
-            <div class="skin-preview__layer skin-preview__layer--muzzle"></div>
+            <div class="skin-preview__layer skin-preview__layer--stock-pad"></div>
+            <div class="skin-preview__layer skin-preview__layer--grip"></div>
+            <div class="skin-preview__layer skin-preview__layer--trigger-guard"></div>
+            <div class="skin-preview__layer skin-preview__layer--trigger"></div>
             <div class="skin-preview__layer skin-preview__layer--mag"></div>
+            <div class="skin-preview__layer skin-preview__layer--mag-light"></div>
+            <div class="skin-preview__layer skin-preview__layer--fore"></div>
+            <div class="skin-preview__layer skin-preview__layer--rail"></div>
+            <div class="skin-preview__layer skin-preview__layer--rail-sight"></div>
+            <div class="skin-preview__layer skin-preview__layer--bolt"></div>
+            <div class="skin-preview__layer skin-preview__layer--barrel"></div>
+            <div class="skin-preview__layer skin-preview__layer--barrel-core"></div>
+            <div class="skin-preview__layer skin-preview__layer--muzzle"></div>
+            <div class="skin-preview__layer skin-preview__layer--muzzle-inner"></div>
             <div class="skin-preview__layer skin-preview__layer--scope"></div>
+            <div class="skin-preview__layer skin-preview__layer--scope-ring"></div>
             <div class="skin-preview__layer skin-preview__layer--scope-glass"></div>
             <div class="skin-preview__layer skin-preview__layer--detail"></div>
+            <div class="skin-preview__layer skin-preview__layer--panel-lines"></div>
             <div class="skin-preview__layer skin-preview__layer--spark"></div>
             <div class="skin-preview__layer skin-preview__layer--accent-line"></div>
+            <div class="skin-preview__layer skin-preview__layer--screws"></div>
           </div>
         </div>
         ${label}
