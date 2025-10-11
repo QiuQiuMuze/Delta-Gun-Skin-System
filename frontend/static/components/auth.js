@@ -64,41 +64,41 @@ const AuthPage = {
   bind() {
     let loginUser = "";
     let regAdminUser = "";
-    let adminMode = true;
+    let fastMode = false;
     let modeReady = false;
 
     const adminVerifyBox = byId("admin-verify-box");
-    const adminSections = Array.from(document.querySelectorAll(".mode-admin")).filter(el => el.id !== "admin-verify-box");
-    adminSections.forEach(el => { el.style.display = "none"; });
+    const phoneSections = Array.from(document.querySelectorAll(".mode-admin")).filter(el => el.id !== "admin-verify-box");
+    phoneSections.forEach(el => { el.style.display = "none"; });
     adminVerifyBox.style.display = "none";
 
-    const applyMode = (isAdminMode) => {
-      adminMode = !!isAdminMode;
-      adminSections.forEach(el => { el.style.display = adminMode ? "" : "none"; });
-      if (adminMode && regAdminUser) {
+    const applyMode = (isFastMode) => {
+      fastMode = !!isFastMode;
+      phoneSections.forEach(el => { el.style.display = fastMode ? "none" : ""; });
+      if (!fastMode && regAdminUser) {
         adminVerifyBox.style.display = "";
       } else {
         adminVerifyBox.style.display = "none";
       }
 
-      byId("login-btn").textContent = adminMode ? "获取验证码" : "登录";
+      byId("login-btn").textContent = fastMode ? "登录" : "获取验证码";
       const modeHint = byId("mode-hint");
       if (modeHint) {
-        modeHint.textContent = adminMode
-          ? "管理员模式：使用手机号 + 短信验证码进行注册和登录。"
-          : "玩家模式：仅凭用户名和密码即可注册登录，新账号自动获得 20000 法币。";
+        modeHint.textContent = fastMode
+          ? "快速模式：仅凭用户名和密码即可注册登录，新账号自动获得 20000 法币。"
+          : "管理员模式：使用手机号 + 短信验证码进行注册和登录。";
       }
-      byId("login-hint").textContent = adminMode
-        ? "点击开始登录后，验证码请联系作者获取。"
-        : "免验证码，直接输入用户名和密码即可完成登录。";
-      byId("reg-hint").textContent = adminMode
-        ? "先点“获取验证码(注册)”收到短信，再填写验证码完成注册。若勾选“申请管理员”，注册后会再下发一个管理员验证码，需要额外验证。"
-        : "无需手机号，仅填写用户名与密码即可注册，系统会自动赠送 20000 法币。";
+      byId("login-hint").textContent = fastMode
+        ? "免验证码，直接输入用户名和密码即可完成登录。"
+        : "点击开始登录后，验证码请联系作者获取。";
+      byId("reg-hint").textContent = fastMode
+        ? "无需手机号，仅填写用户名与密码即可注册，系统会自动赠送 20000 法币。"
+        : "先点“获取验证码(注册)”收到短信，再填写验证码完成注册。若勾选“申请管理员”，注册后会再下发一个管理员验证码，需要额外验证。";
 
       const resetCard = byId("reset-card");
-      if (resetCard) resetCard.style.display = adminMode ? "" : "none";
+      if (resetCard) resetCard.style.display = fastMode ? "none" : "";
 
-      if (!adminMode) {
+      if (fastMode) {
         loginUser = "";
         regAdminUser = "";
         byId("login-code").value = "";
@@ -121,10 +121,16 @@ const AuthPage = {
       try {
         const resp = await API.authMode();
         modeReady = true;
-        applyMode(!!(resp && resp.admin_mode));
+        let respFast = false;
+        if (resp && typeof resp.fast_mode !== "undefined") {
+          respFast = !!resp.fast_mode;
+        } else if (resp && typeof resp.admin_mode !== "undefined") {
+          respFast = !resp.admin_mode;
+        }
+        applyMode(respFast);
       } catch (e) {
         modeReady = true;
-        applyMode(true);
+        applyMode(false);
         const modeHint = byId("mode-hint");
         if (modeHint) {
           modeHint.textContent += `（获取模式失败：${e?.message || e}，已默认开启管理员模式）`;
@@ -133,12 +139,19 @@ const AuthPage = {
     };
 
     loadMode();
-    const getAdminMode = () => adminMode;
+    const getFastMode = () => fastMode;
 
     const handleModeChanged = (ev) => {
-      if (!ev || !ev.detail || typeof ev.detail.adminMode === "undefined") return;
-      modeReady = true;
-      applyMode(!!ev.detail.adminMode);
+      if (!ev || !ev.detail) return;
+      if (typeof ev.detail.fastMode !== "undefined") {
+        modeReady = true;
+        applyMode(!!ev.detail.fastMode);
+        return;
+      }
+      if (typeof ev.detail.adminMode !== "undefined") {
+        modeReady = true;
+        applyMode(!ev.detail.adminMode);
+      }
     };
 
     if (window.__authModeHandler) {
@@ -153,10 +166,10 @@ const AuthPage = {
       const u = byId("login-u").value.trim();
       const p = byId("login-p").value;
       if (!u || !p) return alert("请输入用户名和密码");
-      const adminMode = getAdminMode();
+      const fast = getFastMode();
       try {
-        const resp = await API.loginStart(u, p, adminMode);
-        if (adminMode) {
+        const resp = await API.loginStart(u, p, fast);
+        if (!fast) {
           loginUser = u;
           alert("验证码已发送，请查看后输入");
         } else {
@@ -169,7 +182,7 @@ const AuthPage = {
 
     byId("verify-btn").onclick = async () => {
       if (!ensureModeReady()) return;
-      if (!getAdminMode()) return;
+      if (getFastMode()) return;
       const code = byId("login-code").value.trim();
       if (!loginUser) return alert("请先执行登录第一步");
       if (!code) return alert("请输入短信验证码");
@@ -183,7 +196,7 @@ const AuthPage = {
     // ===== 注册：发送注册验证码 =====
     byId("reg-send-code").onclick = async () => {
       if (!ensureModeReady()) return;
-      if (!getAdminMode()) return;
+      if (getFastMode()) return;
       const ph = byId("reg-phone").value.trim();
       if (!ph) return alert("请输入手机号");
       try {
@@ -195,21 +208,21 @@ const AuthPage = {
     // ===== 注册提交 =====
     byId("reg-btn").onclick = async () => {
       if (!ensureModeReady()) return;
-      const adminMode = getAdminMode();
+      const fast = getFastMode();
       const u = byId("reg-u").value.trim();
       const pw = byId("reg-p").value;
       if (!u || !pw) return alert("请填写用户名和密码");
 
-      if (adminMode) {
+      if (!fast) {
         const ph = byId("reg-phone").value.trim();
         const code = byId("reg-code").value.trim();
         const want_admin = !!byId("reg-admin").checked;
         if (!ph || !code) return alert("请填写手机号和验证码");
         try {
-          const r = await API.register(u, ph, code, pw, want_admin, true);
+          const r = await API.register(u, ph, code, pw, want_admin, false);
           if (want_admin) {
             regAdminUser = u;
-            applyMode(true);
+            applyMode(false);
             alert("已申请管理员，请联系作者获取管理员验证码并在下方输入");
           } else {
             alert("注册成功，请去登录");
@@ -217,7 +230,7 @@ const AuthPage = {
         } catch (e) { alert(e.message); }
       } else {
         try {
-          await API.register(u, "", "", pw, false, false);
+          await API.register(u, "", "", pw, false, true);
           alert("注册成功，系统已赠送 20000 法币，请直接登录");
         } catch (e) { alert(e.message); }
       }
@@ -226,7 +239,7 @@ const AuthPage = {
     // ===== 管理员验证码第二步 =====
     byId("admin-verify").onclick = async () => {
       if (!ensureModeReady()) return;
-      if (!getAdminMode()) return;
+      if (getFastMode()) return;
       const code = byId("admin-code").value.trim();
       if (!regAdminUser) return alert("请先执行管理员注册");
       if (!code) return alert("请输入管理员验证码");
@@ -234,14 +247,14 @@ const AuthPage = {
         await API.adminVerify(regAdminUser, code);
         alert("管理员开通成功，请使用该账号登录");
         regAdminUser = "";
-        applyMode(true);
+        applyMode(false);
       } catch (e) { alert(e.message); }
     };
 
     // ===== 重置密码（短信）=====
     byId("rp-send").onclick = async () => {
       if (!ensureModeReady()) return;
-      if (!getAdminMode()) return;
+      if (getFastMode()) return;
       const ph = byId("rp-phone").value.trim();
       if (!ph) return alert("请输入手机号");
       try {
@@ -252,7 +265,7 @@ const AuthPage = {
 
     byId("rp-do").onclick = async () => {
       if (!ensureModeReady()) return;
-      if (!getAdminMode()) return;
+      if (getFastMode()) return;
       const ph = byId("rp-phone").value.trim();
       const code = byId("rp-code").value.trim();
       const nw = byId("rp-new").value;

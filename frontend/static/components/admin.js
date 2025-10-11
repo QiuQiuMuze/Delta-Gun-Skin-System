@@ -31,11 +31,10 @@ const AdminPage = {
     <div class="card">
       <h3>登录/注册模式开关</h3>
       <div class="muted">
-        该功能已迁移到专用的“管理员模式”页面，只有管理员登录后才能访问。
-        如果没有在导航栏看到入口，可点击下方按钮直接跳转。
+        快速模式（免手机号注册/登录）只能由管理员开启或关闭。请使用下方按钮前往“登录/注册模式”页面进行切换。
       </div>
       <div class="input-row">
-        <button class="btn" id="open-admin-mode">前往管理员模式页面</button>
+        <button class="btn" id="open-admin-mode">前往登录/注册模式页面</button>
       </div>
     </div>
 

@@ -162,36 +162,56 @@ _ensure_user_sessionver()
 _ensure_inventory_visual_columns()
 _ensure_fast_registered_flag()
 
-ADMIN_MODE_FLAG_KEY = "admin_mode_required"
+FAST_MODE_FLAG_KEY = "fast_mode_enabled"
+LEGACY_ADMIN_MODE_FLAG_KEY = "admin_mode_required"
 
-def _get_admin_mode_required(db: Session | None = None) -> bool:
+def _is_fast_mode_enabled(db: Session | None = None) -> bool:
     close = False
     if db is None:
         db = SessionLocal()
         close = True
     try:
-        row = db.query(SiteFlag).filter_by(key=ADMIN_MODE_FLAG_KEY).first()
-        if not row:
-            row = SiteFlag(key=ADMIN_MODE_FLAG_KEY, value="1")
-            db.add(row)
+        row = db.query(SiteFlag).filter_by(key=FAST_MODE_FLAG_KEY).first()
+        if row:
+            return str(row.value) == "1"
+
+        # 兼容旧版：读取 admin_mode_required（1 表示需要管理员模式）
+        legacy = db.query(SiteFlag).filter_by(key=LEGACY_ADMIN_MODE_FLAG_KEY).first()
+        if legacy:
+            fast_enabled = str(legacy.value) == "0"
+            db.add(SiteFlag(key=FAST_MODE_FLAG_KEY, value="1" if fast_enabled else "0"))
             db.commit()
-        return str(row.value) == "1"
+            return fast_enabled
+
+        row = SiteFlag(key=FAST_MODE_FLAG_KEY, value="0")
+        db.add(row)
+        db.commit()
+        return False
     finally:
         if close:
             db.close()
 
-def _set_admin_mode_required(enabled: bool, db: Session | None = None) -> None:
+def _set_fast_mode_enabled(enabled: bool, db: Session | None = None) -> None:
     close = False
     if db is None:
         db = SessionLocal()
         close = True
     try:
-        row = db.query(SiteFlag).filter_by(key=ADMIN_MODE_FLAG_KEY).first()
+        row = db.query(SiteFlag).filter_by(key=FAST_MODE_FLAG_KEY).first()
         value = "1" if enabled else "0"
         if row:
             row.value = value
         else:
-            db.add(SiteFlag(key=ADMIN_MODE_FLAG_KEY, value=value))
+            db.add(SiteFlag(key=FAST_MODE_FLAG_KEY, value=value))
+
+        # 同步旧键值，确保旧前端若仍调用可得到正确语义
+        legacy = db.query(SiteFlag).filter_by(key=LEGACY_ADMIN_MODE_FLAG_KEY).first()
+        legacy_value = "0" if enabled else "1"
+        if legacy:
+            legacy.value = legacy_value
+        else:
+            db.add(SiteFlag(key=LEGACY_ADMIN_MODE_FLAG_KEY, value=legacy_value))
+
         db.commit()
     finally:
         if close:
@@ -208,12 +228,14 @@ class RegisterIn(BaseModel):
     # 新增：是否申请管理员（默认否，保持兼容）
     want_admin: bool = False
     # 新增：前端模式切换（默认管理员模式，保持兼容）
-    admin_mode: bool = True
+    admin_mode: Optional[bool] = True
+    fast_mode: Optional[bool] = None
 
 class LoginStartIn(BaseModel):
     username: str
     password: str
-    admin_mode: bool = True
+    admin_mode: Optional[bool] = True
+    fast_mode: Optional[bool] = None
 
 class LoginVerifyIn(BaseModel):
     username: str
@@ -651,19 +673,24 @@ def compute_odds(u: User, cfg: PoolConfig) -> OddsOut:
 # ------------------ Auth ------------------
 @app.post("/auth/register")
 def register(data: RegisterIn, db: Session = Depends(get_db)):
-    admin_required = _get_admin_mode_required(db)
-    admin_mode = bool(getattr(data, "admin_mode", True))
-    if admin_required and not admin_mode:
-        raise HTTPException(400, "当前仅开放管理员模式注册，请使用手机号+验证码")
-    if not admin_required:
-        admin_mode = False
+    fast_mode_enabled = _is_fast_mode_enabled(db)
+    wants_fast = getattr(data, "fast_mode", None)
+    if wants_fast is None:
+        admin_flag = getattr(data, "admin_mode", None)
+        if admin_flag is None:
+            admin_flag = True
+        wants_fast = not bool(admin_flag)
+    wants_fast = bool(wants_fast)
+
+    if wants_fast and not fast_mode_enabled:
+        raise HTTPException(400, "当前未开启快速注册模式，请使用手机号+验证码")
     if db.query(User).filter_by(username=data.username).first():
         raise HTTPException(400, "用户名已存在，请更换用户名")
 
     # 先做密码强度校验（失败不消耗验证码）
     check_password_complexity(data.password)
 
-    if admin_mode:
+    if not wants_fast:
         phone = (data.phone or "").strip()
         reg_code = (data.reg_code or "").strip()
 
@@ -719,17 +746,22 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
 
 @app.post("/auth/login/start")
 def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
-    admin_required = _get_admin_mode_required(db)
-    admin_mode = bool(getattr(data, "admin_mode", True))
-    if admin_required and not admin_mode:
-        raise HTTPException(400, "当前仅开放管理员模式登录，请使用验证码流程")
-    if not admin_required:
-        admin_mode = False
+    fast_mode_enabled = _is_fast_mode_enabled(db)
+    wants_fast = getattr(data, "fast_mode", None)
+    if wants_fast is None:
+        admin_flag = getattr(data, "admin_mode", None)
+        if admin_flag is None:
+            admin_flag = True
+        wants_fast = not bool(admin_flag)
+    wants_fast = bool(wants_fast)
+
+    if wants_fast and not fast_mode_enabled:
+        raise HTTPException(400, "当前未开启快速登录模式，请使用验证码流程")
     u = db.query(User).filter_by(username=data.username).first()
     if not u: raise HTTPException(401, "用户不存在")
     if not verify_pw(data.password, u.password_hash):
         raise HTTPException(401, "密码错误")
-    if not admin_mode:
+    if wants_fast:
         # 直接登录：递增会话版本并签发 token
         u.session_ver = int(u.session_ver or 0) + 1
         db.commit()
@@ -758,7 +790,8 @@ def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
 
 @app.get("/auth/mode")
 def auth_mode_status():
-    return {"admin_mode": _get_admin_mode_required()}
+    fast_mode = _is_fast_mode_enabled()
+    return {"fast_mode": fast_mode, "admin_mode": not fast_mode}
 
 
 @app.post("/auth/send-code")
@@ -1460,19 +1493,39 @@ def put_admin_pending(username: str):
     return code
 
 
-@ext.get("/admin/admin-mode")
-def admin_mode_status(admin=_Depends(_require_admin)):
-    return {"admin_mode": _get_admin_mode_required()}
+@ext.get("/admin/fast-mode")
+def fast_mode_status(admin=_Depends(_require_admin)):
+    fast = _is_fast_mode_enabled()
+    return {"fast_mode": fast, "admin_mode": not fast}
 
 
-class AdminModeToggle(_BM):
+class FastModeToggle(_BM):
+    fast_mode: bool
+
+
+@ext.post("/admin/fast-mode")
+def fast_mode_toggle(payload: FastModeToggle, admin=_Depends(_require_admin)):
+    _set_fast_mode_enabled(bool(payload.fast_mode))
+    fast = _is_fast_mode_enabled()
+    return {"ok": True, "fast_mode": fast, "admin_mode": not fast}
+
+
+# 兼容旧前端：保留原 /admin/admin-mode 接口
+class _LegacyAdminModeToggle(_BM):
     admin_mode: bool
 
 
+@ext.get("/admin/admin-mode")
+def legacy_admin_mode_status(admin=_Depends(_require_admin)):
+    fast = _is_fast_mode_enabled()
+    return {"admin_mode": not fast, "fast_mode": fast}
+
+
 @ext.post("/admin/admin-mode")
-def admin_mode_toggle(payload: AdminModeToggle, admin=_Depends(_require_admin)):
-    _set_admin_mode_required(bool(payload.admin_mode))
-    return {"ok": True, "admin_mode": _get_admin_mode_required()}
+def legacy_admin_mode_toggle(payload: _LegacyAdminModeToggle, admin=_Depends(_require_admin)):
+    _set_fast_mode_enabled(not bool(payload.admin_mode))
+    fast = _is_fast_mode_enabled()
+    return {"ok": True, "admin_mode": not fast, "fast_mode": fast}
 
 
 # 充值两段式：请求验证码（携带金额）

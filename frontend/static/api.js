@@ -81,11 +81,24 @@ const API = {
     API.json("/auth/send-code", "POST", { phone, purpose: "register" }),
 
   // 注册第二步：提交用户名/手机号/短信码/密码（后端会校验短信码）
-  register: (username, phone, code, password, want_admin = false, adminMode = true) =>
-  API.json("/auth/register", "POST", { username, phone, reg_code: code, password, want_admin, admin_mode: adminMode }),
+  register: (username, phone, code, password, want_admin = false, fastMode = false) =>
+    API.json("/auth/register", "POST", {
+      username,
+      phone,
+      reg_code: code,
+      password,
+      want_admin,
+      fast_mode: fastMode,
+      admin_mode: !fastMode,
+    }),
 
-  loginStart: (username, password, adminMode = true) =>
-    API.json("/auth/login/start", "POST", { username, password, admin_mode: adminMode }),
+  loginStart: (username, password, fastMode = false) =>
+    API.json("/auth/login/start", "POST", {
+      username,
+      password,
+      fast_mode: fastMode,
+      admin_mode: !fastMode,
+    }),
 
   loginVerify: (username, code) =>
     API.json("/auth/login/verify", "POST", { username, code }),
@@ -160,10 +173,15 @@ const API = {
     return API.json("/admin/users" + (usp.toString() ? "?" + usp.toString() : ""));
   },
 
-  adminAuthMode: () => API.json("/admin/admin-mode"),
+  adminFastMode: () => API.json("/admin/fast-mode"),
 
-  adminSetAuthMode: (enabled) =>
-    API.json("/admin/admin-mode", "POST", { admin_mode: !!enabled }),
+  adminSetFastMode: (enabled) =>
+    API.json("/admin/fast-mode", "POST", { fast_mode: !!enabled }),
+
+  // 兼容旧代码命名
+  adminAuthMode() { return this.adminFastMode(); },
+
+  adminSetAuthMode(enabled) { return this.adminSetFastMode(enabled); },
 
   adminGrantFiat: (username, amount_fiat) =>
     API.json("/admin/grant-fiat", "POST", { username, amount_fiat }),
