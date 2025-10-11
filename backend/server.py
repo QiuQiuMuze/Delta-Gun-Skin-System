@@ -420,7 +420,8 @@ COLOR_PALETTE = [
 
 TEMPLATE_POOLS = {
     "BRICK_PREMIUM": ["prism_flux", "ember_strata", "ion_tessellate"],
-    "BRICK_EXQUISITE": ["diamond_veil", "aurora_matrix", "nebula_glass"],
+    "BRICK_EXQUISITE": ["aurora_matrix", "nebula_glass", "ion_tessellate"],
+    "BRICK_DIAMOND": ["diamond_veil"],
     "PURPLE": ["ion_glaze", "vapor_trace", "phase_shift"],
     "BLUE": ["urban_mesh", "fiber_wave", "midnight_line"],
     "GREEN": ["field_classic", "steel_ridge", "matte_guard"],
@@ -429,6 +430,7 @@ TEMPLATE_POOLS = {
 EFFECT_POOLS = {
     "BRICK_PREMIUM": ["glow", "pulse", "sheen"],
     "BRICK_EXQUISITE": ["glow", "pulse", "sparkle", "trail", "refraction"],
+    "BRICK_DIAMOND": ["sparkle", "refraction", "glow", "pulse", "trail"],
     "PURPLE": ["glow", "sheen", "flux"],
     "BLUE": ["sheen", "pulse"],
     "GREEN": ["sheen"],
@@ -464,9 +466,15 @@ def generate_visual_profile(rarity: str, exquisite: bool) -> Dict[str, object]:
 
     if rarity == "BRICK":
         if exquisite:
-            template_key = secrets.choice(TEMPLATE_POOLS["BRICK_EXQUISITE"])
-            effects_key = "BRICK_EXQUISITE"
-            hidden_template = True
+            roll = secrets.randbelow(100)
+            if roll == 0:
+                template_key = secrets.choice(TEMPLATE_POOLS["BRICK_DIAMOND"])
+                effects_key = "BRICK_DIAMOND"
+                hidden_template = True
+            else:
+                pool = TEMPLATE_POOLS.get("BRICK_EXQUISITE") or TEMPLATE_POOLS["BRICK_PREMIUM"]
+                template_key = secrets.choice(pool)
+                effects_key = "BRICK_EXQUISITE"
         else:
             template_key = secrets.choice(TEMPLATE_POOLS["BRICK_PREMIUM"])
             effects_key = "BRICK_PREMIUM"
@@ -480,7 +488,9 @@ def generate_visual_profile(rarity: str, exquisite: bool) -> Dict[str, object]:
         template_key = secrets.choice(TEMPLATE_POOLS["GREEN"])
         effects_key = "GREEN"
 
-    if rarity == "BRICK" and exquisite:
+    if effects_key == "BRICK_DIAMOND":
+        effects = _ensure_unique_effects(EFFECT_POOLS[effects_key], 4, 5)
+    elif rarity == "BRICK" and exquisite:
         effects = _ensure_unique_effects(EFFECT_POOLS[effects_key], 3, 4)
     elif rarity == "BRICK":
         effects = _ensure_unique_effects(EFFECT_POOLS[effects_key], 1, 2)
