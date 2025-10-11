@@ -135,6 +135,18 @@ const AuthPage = {
     loadMode();
     const getAdminMode = () => adminMode;
 
+    const handleModeChanged = (ev) => {
+      if (!ev || !ev.detail || typeof ev.detail.adminMode === "undefined") return;
+      modeReady = true;
+      applyMode(!!ev.detail.adminMode);
+    };
+
+    if (window.__authModeHandler) {
+      window.removeEventListener("auth-mode-changed", window.__authModeHandler);
+    }
+    window.__authModeHandler = handleModeChanged;
+    window.addEventListener("auth-mode-changed", handleModeChanged);
+
     // ===== 登录 =====
     byId("login-btn").onclick = async () => {
       if (!ensureModeReady()) return;

@@ -133,20 +133,31 @@ const AdminPage = {
     }
     let currentAdminMode = true;
 
-    const renderModeToggle = (enabled) => {
-      currentAdminMode = !!enabled;
+    const broadcastMode = (enabled) => {
+      try {
+        window.dispatchEvent(new CustomEvent("auth-mode-changed", { detail: { adminMode: !!enabled } }));
+      } catch (_) {
+        /* 忽略广播失败 */
+      }
+    };
+
+    const renderModeToggle = (enabled, broadcast = false) => {
+      const next = !!enabled;
+      const changed = currentAdminMode !== next;
+      currentAdminMode = next;
       if (modeToggle) modeToggle.checked = currentAdminMode;
       if (modeHint) {
         modeHint.textContent = currentAdminMode
           ? "管理员模式开启：注册/登录需要手机号与短信验证码。"
           : "管理员模式关闭：注册/登录无需验证码，新注册账号自动获得 20000 法币。";
       }
+      if (broadcast && changed) broadcastMode(currentAdminMode);
     };
 
     renderModeToggle(true);
     try {
       const status = await API.adminAuthMode();
-      renderModeToggle(!!(status && status.admin_mode));
+      renderModeToggle(!!(status && status.admin_mode), true);
     } catch (e) {
       renderModeToggle(true);
       if (modeHint) {
@@ -161,7 +172,7 @@ const AdminPage = {
         modeToggle.disabled = true;
         try {
           await API.adminSetAuthMode(next);
-          renderModeToggle(next);
+          renderModeToggle(next, true);
           alert(next ? "已开启管理员模式" : "已关闭管理员模式");
         } catch (e) {
           alert(e.message);
@@ -187,7 +198,8 @@ const AdminPage = {
         <table class="table">
           <thead><tr><th>用户名</th><th>标记</th><th>手机号</th><th>法币</th><th>三角币</th><th>管理员</th></tr></thead>
           <tbody>${rows}</tbody>
-        </table>`;
+        </table>
+        <div class="muted">标记：★ 表示通过快速注册获得 20000 法币的账号；— 表示手机号注册的普通账号。</div>`;
     };
 
     const renderReqs = (items=[])=>{
