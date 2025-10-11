@@ -144,6 +144,24 @@ def _ensure_inventory_visual_columns():
     con.commit()
     con.close()
 
+def _ensure_inventory_visual_columns():
+    con = sqlite3.connect(DB_PATH_FS)
+    cur = con.cursor()
+    cur.execute("PRAGMA table_info(inventory)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "body_colors" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN body_colors TEXT DEFAULT ''")
+    if "attachment_colors" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN attachment_colors TEXT DEFAULT ''")
+    if "template_name" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN template_name TEXT DEFAULT ''")
+    if "effect_tags" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN effect_tags TEXT DEFAULT ''")
+    if "hidden_template" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN hidden_template INTEGER NOT NULL DEFAULT 0")
+    con.commit()
+    con.close()
+
 Base.metadata.create_all(engine)
 _ensure_user_sessionver()
 _ensure_inventory_visual_columns()
