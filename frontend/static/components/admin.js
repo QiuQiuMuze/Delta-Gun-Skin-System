@@ -106,8 +106,31 @@ const AdminPage = {
   async bind() {
     if (!API._me?.is_admin) { alert("非管理员"); location.hash="#/home"; return; }
 
-    const modeToggle = byId("admin-mode-toggle");
-    const modeHint = byId("admin-mode-hint");
+    let modeToggle = byId("admin-mode-toggle");
+    let modeHint = byId("admin-mode-hint");
+
+    if (!modeToggle) {
+      const hostCard = document.querySelector("#page > .card");
+      if (hostCard) {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <h3>登录/注册模式</h3>
+          <div class="input-row">
+            <label><input id="admin-mode-toggle" type="checkbox" /> 启用管理员模式</label>
+          </div>
+          <div class="muted" id="admin-mode-hint">管理员模式开启后，注册/登录需要手机号与短信验证码。</div>
+        `;
+        const firstSection = hostCard.querySelector(".card");
+        if (firstSection) {
+          hostCard.insertBefore(card, firstSection);
+        } else {
+          hostCard.appendChild(card);
+        }
+        modeToggle = byId("admin-mode-toggle");
+        modeHint = byId("admin-mode-hint");
+      }
+    }
     let currentAdminMode = true;
 
     const renderModeToggle = (enabled) => {
