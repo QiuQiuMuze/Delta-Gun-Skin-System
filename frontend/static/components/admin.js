@@ -132,7 +132,8 @@ const AdminPage = {
         <table class="table">
           <thead><tr><th>用户名</th><th>标记</th><th>手机号</th><th>法币</th><th>三角币</th><th>管理员</th></tr></thead>
           <tbody>${rows}</tbody>
-        </table>`;
+        </table>
+        <div class="muted">标记：★ 表示通过快速注册获得 20000 法币的账号；— 表示手机号注册的普通账号。</div>`;
     };
 
     const renderReqs = (items=[])=>{
