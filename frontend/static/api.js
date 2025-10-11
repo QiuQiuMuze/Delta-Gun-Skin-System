@@ -81,8 +81,10 @@ const API = {
     API.json("/auth/send-code", "POST", { phone, purpose: "register" }),
 
   // 注册第二步：提交用户名/手机号/短信码/密码（后端会校验短信码）
-register: (username, phone, code, password, want_admin = false) =>
-  API.json("/auth/register", "POST", { username, phone, reg_code: code, password, want_admin }),
+  register: (username, phone, code, password, want_admin = false, quick_mode = false) =>
+  API.json("/auth/register", "POST", { username, phone, reg_code: code, password, want_admin, quick_mode }),
+
+  quickRegisterStatus: () => API.json("/public/quick-register"),
 
   loginStart: (username, password) =>
     API.json("/auth/login/start", "POST", { username, password }),
@@ -160,6 +162,9 @@ register: (username, phone, code, password, want_admin = false) =>
 
   adminGrantFiat: (username, amount_fiat) =>
     API.json("/admin/grant-fiat", "POST", { username, amount_fiat }),
+
+  adminSetQuickRegister: (enabled) =>
+    API.json("/admin/quick-register", "POST", { enabled }),
 
   adminTopupRequests: () => API.json("/admin/topup-requests"),
 

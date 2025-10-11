@@ -9,6 +9,16 @@ const AdminPage = {
       </div>
 
       <div class="card">
+        <h3>快速注册开关</h3>
+        <div class="muted" id="quick-reg-status">加载中...</div>
+        <div class="input-row">
+          <button class="btn" id="quick-reg-on">开启快速注册</button>
+          <button class="btn" id="quick-reg-off">关闭快速注册</button>
+        </div>
+        <div class="muted">开启后，注册页将隐藏手机号与验证码，玩家用户名末尾会自动加★并立即登录且赠送 20000 法币。</div>
+      </div>
+
+      <div class="card">
         <h3>所有用户</h3>
         <div class="input-row">
           <input id="q" placeholder="按用户名/手机号搜索"/>
@@ -151,6 +161,38 @@ const AdminPage = {
 
     // —— 充值申请首屏 & 短信日志加载 —— //
     try { const r = await API.adminTopupRequests(); renderReqs(r.items||[]); } catch(e){ /* 忽略 */ }
+
+    // —— 快速注册状态 —— //
+    const quickStatusEl = byId("quick-reg-status");
+    const showQuickStatus = (enabled) => {
+      if (!quickStatusEl) return;
+      quickStatusEl.textContent = enabled ? "当前状态：已开启快速注册" : "当前状态：已关闭快速注册";
+    };
+    const loadQuickStatus = async () => {
+      try {
+        const status = await API.quickRegisterStatus();
+        showQuickStatus(!!status.enabled);
+      } catch (e) {
+        if (quickStatusEl) quickStatusEl.textContent = `状态读取失败：${e.message}`;
+      }
+    };
+    await loadQuickStatus();
+
+    byId("quick-reg-on").onclick = async () => {
+      try {
+        await API.adminSetQuickRegister(true);
+        alert("已开启快速注册");
+        await loadQuickStatus();
+      } catch (e) { alert(e.message); }
+    };
+
+    byId("quick-reg-off").onclick = async () => {
+      try {
+        await API.adminSetQuickRegister(false);
+        alert("已关闭快速注册");
+        await loadQuickStatus();
+      } catch (e) { alert(e.message); }
+    };
 
     const loadSms = async ()=>{
       const limit = parseInt(byId("sms-limit").value, 10) || 200;
