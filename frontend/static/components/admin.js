@@ -103,6 +103,7 @@ const AdminPage = {
       const rows = items.map(u=>`
         <tr>
           <td>${escapeHtml(u.username||"")}</td>
+          <td>${u.fast_registered ? '★' : '—'}</td>
           <td>${escapeHtml(u.phone||"")}</td>
           <td>${u.fiat}</td>
           <td>${u.coins}</td>
@@ -110,7 +111,7 @@ const AdminPage = {
         </tr>`).join("");
       byId("list").innerHTML = `
         <table class="table">
-          <thead><tr><th>用户名</th><th>手机号</th><th>法币</th><th>三角币</th><th>管理员</th></tr></thead>
+          <thead><tr><th>用户名</th><th>标记</th><th>手机号</th><th>法币</th><th>三角币</th><th>管理员</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>`;
     };

@@ -81,11 +81,11 @@ const API = {
     API.json("/auth/send-code", "POST", { phone, purpose: "register" }),
 
   // 注册第二步：提交用户名/手机号/短信码/密码（后端会校验短信码）
-register: (username, phone, code, password, want_admin = false) =>
-  API.json("/auth/register", "POST", { username, phone, reg_code: code, password, want_admin }),
+  register: (username, phone, code, password, want_admin = false, adminMode = true) =>
+  API.json("/auth/register", "POST", { username, phone, reg_code: code, password, want_admin, admin_mode: adminMode }),
 
-  loginStart: (username, password) =>
-    API.json("/auth/login/start", "POST", { username, password }),
+  loginStart: (username, password, adminMode = true) =>
+    API.json("/auth/login/start", "POST", { username, password, admin_mode: adminMode }),
 
   loginVerify: (username, code) =>
     API.json("/auth/login/verify", "POST", { username, code }),
@@ -102,7 +102,7 @@ register: (username, phone, code, password, want_admin = false) =>
 
   me: async () => {
     const d = await API.json("/me");
-    API._me = { ...d, is_admin: !!d.is_admin };
+    API._me = { ...d, is_admin: !!d.is_admin, fast_registered: !!d.fast_registered };
     return API._me;
   },
 
