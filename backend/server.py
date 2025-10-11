@@ -52,6 +52,8 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     # ★ 新增：会话版本，用于单点登录
     session_ver = Column(Integer, default=0)
+    # ★ 新增：标记是否为免手机快速注册用户
+    fast_registered = Column(Boolean, default=False)
 
 class Skin(Base):
     __tablename__ = "skins"
@@ -112,6 +114,11 @@ class MarketItem(Base):
     created_at = Column(Integer, default=lambda: int(time.time()))
     active = Column(Boolean, default=True)
 
+class SiteFlag(Base):
+    __tablename__ = "site_flags"
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=False)
+
 def _ensure_user_sessionver():
     con = sqlite3.connect(DB_PATH_FS)
     cur = con.cursor()
@@ -140,24 +147,73 @@ def _ensure_inventory_visual_columns():
     con.commit()
     con.close()
 
+def _ensure_fast_registered_flag():
+    con = sqlite3.connect(DB_PATH_FS)
+    cur = con.cursor()
+    cur.execute("PRAGMA table_info(users)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "fast_registered" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN fast_registered INTEGER NOT NULL DEFAULT 0")
+        con.commit()
+    con.close()
+
 Base.metadata.create_all(engine)
 _ensure_user_sessionver()
 _ensure_inventory_visual_columns()
+_ensure_fast_registered_flag()
+
+ADMIN_MODE_FLAG_KEY = "admin_mode_required"
+
+def _get_admin_mode_required(db: Session | None = None) -> bool:
+    close = False
+    if db is None:
+        db = SessionLocal()
+        close = True
+    try:
+        row = db.query(SiteFlag).filter_by(key=ADMIN_MODE_FLAG_KEY).first()
+        if not row:
+            row = SiteFlag(key=ADMIN_MODE_FLAG_KEY, value="1")
+            db.add(row)
+            db.commit()
+        return str(row.value) == "1"
+    finally:
+        if close:
+            db.close()
+
+def _set_admin_mode_required(enabled: bool, db: Session | None = None) -> None:
+    close = False
+    if db is None:
+        db = SessionLocal()
+        close = True
+    try:
+        row = db.query(SiteFlag).filter_by(key=ADMIN_MODE_FLAG_KEY).first()
+        value = "1" if enabled else "0"
+        if row:
+            row.value = value
+        else:
+            db.add(SiteFlag(key=ADMIN_MODE_FLAG_KEY, value=value))
+        db.commit()
+    finally:
+        if close:
+            db.close()
 
 # ------------------ Pydantic ------------------
 RarityT = Literal["BRICK", "PURPLE", "BLUE", "GREEN"]
 
 class RegisterIn(BaseModel):
     username: str
-    phone: str
+    phone: Optional[str] = None
     password: str
-    reg_code: str  # ★ 新增：注册短信验证码
+    reg_code: Optional[str] = None  # ★ 新增：注册短信验证码
     # 新增：是否申请管理员（默认否，保持兼容）
     want_admin: bool = False
+    # 新增：前端模式切换（默认管理员模式，保持兼容）
+    admin_mode: bool = True
 
 class LoginStartIn(BaseModel):
     username: str
     password: str
+    admin_mode: bool = True
 
 class LoginVerifyIn(BaseModel):
     username: str
@@ -595,43 +651,90 @@ def compute_odds(u: User, cfg: PoolConfig) -> OddsOut:
 # ------------------ Auth ------------------
 @app.post("/auth/register")
 def register(data: RegisterIn, db: Session = Depends(get_db)):
+    admin_required = _get_admin_mode_required(db)
+    admin_mode = bool(getattr(data, "admin_mode", True))
+    if admin_required and not admin_mode:
+        raise HTTPException(400, "当前仅开放管理员模式注册，请使用手机号+验证码")
+    if not admin_required:
+        admin_mode = False
     if db.query(User).filter_by(username=data.username).first():
         raise HTTPException(400, "用户名已存在，请更换用户名")
-
-    # 手机号校验：以1开头11位
-    if not PHONE_RE.fullmatch(data.phone):
-        raise HTTPException(400, "手机号无效：必须以1开头且为11位纯数字")
-    # 不能占用已绑定手机号
-    if db.query(User).filter_by(phone=data.phone).first():
-        raise HTTPException(400, "手机号已被绑定，请使用其他手机号")
 
     # 先做密码强度校验（失败不消耗验证码）
     check_password_complexity(data.password)
 
-    # ★ 最后一步才校验并消耗“注册验证码”
-    if not verify_otp(db, data.phone, "register", data.reg_code):
-        raise HTTPException(401, "注册验证码错误或已过期")
+    if admin_mode:
+        phone = (data.phone or "").strip()
+        reg_code = (data.reg_code or "").strip()
 
-    u = User(username=data.username, phone=data.phone, password_hash=hash_pw(data.password))
-    db.add(u); db.commit()
+        # 手机号校验：以1开头11位
+        if not PHONE_RE.fullmatch(phone):
+            raise HTTPException(400, "手机号无效：必须以1开头且为11位纯数字")
+        # 不能占用已绑定手机号
+        if db.query(User).filter_by(phone=phone).first():
+            raise HTTPException(400, "手机号已被绑定，请使用其他手机号")
 
-    # 若申请管理员：下发管理员验证码（写入 admin_pending）
-    try:
-        if data.want_admin:
-            put_admin_pending(data.username)
-            return {"ok": True, "admin_verify_required": True, "msg": "已申请管理员，请查看 sms_codes.txt 并在登录页验证"}
-    except NameError:
-        pass
+        # ★ 最后一步才校验并消耗“注册验证码”
+        if not reg_code or not verify_otp(db, phone, "register", reg_code):
+            raise HTTPException(401, "注册验证码错误或已过期")
 
-    return {"ok": True, "msg": "注册成功，请登录"}
+        u = User(username=data.username, phone=phone, password_hash=hash_pw(data.password))
+        db.add(u); db.commit()
+
+        # 若申请管理员：下发管理员验证码（写入 admin_pending）
+        try:
+            if data.want_admin:
+                put_admin_pending(data.username)
+                return {"ok": True, "admin_verify_required": True, "msg": "已申请管理员，请查看 sms_codes.txt 并在登录页验证"}
+        except NameError:
+            pass
+
+        return {"ok": True, "msg": "注册成功，请登录"}
+
+    # -------- 非管理员模式：免手机号快速注册 -------- #
+    if data.want_admin:
+        raise HTTPException(400, "快速注册不支持申请管理员")
+
+    pseudo_phone = (data.phone or "").strip() or f"fast:{data.username}"
+    # 若用户手动提供的 phone 已被占用，或自动生成的占用，则附加随机后缀
+    if db.query(User).filter_by(phone=pseudo_phone).first():
+        pseudo_phone = f"fast:{data.username}:{secrets.token_hex(3)}"
+
+    u = User(
+        username=data.username,
+        phone=pseudo_phone,
+        password_hash=hash_pw(data.password),
+        fiat=20000,
+        fast_registered=True,
+    )
+    db.add(u)
+    db.commit()
+    return {
+        "ok": True,
+        "msg": "注册成功，已赠送 20000 法币",
+        "fast_registered": True,
+        "fiat": u.fiat,
+    }
 
 
 @app.post("/auth/login/start")
 def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
+    admin_required = _get_admin_mode_required(db)
+    admin_mode = bool(getattr(data, "admin_mode", True))
+    if admin_required and not admin_mode:
+        raise HTTPException(400, "当前仅开放管理员模式登录，请使用验证码流程")
+    if not admin_required:
+        admin_mode = False
     u = db.query(User).filter_by(username=data.username).first()
     if not u: raise HTTPException(401, "用户不存在")
     if not verify_pw(data.password, u.password_hash):
         raise HTTPException(401, "密码错误")
+    if not admin_mode:
+        # 直接登录：递增会话版本并签发 token
+        u.session_ver = int(u.session_ver or 0) + 1
+        db.commit()
+        token = mk_jwt(u.username, u.session_ver)
+        return {"ok": True, "token": token, "msg": "登录成功（免验证码）"}
     # 60s 限流：同一手机号 login2
     _sms_rate_guard("login2", u.phone)
     code = f"{secrets.randbelow(1_000_000):06d}"
@@ -651,6 +754,11 @@ def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
     # ★ token 携带 sv
     token = mk_jwt(u.username, u.session_ver)
     return {"ok": True, "token": token, "msg": "登录成功"}
+
+
+@app.get("/auth/mode")
+def auth_mode_status():
+    return {"admin_mode": _get_admin_mode_required()}
 
 
 @app.post("/auth/send-code")
@@ -697,12 +805,14 @@ def reset_password(inp: ResetPwdIn, db: Session = Depends(get_db)):
 
 @app.get("/me")
 def me(user: User = Depends(user_from_token)):
+    fast = bool(getattr(user, "fast_registered", False))
     return {
-        "username": user.username, "phone": user.phone,
+        "username": user.username, "phone": ("" if fast else user.phone),
         "fiat": user.fiat, "coins": user.coins, "keys": user.keys,
         "unopened_bricks": user.unopened_bricks,
         "pity_brick": user.pity_brick, "pity_purple": user.pity_purple,
         "is_admin": bool(getattr(user, "is_admin", False)),
+        "fast_registered": fast,
     }
 
 # ------------------ Wallet / Shop ------------------
@@ -1349,6 +1459,22 @@ def put_admin_pending(username: str):
     _write_sms(username, code, "admin-verify")
     return code
 
+
+@ext.get("/admin/admin-mode")
+def admin_mode_status(admin=_Depends(_require_admin)):
+    return {"admin_mode": _get_admin_mode_required()}
+
+
+class AdminModeToggle(_BM):
+    admin_mode: bool
+
+
+@ext.post("/admin/admin-mode")
+def admin_mode_toggle(payload: AdminModeToggle, admin=_Depends(_require_admin)):
+    _set_admin_mode_required(bool(payload.admin_mode))
+    return {"ok": True, "admin_mode": _get_admin_mode_required()}
+
+
 # 充值两段式：请求验证码（携带金额）
 @ext.post("/wallet/topup/request")
 def topup_request(payload: dict, u=_Depends(_require_user)):
@@ -1531,11 +1657,17 @@ def admin_users(q: _Optional[str]=None, page: int=1, page_size: int=20, admin=_D
     con=_conn(); cur=con.cursor()
     if q:
       qq = f"%{q}%"
-      cur.execute("""SELECT username, phone, fiat, coins, is_admin FROM users
+      cur.execute("""SELECT username,
+                            CASE WHEN fast_registered=1 THEN '' ELSE phone END AS phone,
+                            fiat, coins, is_admin, fast_registered
+                     FROM users
                      WHERE username LIKE ? OR phone LIKE ?
                      ORDER BY id DESC LIMIT ? OFFSET ?""", (qq, qq, page_size, off))
     else:
-      cur.execute("""SELECT username, phone, fiat, coins, is_admin FROM users
+      cur.execute("""SELECT username,
+                            CASE WHEN fast_registered=1 THEN '' ELSE phone END AS phone,
+                            fiat, coins, is_admin, fast_registered
+                     FROM users
                      ORDER BY id DESC LIMIT ? OFFSET ?""", (page_size, off))
     items=[dict(r) for r in cur.fetchall()]
     con.close()
