@@ -9,6 +9,15 @@ const AdminPage = {
       </div>
 
       <div class="card">
+        <h3>管理员模式开关</h3>
+        <div class="input-row" style="align-items:center;gap:12px;flex-wrap:wrap;">
+          <span id="auth-mode-state" class="badge muted">加载中...</span>
+          <button class="btn" id="auth-mode-toggle">切换</button>
+        </div>
+        <div class="muted">开启后，登录/注册需要短信验证码并可申请管理员/找回密码；关闭后改为快速注册登录，默认发放 20000 法币，管理员界面以 ✦ 标记。</div>
+      </div>
+
+      <div class="card">
         <h3>所有用户</h3>
         <div class="input-row">
           <input id="q" placeholder="按用户名/手机号搜索"/>
@@ -98,16 +107,54 @@ const AdminPage = {
   async bind() {
     if (!API._me?.is_admin) { alert("非管理员"); location.hash="#/home"; return; }
 
+    let adminMode = true;
+    const modeLabel = byId("auth-mode-state");
+    const modeToggle = byId("auth-mode-toggle");
+
+    const updateModeUi = (enabled)=>{
+      adminMode = !!enabled;
+      if (modeLabel) {
+        modeLabel.textContent = adminMode ? "已开启（需短信）" : "已关闭（免验证码）";
+        modeLabel.className = "badge " + (adminMode ? "badge-warn" : "badge-success");
+      }
+      if (modeToggle) {
+        modeToggle.textContent = adminMode ? "切换为免验证码模式" : "切换为短信验证模式";
+      }
+    };
+
+    const loadMode = async ()=>{
+      if (!modeLabel) return;
+      try {
+        const data = await API.adminGetAuthMode();
+        updateModeUi(data?.admin_mode !== false);
+      } catch (e) {
+        modeLabel.textContent = "加载失败";
+        modeLabel.className = "badge muted";
+        console.error(e);
+      }
+    };
+
+    if (modeToggle) modeToggle.onclick = async () => {
+      try {
+        const res = await API.adminSetAuthMode(!adminMode);
+        updateModeUi(res?.admin_mode !== false);
+        alert(res?.admin_mode ? "已开启管理员模式" : "已关闭管理员模式");
+      } catch (e) { alert(e.message); }
+    };
+
     // —— 渲染函数们 —— //
     const renderUsers = (items=[])=>{
-      const rows = items.map(u=>`
+      const rows = items.map(u=>{
+        const mark = u.fast_reg ? '<span class="fast-flag" title="快速注册">✦</span>' : '';
+        return `
         <tr>
-          <td>${escapeHtml(u.username||"")}</td>
+          <td>${mark}${escapeHtml(u.username||"")}</td>
           <td>${escapeHtml(u.phone||"")}</td>
           <td>${u.fiat}</td>
           <td>${u.coins}</td>
           <td>${u.is_admin?'是':'否'}</td>
-        </tr>`).join("");
+        </tr>`;
+      }).join("");
       byId("list").innerHTML = `
         <table class="table">
           <thead><tr><th>用户名</th><th>手机号</th><th>法币</th><th>三角币</th><th>管理员</th></tr></thead>
@@ -150,6 +197,8 @@ const AdminPage = {
     };
 
     // —— 充值申请首屏 & 短信日志加载 —— //
+    await loadMode();
+
     try { const r = await API.adminTopupRequests(); renderReqs(r.items||[]); } catch(e){ /* 忽略 */ }
 
     const loadSms = async ()=>{

@@ -24,6 +24,9 @@ main#page { padding:16px; max-width:1100px; margin:0 auto; }
 .table th, .table td { padding:8px; border-bottom:1px solid #1d2430; text-align:left; }
 
 .badge { padding:2px 8px; border-radius:999px; background:#1a2433; border:1px solid #2a3951; font-size:12px; }
+.badge-warn { background:rgba(255,184,108,.18); border-color:#ffb86c; color:#ffb86c; }
+.badge-success { background:rgba(109,213,140,.18); border-color:#6dd58c; color:#6dd58c; }
+.fast-flag { color:#f5d45c; margin-right:4px; font-size:14px; vertical-align:middle; }
 
 /* —— 颜色体系 —— */
 .hl-orange { color:#ffb86c; }   /* 砖光芒/极品 */
@@ -74,4 +77,149 @@ main#page { padding:16px; max-width:1100px; margin:0 auto; }
 /* 更高权重，保证覆盖 kv 默认色 */
 .kv .k .c-fiat,  .kv .v.c-fiat  { color: #4da3ff; }
 .kv .k .c-coins, .kv .v.c-coins { color: #f8d06b; }
+
+/* —— 预览按钮 —— */
+.btn.btn-mini { padding:4px 8px; font-size:12px; line-height:1.2; }
+
+/* —— 枪械外观预览 —— */
+.skin-preview {
+  display:inline-block;
+  position:relative;
+  padding:10px;
+  border-radius:12px;
+  border:1px solid rgba(148,178,216,0.25);
+  background:rgba(20,26,36,0.9);
+  box-shadow:0 8px 20px rgba(10,14,22,0.45);
+  overflow:hidden;
+  transition:transform .25s ease, box-shadow .25s ease;
+  min-width:calc(var(--preview-width, 240px) + 24px);
+}
+.skin-preview:hover { transform:translateY(-2px); box-shadow:0 12px 28px rgba(20,32,52,0.55); }
+.skin-preview--compact { padding:8px; min-width:calc(var(--preview-width, 220px) + 18px); }
+.skin-preview__canvas {
+  width:var(--preview-width, 240px);
+  height:var(--preview-height, 120px);
+  position:relative;
+  border-radius:12px;
+  overflow:hidden;
+  border:1px solid rgba(120,150,200,0.28);
+  background:
+    radial-gradient(circle at 28% 18%, rgba(255,255,255,0.16), rgba(12,18,26,0.96) 60%),
+    linear-gradient(150deg, rgba(10,14,24,0.92), rgba(4,8,14,0.94));
+  box-shadow:inset 0 0 18px rgba(5,10,18,0.6);
+}
+.skin-preview__canvas::before {
+  content:"";
+  position:absolute;
+  inset:0;
+  background:
+    radial-gradient(130% 130% at -10% -20%, rgba(255,255,255,0.24), rgba(255,255,255,0) 60%),
+    radial-gradient(90% 90% at 120% 120%, rgba(255,255,255,0.1), rgba(255,255,255,0) 62%);
+  opacity:0.45;
+  mix-blend-mode:screen;
+  pointer-events:none;
+}
+.skin-preview__canvas::after {
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(120deg, rgba(255,255,255,0.3), rgba(255,255,255,0));
+  opacity:0;
+  transform:translateX(-120%);
+  pointer-events:none;
+}
+.skin-preview__render {
+  display:block;
+  width:100%;
+  height:100%;
+}
+.skin-preview.effect-sheen .skin-preview__canvas::after {
+  opacity:0.75;
+  animation:sheenSweep 3.2s ease-in-out infinite;
+}
+.skin-preview.effect-glow .skin-preview__canvas {
+  box-shadow:0 0 26px var(--accent-glow), 0 0 14px rgba(255,255,255,0.18);
+  border-color:rgba(255,255,255,0.28);
+}
+.skin-preview.effect-pulse .skin-preview__canvas {
+  animation:previewPulse 2.2s ease-in-out infinite;
+}
+.skin-preview.effect-flux .skin-preview__render {
+  animation:hueFlux 3.6s ease-in-out infinite alternate;
+}
+.skin-preview.effect-refraction .skin-preview__canvas {
+  background:
+    radial-gradient(circle at 28% 18%, rgba(255,255,255,0.2), rgba(12,18,26,0.94) 58%),
+    linear-gradient(150deg, rgba(10,14,24,0.92), rgba(6,8,16,0.96));
+}
+.skin-preview.effect-sparkle .skin-preview__canvas::before {
+  opacity:0.65;
+}
+.skin-preview.is-hidden-template::after {
+  content:"";
+  position:absolute;
+  inset:2px;
+  border-radius:10px;
+  background:linear-gradient(120deg, rgba(255,255,255,0.18), rgba(255,255,255,0));
+  mix-blend-mode:screen;
+  animation:shimmer 2.4s linear infinite;
+  pointer-events:none;
+}
+.skin-preview__label { margin-top:8px; font-weight:600; font-size:14px; }
+.skin-preview__meta { margin-top:4px; font-size:12px; color:#9aa7bd; line-height:1.4; }
+
+@keyframes shimmer {
+  0% { transform:translateX(-120%); opacity:0.12; }
+  45% { opacity:0.45; }
+  100% { transform:translateX(120%); opacity:0.12; }
+}
+@keyframes baseSpark {
+  0%,100% { opacity:0.3; transform:translateY(0); }
+  50% { opacity:0.6; transform:translateY(-4px); }
+}
+@keyframes diamondPulse {
+  0%,100% { opacity:0.4; }
+  50% { opacity:0.9; }
+}
+@keyframes sparklePulse {
+  0%,100% { opacity:0.45; transform:scale(0.85); }
+  50% { opacity:1; transform:scale(1.05); }
+}
+@keyframes sheenSweep {
+  0% { transform:translateX(-120%); opacity:0; }
+  45% { opacity:0.75; }
+  100% { transform:translateX(120%); opacity:0; }
+}
+@keyframes muzzleTrail {
+  0% { stroke-opacity:0.85; transform:translateX(0); }
+  100% { stroke-opacity:0; transform:translateX(28px); }
+}
+@keyframes previewPulse {
+  0%,100% { box-shadow:0 0 16px rgba(255,255,255,0.12); }
+  50% { box-shadow:0 0 30px var(--accent-glow, rgba(255,200,160,0.55)); }
+}
+@keyframes hueFlux {
+  0% { filter:hue-rotate(0deg); }
+  50% { filter:hue-rotate(120deg); }
+  100% { filter:hue-rotate(240deg); }
+}
+
+.tmpl-prism .skin-preview__canvas { border-color:rgba(255,184,108,0.45); }
+.tmpl-ember .skin-preview__canvas { border-color:rgba(255,120,90,0.4); }
+.tmpl-ion .skin-preview__canvas { border-color:rgba(148,200,255,0.45); }
+.tmpl-diamond .skin-preview__canvas { border-color:rgba(255,255,255,0.55); }
+.tmpl-aurora .skin-preview__canvas { border-color:rgba(180,140,255,0.45); }
+.tmpl-nebula .skin-preview__canvas { border-color:rgba(140,220,255,0.4); }
+.tmpl-vapor .skin-preview__canvas { border-color:rgba(150,200,255,0.35); }
+.tmpl-urban .skin-preview__canvas { border-color:rgba(150,150,180,0.35); }
+.tmpl-midnight .skin-preview__canvas { border-color:rgba(110,120,180,0.45); }
+.tmpl-field .skin-preview__canvas { border-color:rgba(120,170,120,0.35); }
+.tmpl-matte .skin-preview__canvas { border-color:rgba(120,140,160,0.3); }
+
+.preview-row td { background:rgba(16,20,28,0.85); }
+.preview-row .skin-preview { margin-top:8px; }
+.preview-row .preview-info { margin-top:8px; font-size:13px; color:#a8b3c7; }
+
+.market-preview-cell { min-width:170px; }
+.market-preview-cell .skin-preview__meta { font-size:11px; }
 

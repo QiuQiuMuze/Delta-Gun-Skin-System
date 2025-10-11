@@ -9,9 +9,9 @@ from __future__ import annotations
 from fastapi import FastAPI, Depends, HTTPException, Header, Query, Path
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from typing import Optional, Literal, List
+from typing import Optional, Literal, List, Dict, Any
 from datetime import datetime, timedelta
-import time, os, secrets, jwt, re
+import time, os, secrets, jwt, re, json, random
 
 from passlib.context import CryptContext
 from sqlalchemy import (
@@ -52,6 +52,8 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     # ★ 新增：会话版本，用于单点登录
     session_ver = Column(Integer, default=0)
+    # ★ 快速注册标记（管理员模式关闭时注册）
+    fast_reg = Column(Boolean, default=False)
 
 class Skin(Base):
     __tablename__ = "skins"
@@ -74,6 +76,11 @@ class Inventory(Base):
     serial = Column(String)       # 全局 8 位编号 = id 格式化
     acquired_at = Column(Integer) # 时间戳
     on_market = Column(Boolean, default=False)
+    body_colors = Column(String, default="")        # JSON: ["#xxxxxx", ...]
+    attachment_colors = Column(String, default="")  # JSON: ["#xxxxxx", ...]
+    template_name = Column(String, default="")
+    effect_tags = Column(String, default="")        # JSON: ["glow", ...]
+    hidden_template = Column(Boolean, default=False)
 
 class PoolConfig(Base):
     __tablename__ = "pool_config"
@@ -114,20 +121,41 @@ def _ensure_user_sessionver():
     cols = [row[1] for row in cur.fetchall()]
     if "session_ver" not in cols:
         cur.execute("ALTER TABLE users ADD COLUMN session_ver INTEGER NOT NULL DEFAULT 0")
-        con.commit()
+    if "fast_reg" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN fast_reg INTEGER NOT NULL DEFAULT 0")
+    con.commit()
+    con.close()
+
+def _ensure_inventory_visual_columns():
+    con = sqlite3.connect(DB_PATH_FS)
+    cur = con.cursor()
+    cur.execute("PRAGMA table_info(inventory)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "body_colors" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN body_colors TEXT DEFAULT ''")
+    if "attachment_colors" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN attachment_colors TEXT DEFAULT ''")
+    if "template_name" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN template_name TEXT DEFAULT ''")
+    if "effect_tags" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN effect_tags TEXT DEFAULT ''")
+    if "hidden_template" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN hidden_template INTEGER NOT NULL DEFAULT 0")
+    con.commit()
     con.close()
 
 Base.metadata.create_all(engine)
 _ensure_user_sessionver()
+_ensure_inventory_visual_columns()
 
 # ------------------ Pydantic ------------------
 RarityT = Literal["BRICK", "PURPLE", "BLUE", "GREEN"]
 
 class RegisterIn(BaseModel):
     username: str
-    phone: str
+    phone: Optional[str] = None
     password: str
-    reg_code: str  # ★ 新增：注册短信验证码
+    reg_code: Optional[str] = None  # ★ 新增：注册短信验证码
     # 新增：是否申请管理员（默认否，保持兼容）
     want_admin: bool = False
 
@@ -195,6 +223,10 @@ class MarketBrowseOut(BaseModel):
     wear: float
     serial: str
     created_at: int
+    template: str
+    hidden_template: bool
+    effects: List[str]
+    visual: Dict[str, Any]
 
 # ------------------ App & Utils ------------------
 app = FastAPI(title="三角洲砖皮模拟器 (SQLite+JWT+手机验证码+合成+交易行)")
@@ -270,6 +302,38 @@ UPPER_RE = re.compile(r"[A-Z]")
 LOWER_RE = re.compile(r"[a-z]")
 DIGIT_SEQ_RE = re.compile(r"012345|123456|234567|345678|456789|987654|876543|765432|654321|543210")
 PHONE_RE = re.compile(r"^1\d{10}$")  # 以1开头的11位纯数字
+FLAG_ADMIN_MODE = "admin_mode"
+DEFAULT_ADMIN_MODE = "1"  # 开启管理员模式：短信双因子
+
+
+def _get_flag_row(db: Session, key: str, default: str) -> FeatureFlag:
+    row = db.query(FeatureFlag).filter_by(key=key).first()
+    if row is None:
+        row = FeatureFlag(key=key, value=default)
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+def is_admin_mode_enabled(db: Session) -> bool:
+    row = _get_flag_row(db, FLAG_ADMIN_MODE, DEFAULT_ADMIN_MODE)
+    return str(row.value) == "1"
+
+
+def set_admin_mode(db: Session, enabled: bool) -> bool:
+    row = _get_flag_row(db, FLAG_ADMIN_MODE, DEFAULT_ADMIN_MODE)
+    row.value = "1" if enabled else "0"
+    db.commit()
+    return enabled
+
+
+def _generate_virtual_phone(db: Session, attempts: int = 20) -> str:
+    for _ in range(attempts):
+        cand = "1" + "".join(random.choice("0123456789") for _ in range(10))
+        if not db.query(User).filter_by(phone=cand).first():
+            return cand
+    raise HTTPException(500, "生成虚拟手机号失败，请稍后重试")
 
 def check_password_complexity(p: str):
     if len(p) < 8:
@@ -367,6 +431,166 @@ def wear_random_bp() -> int:
 def rng_ppm() -> int: return secrets.randbelow(1_000_000)
 def ppm(percent: float) -> int: return int(round(percent * 10_000))
 
+# ---- Visual Generator ----
+COLOR_PALETTE = [
+    {"hex": "#f06449", "name": "熔岩橙"},
+    {"hex": "#f9a620", "name": "流金黄"},
+    {"hex": "#ffd166", "name": "暖阳金"},
+    {"hex": "#ff6b6b", "name": "燃焰红"},
+    {"hex": "#ef476f", "name": "曦粉"},
+    {"hex": "#5b5f97", "name": "紫曜蓝"},
+    {"hex": "#577590", "name": "风暴蓝"},
+    {"hex": "#118ab2", "name": "极地蓝"},
+    {"hex": "#06d6a0", "name": "量子绿"},
+    {"hex": "#0ead69", "name": "热带绿"},
+    {"hex": "#26547c", "name": "暗夜蓝"},
+    {"hex": "#4cc9f0", "name": "星辉青"},
+    {"hex": "#845ec2", "name": "霓虹紫"},
+    {"hex": "#ff9671", "name": "霞光橘"},
+    {"hex": "#ffc75f", "name": "琥珀金"},
+    {"hex": "#d65db1", "name": "星云粉"},
+    {"hex": "#4b8b3b", "name": "密林绿"},
+    {"hex": "#8c7ae6", "name": "暮光紫"},
+    {"hex": "#2f4858", "name": "石墨蓝"},
+]
+
+TEMPLATE_POOLS = {
+    "BRICK_PREMIUM": ["prism_flux", "ember_strata", "ion_tessellate"],
+    "BRICK_EXQUISITE": ["aurora_matrix", "nebula_glass", "ion_tessellate"],
+    "BRICK_DIAMOND": ["diamond_veil"],
+    "PURPLE": ["ion_glaze", "vapor_trace", "phase_shift"],
+    "BLUE": ["urban_mesh", "fiber_wave", "midnight_line"],
+    "GREEN": ["field_classic", "steel_ridge", "matte_guard"],
+}
+
+EFFECT_POOLS = {
+    "BRICK_PREMIUM": ["glow", "pulse", "sheen"],
+    "BRICK_EXQUISITE": ["glow", "pulse", "sparkle", "trail", "refraction"],
+    "BRICK_DIAMOND": ["sparkle", "refraction", "glow", "pulse", "trail"],
+    "PURPLE": ["glow", "sheen", "flux"],
+    "BLUE": ["sheen", "pulse"],
+    "GREEN": ["sheen"],
+}
+
+def _pick_color() -> Dict[str, str]:
+    base = secrets.choice(COLOR_PALETTE)
+    return {"hex": base["hex"], "name": base["name"]}
+
+def _ensure_unique_effects(options, min_count, max_count):
+    if not options:
+        return []
+    hi = min(len(options), max_count)
+    lo = min(min_count, hi)
+    if hi <= 0:
+        return []
+    if lo > hi:
+        lo = hi
+    count = lo if lo == hi else random.randint(lo, hi)
+    if count <= 0:
+        return []
+    return random.sample(options, count)
+
+def generate_visual_profile(rarity: str, exquisite: bool) -> Dict[str, object]:
+    body_layers = 2 if secrets.randbelow(100) < 55 else 1
+    body = [_pick_color() for _ in range(body_layers)]
+    attachments = [_pick_color()]
+
+    rarity = (rarity or "").upper()
+    template_key = "matte_guard"
+    effects_key = "GREEN"
+    hidden_template = False
+
+    if rarity == "BRICK":
+        if exquisite:
+            roll = secrets.randbelow(100)
+            if roll == 0:
+                template_key = secrets.choice(TEMPLATE_POOLS["BRICK_DIAMOND"])
+                effects_key = "BRICK_DIAMOND"
+                hidden_template = True
+            else:
+                pool = TEMPLATE_POOLS.get("BRICK_EXQUISITE") or TEMPLATE_POOLS["BRICK_PREMIUM"]
+                template_key = secrets.choice(pool)
+                effects_key = "BRICK_EXQUISITE"
+        else:
+            template_key = secrets.choice(TEMPLATE_POOLS["BRICK_PREMIUM"])
+            effects_key = "BRICK_PREMIUM"
+    elif rarity == "PURPLE":
+        template_key = secrets.choice(TEMPLATE_POOLS["PURPLE"])
+        effects_key = "PURPLE"
+    elif rarity == "BLUE":
+        template_key = secrets.choice(TEMPLATE_POOLS["BLUE"])
+        effects_key = "BLUE"
+    else:
+        template_key = secrets.choice(TEMPLATE_POOLS["GREEN"])
+        effects_key = "GREEN"
+
+    if effects_key == "BRICK_DIAMOND":
+        effects = _ensure_unique_effects(EFFECT_POOLS[effects_key], 4, 5)
+    elif rarity == "BRICK" and exquisite:
+        effects = _ensure_unique_effects(EFFECT_POOLS[effects_key], 3, 4)
+    elif rarity == "BRICK":
+        effects = _ensure_unique_effects(EFFECT_POOLS[effects_key], 1, 2)
+    else:
+        effects = _ensure_unique_effects(EFFECT_POOLS.get(effects_key, []), 0, 2)
+
+    return {
+        "body": body,
+        "attachments": attachments,
+        "template": template_key,
+        "hidden_template": hidden_template,
+        "effects": effects,
+    }
+
+def _load_json_field(raw: str, default):
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except Exception:
+        return default
+
+def ensure_visual(inv: Inventory) -> Dict[str, object]:
+    body = _load_json_field(inv.body_colors, [])
+    attachments = _load_json_field(inv.attachment_colors, [])
+    effects = _load_json_field(inv.effect_tags, [])
+    template = inv.template_name or "matte_guard"
+    hidden_template = bool(inv.hidden_template)
+    changed = False
+
+    if not body or not attachments:
+        profile = generate_visual_profile(inv.rarity, bool(inv.exquisite))
+        body = profile["body"]
+        attachments = profile["attachments"]
+        template = profile["template"]
+        effects = profile["effects"]
+        hidden_template = profile["hidden_template"]
+        inv.body_colors = json.dumps(body, ensure_ascii=False)
+        inv.attachment_colors = json.dumps(attachments, ensure_ascii=False)
+        inv.template_name = template
+        inv.effect_tags = json.dumps(effects, ensure_ascii=False)
+        inv.hidden_template = hidden_template
+        changed = True
+    else:
+        # 兼容旧版：如果 effect/template 缺失，生成默认值
+        if not template:
+            profile = generate_visual_profile(inv.rarity, bool(inv.exquisite))
+            template = profile["template"]
+            inv.template_name = template
+            if not effects:
+                effects = profile["effects"]
+                inv.effect_tags = json.dumps(effects, ensure_ascii=False)
+            inv.hidden_template = profile["hidden_template"]
+            changed = True
+
+    return {
+        "body": body,
+        "attachments": attachments,
+        "template": template,
+        "hidden_template": hidden_template,
+        "effects": effects,
+        "changed": changed,
+    }
+
 from pydantic import BaseModel as _BM
 class OddsOut(_BM):
     brick: float; purple: float; blue: float; green: float
@@ -407,35 +631,69 @@ def compute_odds(u: User, cfg: PoolConfig) -> OddsOut:
 # ------------------ Auth ------------------
 @app.post("/auth/register")
 def register(data: RegisterIn, db: Session = Depends(get_db)):
-    if db.query(User).filter_by(username=data.username).first():
+    username = (data.username or "").strip()
+    if not username:
+        raise HTTPException(400, "用户名不能为空")
+    if db.query(User).filter_by(username=username).first():
         raise HTTPException(400, "用户名已存在，请更换用户名")
 
-    # 手机号校验：以1开头11位
-    if not PHONE_RE.fullmatch(data.phone):
-        raise HTTPException(400, "手机号无效：必须以1开头且为11位纯数字")
-    # 不能占用已绑定手机号
-    if db.query(User).filter_by(phone=data.phone).first():
-        raise HTTPException(400, "手机号已被绑定，请使用其他手机号")
+    admin_mode = is_admin_mode_enabled(db)
 
-    # 先做密码强度校验（失败不消耗验证码）
+    # 先做密码强度校验（失败不消耗验证码/生成虚拟手机号）
     check_password_complexity(data.password)
 
-    # ★ 最后一步才校验并消耗“注册验证码”
-    if not verify_otp(db, data.phone, "register", data.reg_code):
-        raise HTTPException(401, "注册验证码错误或已过期")
+    if admin_mode:
+        phone = (data.phone or "").strip()
+        if not PHONE_RE.fullmatch(phone):
+            raise HTTPException(400, "手机号无效：必须以1开头且为11位纯数字")
+        if db.query(User).filter_by(phone=phone).first():
+            raise HTTPException(400, "手机号已被绑定，请使用其他手机号")
+        if not data.reg_code:
+            raise HTTPException(400, "缺少注册验证码")
+        if not verify_otp(db, phone, "register", data.reg_code):
+            raise HTTPException(401, "注册验证码错误或已过期")
 
-    u = User(username=data.username, phone=data.phone, password_hash=hash_pw(data.password))
-    db.add(u); db.commit()
+        u = User(username=username, phone=phone, password_hash=hash_pw(data.password))
+        db.add(u); db.commit()
 
-    # 若申请管理员：下发管理员验证码（写入 admin_pending）
-    try:
-        if data.want_admin:
-            put_admin_pending(data.username)
-            return {"ok": True, "admin_verify_required": True, "msg": "已申请管理员，请查看 sms_codes.txt 并在登录页验证"}
-    except NameError:
-        pass
+        # 若申请管理员：下发管理员验证码（写入 admin_pending）
+        try:
+            if data.want_admin:
+                put_admin_pending(username)
+                return {"ok": True, "admin_verify_required": True, "msg": "已申请管理员，请查看 sms_codes.txt 并在登录页验证"}
+        except NameError:
+            pass
 
-    return {"ok": True, "msg": "注册成功，请登录"}
+        return {"ok": True, "msg": "注册成功，请登录"}
+
+    # —— 管理员模式关闭：免验证码注册，自动发放 20000 法币 ——
+    phone_input = (data.phone or "").strip()
+    phone = None
+    if phone_input:
+        if not PHONE_RE.fullmatch(phone_input):
+            raise HTTPException(400, "手机号无效：必须以1开头且为11位纯数字")
+        if db.query(User).filter_by(phone=phone_input).first():
+            raise HTTPException(400, "手机号已被绑定，请使用其他手机号")
+        phone = phone_input
+    if not phone:
+        phone = _generate_virtual_phone(db)
+
+    u = User(
+        username=username,
+        phone=phone,
+        password_hash=hash_pw(data.password),
+        fiat=20000,
+        fast_reg=True,
+    )
+    db.add(u)
+    db.commit()
+
+    return {
+        "ok": True,
+        "msg": "注册成功，已自动发放 20000 法币",
+        "fast_track": True,
+        "fiat": u.fiat,
+    }
 
 
 @app.post("/auth/login/start")
@@ -444,17 +702,29 @@ def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
     if not u: raise HTTPException(401, "用户不存在")
     if not verify_pw(data.password, u.password_hash):
         raise HTTPException(401, "密码错误")
+    admin_mode = is_admin_mode_enabled(db)
+    otp_required = admin_mode and not bool(getattr(u, "fast_reg", False))
+
+    if not otp_required:
+        u.session_ver = int(u.session_ver or 0) + 1
+        db.commit()
+        token = mk_jwt(u.username, u.session_ver)
+        return {"ok": True, "token": token, "msg": "登录成功", "otp_required": False}
+
     # 60s 限流：同一手机号 login2
     _sms_rate_guard("login2", u.phone)
     code = f"{secrets.randbelow(1_000_000):06d}"
     write_sms_line(u.phone, code, "login2")
     save_otp(db, u.phone, "login2", code)
-    return {"ok": True, "msg": "验证码已发送到绑定手机号（查看 sms_codes.txt）"}
+    return {"ok": True, "msg": "验证码已发送到绑定手机号（查看 sms_codes.txt）", "otp_required": True}
 
 @app.post("/auth/login/verify")
 def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
     u = db.query(User).filter_by(username=data.username).first()
     if not u: raise HTTPException(401, "用户不存在")
+    admin_mode = is_admin_mode_enabled(db)
+    if not admin_mode or bool(getattr(u, "fast_reg", False)):
+        raise HTTPException(400, "当前模式无需验证码登录")
     if not verify_otp(db, u.phone, "login2", data.code):
         raise HTTPException(401, "验证码错误或已过期")
     # ★ 每次登录成功都会话版本 +1
@@ -469,6 +739,12 @@ def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
 def send_code(inp: SendCodeIn, db: Session = Depends(get_db)):
     phone = inp.phone
     purpose = inp.purpose  # "login" | "reset" | "register"
+
+    admin_mode = is_admin_mode_enabled(db)
+    if purpose == "register" and not admin_mode:
+        raise HTTPException(400, "当前注册无需验证码")
+    if purpose in ("login", "reset") and not admin_mode:
+        raise HTTPException(400, "当前模式无需短信验证码")
 
     # 基本格式校验
     if not PHONE_RE.fullmatch(phone):
@@ -498,6 +774,8 @@ def send_code(inp: SendCodeIn, db: Session = Depends(get_db)):
 
 @app.post("/auth/reset-password")
 def reset_password(inp: ResetPwdIn, db: Session = Depends(get_db)):
+    if not is_admin_mode_enabled(db):
+        raise HTTPException(400, "当前模式不支持短信重置密码")
     u = db.query(User).filter_by(phone=inp.phone).first()
     if not u: raise HTTPException(404, "手机号尚未注册")
     if not verify_otp(db, inp.phone, "reset", inp.code):
@@ -506,6 +784,11 @@ def reset_password(inp: ResetPwdIn, db: Session = Depends(get_db)):
     u.password_hash = hash_pw(inp.new_password)
     db.commit()
     return {"ok": True, "msg": "密码已重置，请使用新密码登录"}
+
+
+@app.get("/auth/mode")
+def auth_mode(db: Session = Depends(get_db)):
+    return {"admin_mode": is_admin_mode_enabled(db)}
 
 @app.get("/me")
 def me(user: User = Depends(user_from_token)):
@@ -623,11 +906,17 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
         exquisite = (secrets.randbelow(100) < 15) if rarity == "BRICK" else False
         wear_bp = wear_random_bp()
         grade = grade_from_wear_bp(wear_bp)
+        profile = generate_visual_profile(skin.rarity, exquisite)
 
         inv = Inventory(
             user_id=user.id, skin_id=skin.skin_id, name=skin.name, rarity=skin.rarity,
             exquisite=exquisite, wear_bp=wear_bp, grade=grade, serial="",
-            acquired_at=int(time.time())
+            acquired_at=int(time.time()),
+            body_colors=json.dumps(profile["body"], ensure_ascii=False),
+            attachment_colors=json.dumps(profile["attachments"], ensure_ascii=False),
+            template_name=profile["template"],
+            effect_tags=json.dumps(profile["effects"], ensure_ascii=False),
+            hidden_template=profile["hidden_template"],
         )
         db.add(inv); db.flush()
         inv.serial = f"{inv.id:08d}"
@@ -635,7 +924,17 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
         results.append({
             "inv_id": inv.id,
             "skin_id": skin.skin_id, "name": skin.name, "rarity": skin.rarity,
-            "exquisite": exquisite, "wear": f"{wear_bp/100:.2f}", "grade": grade, "serial": inv.serial
+            "exquisite": exquisite, "wear": f"{wear_bp/100:.2f}", "grade": grade, "serial": inv.serial,
+            "template": profile["template"],
+            "hidden_template": profile["hidden_template"],
+            "effects": profile["effects"],
+            "visual": {
+                "body": profile["body"],
+                "attachments": profile["attachments"],
+                "template": profile["template"],
+                "hidden_template": profile["hidden_template"],
+                "effects": profile["effects"],
+            },
         })
 
     db.commit()
@@ -658,7 +957,18 @@ def inventory(
 
     rows = q.order_by(Inventory.id.desc()).all()
     items = []
+    changed = False
     for x in rows:
+        vis = ensure_visual(x)
+        changed = changed or vis["changed"]
+        visual_payload = {
+            "body": vis["body"],
+            "attachments": vis["attachments"],
+            "template": vis["template"],
+            "hidden_template": vis["hidden_template"],
+            "effects": vis["effects"],
+        }
+
         items.append({
             "inv_id": x.id,
             "skin_id": x.skin_id, "name": x.name, "rarity": x.rarity,
@@ -668,8 +978,14 @@ def inventory(
             "serial": x.serial,
             "acquired_at": x.acquired_at,
             "on_market": x.on_market,               # 继续返回状态，前端可用来显示角标
-            "status": "on_market" if x.on_market else "in_bag"
+            "status": "on_market" if x.on_market else "in_bag",
+            "template": vis["template"],
+            "hidden_template": vis["hidden_template"],
+            "effects": vis["effects"],
+            "visual": visual_payload,
         })
+    if changed:
+        db.commit()
     return {"count": len(items), "items": items}
 
 
@@ -686,7 +1002,18 @@ def inventory_by_color(
     rows = q.all()
 
     grouped = {"BRICK": [], "PURPLE": [], "BLUE": [], "GREEN": []}
+    changed = False
     for x in rows:
+        vis = ensure_visual(x)
+        changed = changed or vis["changed"]
+        visual_payload = {
+            "body": vis["body"],
+            "attachments": vis["attachments"],
+            "template": vis["template"],
+            "hidden_template": vis["hidden_template"],
+            "effects": vis["effects"],
+        }
+
         grouped[x.rarity].append({
             "inv_id": x.id,
             "skin_id": x.skin_id, "name": x.name, "rarity": x.rarity,
@@ -696,9 +1023,15 @@ def inventory_by_color(
             "serial": x.serial,
             "acquired_at": x.acquired_at,
             "on_market": x.on_market,
-            "status": "on_market" if x.on_market else "in_bag"
+            "status": "on_market" if x.on_market else "in_bag",
+            "template": vis["template"],
+            "hidden_template": vis["hidden_template"],
+            "effects": vis["effects"],
+            "visual": visual_payload,
         })
     summary = {r: len(v) for r, v in grouped.items()}
+    if changed:
+        db.commit()
     return {"summary": summary, "buckets": grouped}
 
 # ------------------ Crafting ------------------
@@ -729,11 +1062,17 @@ def craft_compose(inp: ComposeIn,
     skin = pick_skin(db, to_rarity)
     exquisite = (secrets.randbelow(100) < 15) if to_rarity == "BRICK" else False
     grade = grade_from_wear_bp(avg_bp)
+    profile = generate_visual_profile(skin.rarity, exquisite)
 
     inv = Inventory(
         user_id=user.id, skin_id=skin.skin_id, name=skin.name, rarity=skin.rarity,
         exquisite=exquisite, wear_bp=avg_bp, grade=grade, serial="",
-        acquired_at=int(time.time())
+        acquired_at=int(time.time()),
+        body_colors=json.dumps(profile["body"], ensure_ascii=False),
+        attachment_colors=json.dumps(profile["attachments"], ensure_ascii=False),
+        template_name=profile["template"],
+        effect_tags=json.dumps(profile["effects"], ensure_ascii=False),
+        hidden_template=profile["hidden_template"],
     )
     db.add(inv); db.flush()
     inv.serial = f"{inv.id:08d}"
@@ -741,7 +1080,17 @@ def craft_compose(inp: ComposeIn,
     return {"ok": True, "result": {
         "inv_id": inv.id,
         "skin_id": skin.skin_id, "name": skin.name, "rarity": skin.rarity,
-        "exquisite": exquisite, "wear": f"{avg_bp/100:.2f}", "grade": grade, "serial": inv.serial
+        "exquisite": exquisite, "wear": f"{avg_bp/100:.2f}", "grade": grade, "serial": inv.serial,
+        "template": profile["template"],
+        "hidden_template": profile["hidden_template"],
+        "effects": profile["effects"],
+        "visual": {
+            "body": profile["body"],
+            "attachments": profile["attachments"],
+            "template": profile["template"],
+            "hidden_template": profile["hidden_template"],
+            "effects": profile["effects"],
+        }
     }}
 
 # ------------------ Market 交易行 ------------------
@@ -807,12 +1156,29 @@ def market_my(user: User = Depends(user_from_token), db: Session = Depends(get_d
     q = db.query(MarketItem, Inventory).join(Inventory, MarketItem.inv_id==Inventory.id)\
         .filter(MarketItem.active==True, MarketItem.user_id==user.id, Inventory.on_market==True)
     items = []
+    changed = False
     for mi, inv in q.all():
+        vis = ensure_visual(inv)
+        changed = changed or vis["changed"]
+        visual_payload = {
+            "body": vis["body"],
+            "attachments": vis["attachments"],
+            "template": vis["template"],
+            "hidden_template": vis["hidden_template"],
+            "effects": vis["effects"],
+        }
+
         items.append({
             "market_id": mi.id, "price": mi.price, "created_at": mi.created_at,
             "name": inv.name, "rarity": inv.rarity, "exquisite": bool(inv.exquisite),
-            "grade": inv.grade, "wear": round(inv.wear_bp/100, 2), "serial": inv.serial, "inv_id": inv.id
+            "grade": inv.grade, "wear": round(inv.wear_bp/100, 2), "serial": inv.serial, "inv_id": inv.id,
+            "template": vis["template"],
+            "hidden_template": vis["hidden_template"],
+            "effects": vis["effects"],
+            "visual": visual_payload,
         })
+    if changed:
+        db.commit()
     return {"count": len(items), "items": items}
 
 @app.post("/market/delist/{market_id}")
@@ -860,13 +1226,28 @@ def market_browse(rarity: Optional[RarityT] = None,
         q = q.order_by(MarketItem.created_at.desc())
 
     out: List[MarketBrowseOut] = []
+    changed = False
     for mi, inv, seller in q.all():
+        vis = ensure_visual(inv)
+        changed = changed or vis["changed"]
+        visual_payload = {
+            "body": vis["body"],
+            "attachments": vis["attachments"],
+            "template": vis["template"],
+            "hidden_template": vis["hidden_template"],
+            "effects": vis["effects"],
+        }
+
         out.append(MarketBrowseOut(
             id=mi.id, inv_id=inv.id, seller=seller.username, price=mi.price,
             name=inv.name, skin_id=inv.skin_id, rarity=inv.rarity,
             exquisite=bool(inv.exquisite), grade=inv.grade,
-            wear=round(inv.wear_bp/100, 2), serial=inv.serial, created_at=mi.created_at
+            wear=round(inv.wear_bp/100, 2), serial=inv.serial, created_at=mi.created_at,
+            template=vis["template"], hidden_template=vis["hidden_template"],
+            effects=vis["effects"], visual=visual_payload
         ))
+    if changed:
+        db.commit()
     return {"count": len(out), "items": [o.dict() for o in out]}
 
 @app.post("/market/buy/{market_id}")
@@ -1238,6 +1619,32 @@ def admin_sms_log(limit: int = 200, admin=_Depends(_require_admin)):
 
 
 
+@ext.get("/admin/auth-mode")
+def admin_auth_mode(admin=_Depends(_require_admin)):
+    db = SessionLocal()
+    try:
+        return {"admin_mode": is_admin_mode_enabled(db)}
+    finally:
+        db.close()
+
+
+@ext.post("/admin/auth-mode")
+def admin_set_auth_mode(payload: dict, admin=_Depends(_require_admin)):
+    raw = (payload or {}).get("enabled")
+    if raw is None:
+        raise _HTTPException(400, "enabled required")
+    if isinstance(raw, str):
+        enabled = raw.lower() in ("1", "true", "yes", "on")
+    else:
+        enabled = bool(raw)
+    db = SessionLocal()
+    try:
+        set_admin_mode(db, enabled)
+    finally:
+        db.close()
+    return {"ok": True, "admin_mode": enabled}
+
+
 # 管理员：搜索用户
 @ext.get("/admin/users")
 def admin_users(q: _Optional[str]=None, page: int=1, page_size: int=20, admin=_Depends(_require_admin)):
@@ -1245,11 +1652,11 @@ def admin_users(q: _Optional[str]=None, page: int=1, page_size: int=20, admin=_D
     con=_conn(); cur=con.cursor()
     if q:
       qq = f"%{q}%"
-      cur.execute("""SELECT username, phone, fiat, coins, is_admin FROM users
+      cur.execute("""SELECT username, phone, fiat, coins, is_admin, fast_reg FROM users
                      WHERE username LIKE ? OR phone LIKE ?
                      ORDER BY id DESC LIMIT ? OFFSET ?""", (qq, qq, page_size, off))
     else:
-      cur.execute("""SELECT username, phone, fiat, coins, is_admin FROM users
+      cur.execute("""SELECT username, phone, fiat, coins, is_admin, fast_reg FROM users
                      ORDER BY id DESC LIMIT ? OFFSET ?""", (page_size, off))
     items=[dict(r) for r in cur.fetchall()]
     con.close()
@@ -1406,3 +1813,8 @@ except Exception:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+class FeatureFlag(Base):
+    __tablename__ = "feature_flags"
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=False)
+

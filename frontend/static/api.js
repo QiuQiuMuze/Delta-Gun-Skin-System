@@ -90,6 +90,8 @@ register: (username, phone, code, password, want_admin = false) =>
   loginVerify: (username, code) =>
     API.json("/auth/login/verify", "POST", { username, code }),
 
+  authMode: () => API.json("/auth/mode"),
+
   // 通用短信（目前用于“重置密码”）
   sendCode: (phone, purpose) =>
     API.json("/auth/send-code", "POST", { phone, purpose }),
@@ -186,6 +188,11 @@ register: (username, phone, code, password, want_admin = false) =>
 
   adminDeleteUserConfirm: (target_username, code) =>
     API.json("/admin/delete-user/confirm", "POST", { target_username, code }),
+
+  adminGetAuthMode: () => API.json("/admin/auth-mode"),
+
+  adminSetAuthMode: (enabled) =>
+    API.json("/admin/auth-mode", "POST", { enabled }),
 
 
 
