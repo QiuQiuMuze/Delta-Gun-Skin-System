@@ -1,7 +1,8 @@
 const AuthPage = {
+  _quickMode: false,
   render() {
     return `
-    <div class="card"><h2>登录</h2>
+    <div class="card" id="login-card"><h2>登录</h2>
       <div class="input-row">
         <input id="login-u" placeholder="用户名"/>
         <input id="login-p" type="password" placeholder="密码"/>
@@ -17,17 +18,17 @@ const AuthPage = {
       </div>
     </div>
 
-    <div class="card"><h2>注册</h2>
-      <div class="input-row">
+    <div class="card" id="register-card"><h2>注册</h2>
+      <div class="input-row" id="reg-phone-row">
         <input id="reg-u" placeholder="用户名"/>
         <input id="reg-phone" placeholder="手机号（1开头11位）"/>
         <button class="btn" id="reg-send-code">获取验证码(注册)</button>
       </div>
-      <div class="input-row">
+      <div class="input-row" id="reg-code-row">
         <input id="reg-code" placeholder="短信验证码"/>
         <input id="reg-p" type="password" placeholder="密码（强度校验）"/>
       </div>
-      <div class="input-row">
+      <div class="input-row" id="reg-admin-row">
         <label><input id="reg-admin" type="checkbox"/> 申请管理员</label>
       </div>
       <div class="input-row">
@@ -37,10 +38,11 @@ const AuthPage = {
         <input id="admin-code" placeholder="管理员验证码（注册第二步）"/>
         <button class="btn" id="admin-verify">提交验证码成为管理员</button>
       </div>
-      <div class="muted">先点“获取验证码(注册)”收到短信，再填写验证码完成注册。若勾选“申请管理员”，注册后会再下发一个管理员验证码，需要额外验证。</div>
+      <div id="quick-tip" class="muted" style="display:none"></div>
+      <div class="muted" id="reg-guide">先点“获取验证码(注册)”收到短信，再填写验证码完成注册。若勾选“申请管理员”，注册后会再下发一个管理员验证码，需要额外验证。</div>
     </div>
 
-    <div class="card"><h2>重置密码</h2>
+    <div class="card" id="reset-card"><h2>重置密码</h2>
       <div class="input-row">
         <input id="rp-phone" placeholder="绑定手机号"/>
         <button class="btn" id="rp-send">发送验证码</button>
@@ -56,6 +58,41 @@ const AuthPage = {
   bind() {
     let loginUser = "";
     let regAdminUser = "";
+
+    const applyQuickMode = (enabled) => {
+      const on = !!enabled;
+      AuthPage._quickMode = on;
+      const rows = ["reg-phone-row", "reg-code-row", "reg-admin-row"];
+      rows.forEach((id) => {
+        const el = byId(id);
+        if (el) el.style.display = on ? "none" : "";
+      });
+      const sendBtn = byId("reg-send-code");
+      if (sendBtn) sendBtn.disabled = on;
+      const quickTip = byId("quick-tip");
+      if (quickTip) {
+        if (on) {
+          quickTip.style.display = "";
+          quickTip.textContent = "已开启快速注册：只需填写用户名和密码，提交后将自动登录，并在昵称后附加★且赠送 20000 法币。";
+        } else {
+          quickTip.style.display = "none";
+          quickTip.textContent = "";
+        }
+      }
+      const regGuide = byId("reg-guide");
+      if (regGuide) regGuide.style.display = on ? "none" : "";
+      const resetCard = byId("reset-card");
+      if (resetCard) resetCard.style.display = on ? "none" : "";
+    };
+
+    (async () => {
+      try {
+        const status = await API.quickRegisterStatus();
+        applyQuickMode(!!status.enabled);
+      } catch (_) {
+        applyQuickMode(false);
+      }
+    })();
 
     // ===== 登录两步 =====
     byId("login-btn").onclick = async () => {
@@ -82,6 +119,10 @@ const AuthPage = {
 
     // ===== 注册：发送注册验证码 =====
     byId("reg-send-code").onclick = async () => {
+      if (AuthPage._quickMode) {
+        alert("当前已开启快速注册，无需短信验证码。");
+        return;
+      }
       const ph = byId("reg-phone").value.trim();
       if (!ph) return alert("请输入手机号");
       try {
@@ -93,16 +134,31 @@ const AuthPage = {
     // ===== 注册提交（带 code）=====
     byId("reg-btn").onclick = async () => {
       const u = byId("reg-u").value.trim();
+      const pw = byId("reg-p").value;
+      if (AuthPage._quickMode) {
+        if (!u || !pw) return alert("请输入用户名和密码");
+        try {
+          const r = await API.register(u, "", "", pw, false, true);
+          if (r && r.token) {
+            API.setToken(r.token);
+            alert("快速注册成功，已自动登录");
+            location.hash = "#/me";
+          } else {
+            alert("快速注册成功");
+          }
+        } catch (e) { alert(e.message); }
+        return;
+      }
+
       const ph = byId("reg-phone").value.trim();
       const code = byId("reg-code").value.trim();
-      const pw = byId("reg-p").value;
       const want_admin = !!byId("reg-admin").checked;
 
       if (!u || !ph || !code || !pw)
         return alert("请填写完整信息再注册");
 
       try {
-        const r = await API.register(u, ph, code, pw, want_admin);
+        const r = await API.register(u, ph, code, pw, want_admin, false);
         if (want_admin) {
           regAdminUser = u;
           byId("admin-verify-box").style.display = "";

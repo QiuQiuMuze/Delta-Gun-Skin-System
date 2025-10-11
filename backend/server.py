@@ -112,6 +112,11 @@ class MarketItem(Base):
     created_at = Column(Integer, default=lambda: int(time.time()))
     active = Column(Boolean, default=True)
 
+class FeatureFlag(Base):
+    __tablename__ = "feature_flags"
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=False, default="0")
+
 def _ensure_user_sessionver():
     con = sqlite3.connect(DB_PATH_FS)
     cur = con.cursor()
@@ -144,6 +149,58 @@ Base.metadata.create_all(engine)
 _ensure_user_sessionver()
 _ensure_inventory_visual_columns()
 
+# ------------------ Feature Flags ------------------
+QUICK_REGISTER_FLAG = "quick_register_enabled"
+
+def _get_flag(db: Session, key: str) -> Optional[FeatureFlag]:
+    return db.query(FeatureFlag).filter_by(key=key).first()
+
+def is_quick_register_enabled(db: Optional[Session] = None) -> bool:
+    close_after = False
+    if db is None:
+        db = SessionLocal()
+        close_after = True
+    try:
+        flag = _get_flag(db, QUICK_REGISTER_FLAG)
+        return bool(flag and str(flag.value) == "1")
+    finally:
+        if close_after:
+            db.close()
+
+def set_quick_register_enabled(enabled: bool, db: Optional[Session] = None) -> None:
+    close_after = False
+    if db is None:
+        db = SessionLocal()
+        close_after = True
+    try:
+        flag = _get_flag(db, QUICK_REGISTER_FLAG)
+        val = "1" if enabled else "0"
+        if flag:
+            flag.value = val
+        else:
+            db.add(FeatureFlag(key=QUICK_REGISTER_FLAG, value=val))
+        db.commit()
+    finally:
+        if close_after:
+            db.close()
+
+def _ensure_star_username(db: Session, raw_username: str) -> str:
+    base = (raw_username or "").strip()
+    if not base:
+        raise HTTPException(400, "用户名不能为空")
+    if base.endswith("★"):
+        base = base[:-1]
+    base = base or "玩家"
+    candidate = base + "★"
+    suffix = 2
+    while db.query(User).filter_by(username=candidate).first():
+        candidate = f"{base}{suffix}★"
+        suffix += 1
+    return candidate
+
+def _gen_quick_phone() -> str:
+    return f"quick:{int(time.time()*1000)}:{secrets.token_hex(4)}"
+
 # ------------------ Pydantic ------------------
 RarityT = Literal["BRICK", "PURPLE", "BLUE", "GREEN"]
 
@@ -154,6 +211,8 @@ class RegisterIn(BaseModel):
     reg_code: str  # ★ 新增：注册短信验证码
     # 新增：是否申请管理员（默认否，保持兼容）
     want_admin: bool = False
+    # 快速注册标记（默认 False，保持兼容）
+    quick_mode: bool = False
 
 class LoginStartIn(BaseModel):
     username: str
@@ -595,6 +654,30 @@ def compute_odds(u: User, cfg: PoolConfig) -> OddsOut:
 # ------------------ Auth ------------------
 @app.post("/auth/register")
 def register(data: RegisterIn, db: Session = Depends(get_db)):
+    quick_enabled = is_quick_register_enabled(db)
+    if quick_enabled and data.quick_mode:
+        check_password_complexity(data.password)
+        username = _ensure_star_username(db, data.username)
+        quick_phone = _gen_quick_phone()
+        u = User(
+            username=username,
+            phone=quick_phone,
+            password_hash=hash_pw(data.password),
+            fiat=20000,
+        )
+        u.session_ver = int(u.session_ver or 0) + 1
+        db.add(u)
+        db.commit()
+        token = mk_jwt(u.username, u.session_ver)
+        return {
+            "ok": True,
+            "msg": "快速注册成功，已自动登录",
+            "quick_login": True,
+            "token": token,
+            "username": u.username,
+            "fiat": u.fiat,
+        }
+
     if db.query(User).filter_by(username=data.username).first():
         raise HTTPException(400, "用户名已存在，请更换用户名")
 
@@ -1318,6 +1401,20 @@ def _require_admin(u=_Depends(_require_user)):
     if not bool(u["is_admin"]):
         raise _HTTPException(403, "Forbidden")
     return u
+
+@ext.get("/public/quick-register")
+def public_quick_register_status():
+    return {"enabled": is_quick_register_enabled()}
+
+@ext.post("/admin/quick-register")
+def admin_set_quick_register(payload: dict, admin=_Depends(_require_admin)):
+    raw = (payload or {}).get("enabled")
+    if isinstance(raw, str):
+        enabled = raw.lower() in ("1", "true", "yes", "on")
+    else:
+        enabled = bool(raw)
+    set_quick_register_enabled(enabled)
+    return {"ok": True, "enabled": enabled}
 
 # 注册 want_admin=true 之后，前端可调用此接口提交验证码成为管理员
 @ext.post("/auth/admin-verify")
