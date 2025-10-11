@@ -88,6 +88,51 @@ const GachaPage = {
     if (list.some(x=>x.rarity==="BLUE")) return "BLUE";
     return "GREEN";
   },
+  _tableHead() {
+    return `<thead><tr><th>名称</th><th>外观</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>`;
+  },
+  _renderPreviewCell(x, opts = {}) {
+    if (!window.SkinVisuals) return "-";
+    const visual = x.visual || {
+      body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects
+    };
+    const html = SkinVisuals.render(visual, { compact: true, meta: opts.metaText ?? false });
+    return `<div class="market-preview-cell">${html}</div>`;
+  },
+  _visualMeta(x) {
+    if (!window.SkinVisuals) return "";
+    const info = SkinVisuals.describe(x.visual || {
+      body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects
+    });
+    const parts = [
+      `主体：${info.bodyText}`,
+      `配件：${info.attachmentText}`
+    ];
+    const meta = SkinVisuals.formatMeta(x.visual || {
+      body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects
+    });
+    parts.push(meta);
+    return parts.join(" · ");
+  },
+  _rowHTML(x) {
+    const rc = this._rarityClass(x.rarity);
+    const gc = this._gradeClass(x.grade);
+    const exBadge = x.rarity==="BRICK"
+      ? (x.exquisite ? `<span class="badge badge-exq">极品</span>`
+                     : `<span class="badge badge-prem">优品</span>` )
+      : "-";
+    const previewMeta = this._visualMeta(x);
+    const preview = this._renderPreviewCell(x, { metaText: previewMeta });
+    return `
+      <td class="${rc}">${x.name}</td>
+      <td>${preview}</td>
+      <td class="${rc}">${x.rarity}</td>
+      <td>${exBadge}</td>
+      <td>${x.wear}</td>
+      <td class="${gc}">${x.grade}</td>
+      <td>${x.serial}</td>
+    `;
+  },
   _showStage(html) { byId("open-stage").innerHTML = html; },
 
   async _open() {
@@ -170,13 +215,18 @@ const GachaPage = {
         ? `<span class="badge badge-exq">极品</span>`
         : `<span class="badge badge-prem">优品</span>`;
       item.innerHTML += `<div class="row-reveal">鉴定：${badge}</div>`;
+
+      if (window.SkinVisuals) {
+        const meta = this._visualMeta(b);
+        item.innerHTML += `<div class="row-reveal">${SkinVisuals.render(b.visual, { label: b.name, meta: meta })}</div>`;
+      }
     }
 
     // 结束砖皮鉴定，展示汇总表：先列砖皮，再逐条翻其它
     const tblHead = `
       <div class="card fade-in">
         <table class="table">
-          <thead><tr><th>名称</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
+          ${this._tableHead()}
           <tbody id="rev-body"></tbody>
         </table>
       </div>`;
@@ -187,13 +237,7 @@ const GachaPage = {
     for (const b of bricks) {
       const tr = document.createElement("tr");
       tr.className = "row-reveal";
-      tr.innerHTML = `
-        <td class="hl-orange">${b.name}</td>
-        <td class="hl-orange">BRICK</td>
-        <td>${b.exquisite ? `<span class="badge badge-exq">极品</span>` : `<span class="badge badge-prem">优品</span>`}</td>
-        <td>${b.wear}</td>
-        <td class="${this._gradeClass(b.grade)}">${b.grade}</td>
-        <td>${b.serial}</td>`;
+      tr.innerHTML = this._rowHTML(b);
       body.appendChild(tr);
       await this._sleep(120); // 轻微间隔
     }
@@ -209,7 +253,7 @@ const GachaPage = {
       byId("open-result").innerHTML = `
         <div class="card fade-in">
           <table class="table">
-            <thead><tr><th>名称</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
+            ${this._tableHead()}
             <tbody id="rev-body"></tbody>
           </table>
         </div>`;
@@ -226,21 +270,9 @@ const GachaPage = {
         return;
       }
       const x = list[i++];
-      const rc = this._rarityClass(x.rarity);
-      const gc = this._gradeClass(x.grade);
-      const exBadge = x.rarity==="BRICK"
-        ? (x.exquisite ? `<span class="badge badge-exq">极品</span>`
-                       : `<span class="badge badge-prem">优品</span>` )
-        : "-";
       const tr = document.createElement("tr");
       tr.className = "row-reveal";
-      tr.innerHTML = `
-        <td class="${rc}">${x.name}</td>
-        <td class="${rc}">${x.rarity}</td>
-        <td>${exBadge}</td>
-        <td>${x.wear}</td>
-        <td class="${gc}">${x.grade}</td>
-        <td>${x.serial}</td>`;
+      tr.innerHTML = this._rowHTML(x);
       body.appendChild(tr);
       this._timer = setTimeout(step, Math.min(650, 250 + i*25));
     };
@@ -252,27 +284,14 @@ const GachaPage = {
     byId("skip").style.display = "none";
 
     const rows = list.map(x=>{
-      const rc = this._rarityClass(x.rarity);
-      const gc = this._gradeClass(x.grade);
-      const exBadge = x.rarity==="BRICK"
-        ? (x.exquisite ? `<span class="badge badge-exq">极品</span>`
-                       : `<span class="badge badge-prem">优品</span>` )
-        : "-";
-      return `<tr>
-        <td class="${rc}">${x.name}</td>
-        <td class="${rc}">${x.rarity}</td>
-        <td>${exBadge}</td>
-        <td>${x.wear}</td>
-        <td class="${gc}">${x.grade}</td>
-        <td>${x.serial}</td>
-      </tr>`;
+      return `<tr>${this._rowHTML(x)}</tr>`;
     }).join("");
 
     byId("open-stage").innerHTML = "";
     byId("open-result").innerHTML = `
       <div class="card fade-in">
         <table class="table">
-          <thead><tr><th>名称</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
+          ${this._tableHead()}
           <tbody>${rows}</tbody>
         </table>
       </div>`;
