@@ -19,14 +19,16 @@ const AuthPage = {
     </div>
 
     <div class="card" id="register-card"><h2>注册</h2>
-      <div class="input-row" id="reg-phone-row">
+      <div class="input-row" id="reg-basic-row">
         <input id="reg-u" placeholder="用户名"/>
+        <input id="reg-p" type="password" placeholder="密码（强度校验）"/>
+      </div>
+      <div class="input-row" id="reg-phone-row">
         <input id="reg-phone" placeholder="手机号（1开头11位）"/>
         <button class="btn" id="reg-send-code">获取验证码(注册)</button>
       </div>
       <div class="input-row" id="reg-code-row">
         <input id="reg-code" placeholder="短信验证码"/>
-        <input id="reg-p" type="password" placeholder="密码（强度校验）"/>
       </div>
       <div class="input-row" id="reg-admin-row">
         <label><input id="reg-admin" type="checkbox"/> 申请管理员</label>
