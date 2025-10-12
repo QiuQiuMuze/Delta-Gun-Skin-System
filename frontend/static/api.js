@@ -84,7 +84,8 @@ const API = {
   register: (username, phone, code, password, want_admin = false, quick_mode = false) =>
   API.json("/auth/register", "POST", { username, phone, reg_code: code, password, want_admin, quick_mode }),
 
-  quickRegisterStatus: () => API.json("/public/quick-register"),
+  quickRegisterStatus: () =>
+    API.json(`/public/quick-register?t=${Date.now()}`),
 
   loginStart: (username, password) =>
     API.json("/auth/login/start", "POST", { username, password }),
