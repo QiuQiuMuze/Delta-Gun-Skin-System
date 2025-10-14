@@ -283,8 +283,13 @@ const GachaPage = {
     if (this._timer) { clearTimeout(this._timer); this._timer = null; }
     byId("skip").style.display = "none";
 
-    const bricks = list.filter(x=>x.rarity === "BRICK");
-    const others = list.filter(x=>x.rarity !== "BRICK");
+    const bricks = [];
+    const others = [];
+    for (const item of list) {
+      const rarity = String(item.rarity || "").toUpperCase();
+      if (rarity === "BRICK") bricks.push(item);
+      else others.push(item);
+    }
     const ordered = [...bricks, ...others];
     const rows = ordered.map(x=>`<tr>${this._rowHTML(x)}</tr>`).join("");
     const brickNote = bricks.length
