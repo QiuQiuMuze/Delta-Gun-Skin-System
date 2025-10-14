@@ -277,12 +277,48 @@ const CraftPage = {
       byId("craft-stage").appendChild(box);
       const inspect = byId("inspect");
 
+      const wrap = document.createElement("div");
+      wrap.className = "glow orange fade-in";
+      inspect.appendChild(wrap);
+
+      const titleRow = document.createElement("div");
+      titleRow.className = "row-reveal";
+      titleRow.innerHTML = `<span class="spinner"></span>发现砖皮`;
+      wrap.appendChild(titleRow);
+
       await this._sleep(400); if (this._skip) return this._revealCraftAll(r);
-      inspect.innerHTML += `<div class="row-reveal">名称：<span class="hl-orange">${r.name}</span></div>`;
+      titleRow.innerHTML = `名称：<span class="hl-orange">${r.name}</span>`;
+
       await this._sleep(500); if (this._skip) return this._revealCraftAll(r);
-      inspect.innerHTML += `<div class="row-reveal">磨损：${r.wear}</div>`;
+      const wearRow = document.createElement("div");
+      wearRow.className = "row-reveal";
+      wearRow.innerHTML = `磨损：<span class="wear-value">0.000</span>`;
+      wrap.appendChild(wearRow);
+      const wearValue = wearRow.querySelector(".wear-value");
+      this._animateWear(wearValue, r.wear);
+
       await this._sleep(600); if (this._skip) return this._revealCraftAll(r);
-      inspect.innerHTML += `<div class="row-reveal">鉴定：${r.exquisite ? `<span class="badge badge-exq">极品</span>` : `<span class="badge badge-prem">优品</span>`}</div>`;
+      const suspenseNode = this._buildSuspenseRow();
+      wrap.appendChild(suspenseNode);
+      await this._sleep(r.exquisite ? 1200 : 900); if (this._skip) return this._revealCraftAll(r);
+      suspenseNode.remove();
+
+      const judgeRow = document.createElement("div");
+      judgeRow.className = "row-reveal";
+      judgeRow.innerHTML = `鉴定：${r.exquisite ? `<span class="badge badge-exq">极品</span>` : `<span class="badge badge-prem">优品</span>`}`;
+      wrap.appendChild(judgeRow);
+
+      if (window.SkinVisuals) {
+        await this._sleep(300); if (this._skip) return this._revealCraftAll(r);
+        const meta = this._visualMeta(r);
+        const previewRow = document.createElement("div");
+        previewRow.className = "row-reveal";
+        const visual = r.visual || {
+          body: [], attachments: [], template: r.template, hidden_template: r.hidden_template, effects: r.effects
+        };
+        previewRow.innerHTML = SkinVisuals.render(visual, { label: r.name, meta: meta });
+        wrap.appendChild(previewRow);
+      }
 
       await this._sleep(500);
       this._revealCraftTable(r);
@@ -331,6 +367,40 @@ const CraftPage = {
     const resultBox = byId("craft-result");
     resultBox.innerHTML = "";
     resultBox.appendChild(wrap);
+  },
+
+  _buildSuspenseRow() {
+    const wrap = document.createElement("div");
+    wrap.className = "row-reveal suspense-wrap";
+    wrap.innerHTML = `<div class="suspense-glow"><span class="spinner"></span>鉴定中...</div>`;
+    return wrap;
+  },
+
+  _animateWear(el, value, duration = 1200) {
+    if (!el) return;
+    const final = typeof value === "number" ? value : parseFloat(value);
+    if (!isFinite(final)) {
+      el.textContent = value ?? "-";
+      return;
+    }
+    el.textContent = "0.000";
+    const start = performance.now();
+    const total = Math.max(400, duration);
+    const ease = (t) => 1 - Math.pow(1 - t, 2);
+    const self = this;
+    const finalText = typeof value === "string" ? value : final.toFixed(3);
+    const tick = (now) => {
+      if (self._skip) {
+        el.textContent = finalText;
+        return;
+      }
+      const progress = Math.min(1, (now - start) / total);
+      const eased = ease(progress);
+      el.textContent = (final * eased).toFixed(3);
+      if (progress < 1) requestAnimationFrame(tick);
+      else el.textContent = finalText;
+    };
+    requestAnimationFrame(tick);
   },
 
   _revealCraftAll(r){ byId("craft-stage").innerHTML = ""; this._revealCraftTable(r); const sk = byId("skip"); if (sk) sk.style.display = "none"; },

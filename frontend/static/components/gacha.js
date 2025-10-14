@@ -198,27 +198,52 @@ const GachaPage = {
       const item = document.createElement("div");
       item.className = "glow orange fade-in";
       item.style.marginBottom = "10px";
-      item.innerHTML = `<div class="row-reveal"><span class="spinner"></span>发现砖皮 #${i+1}</div>`;
       box.appendChild(item);
 
-      // 名称
+      const titleRow = document.createElement("div");
+      titleRow.className = "row-reveal";
+      titleRow.innerHTML = `<span class="spinner"></span>发现砖皮 #${i+1}`;
+      item.appendChild(titleRow);
+
       await this._sleep(400); if (this._skip) return this._revealAll([...bricks, ...others]);
-      item.innerHTML = `<div class="row-reveal">名称：<span class="hl-orange">${b.name}</span></div>`;
+      titleRow.innerHTML = `名称：<span class="hl-orange">${b.name}</span>`;
 
-      // 磨损
       await this._sleep(500); if (this._skip) return this._revealAll([...bricks, ...others]);
-      item.innerHTML += `<div class="row-reveal">磨损：${b.wear}</div>`;
+      const wearRow = document.createElement("div");
+      wearRow.className = "row-reveal";
+      wearRow.innerHTML = `磨损：<span class="wear-value">0.000</span>`;
+      item.appendChild(wearRow);
+      const wearValue = wearRow.querySelector(".wear-value");
+      this._animateWear(wearValue, b.wear);
 
-      // 极品/优品
       await this._sleep(600); if (this._skip) return this._revealAll([...bricks, ...others]);
+      let suspenseNode = null;
+      if (b.exquisite || b.exquisite === false) {
+        suspenseNode = this._buildSuspenseRow();
+        item.appendChild(suspenseNode);
+        await this._sleep(b.exquisite ? 1200 : 900);
+        if (this._skip) return this._revealAll([...bricks, ...others]);
+        suspenseNode.remove();
+      }
+
       const badge = b.exquisite
         ? `<span class="badge badge-exq">极品</span>`
         : `<span class="badge badge-prem">优品</span>`;
-      item.innerHTML += `<div class="row-reveal">鉴定：${badge}</div>`;
+      const judgeRow = document.createElement("div");
+      judgeRow.className = "row-reveal";
+      judgeRow.innerHTML = `鉴定：${badge}`;
+      item.appendChild(judgeRow);
 
       if (window.SkinVisuals) {
+        await this._sleep(300); if (this._skip) return this._revealAll([...bricks, ...others]);
         const meta = this._visualMeta(b);
-        item.innerHTML += `<div class="row-reveal">${SkinVisuals.render(b.visual, { label: b.name, meta: meta })}</div>`;
+        const visual = b.visual || {
+          body: [], attachments: [], template: b.template, hidden_template: b.hidden_template, effects: b.effects
+        };
+        const previewRow = document.createElement("div");
+        previewRow.className = "row-reveal";
+        previewRow.innerHTML = SkinVisuals.render(visual, { label: b.name, meta: meta });
+        item.appendChild(previewRow);
       }
     }
 
@@ -307,6 +332,40 @@ const GachaPage = {
       </div>`;
     byId("do-open").disabled = false;
     this._refreshStats(); // 跳过路径也要刷新
+  },
+
+  _buildSuspenseRow() {
+    const wrap = document.createElement("div");
+    wrap.className = "row-reveal suspense-wrap";
+    wrap.innerHTML = `<div class="suspense-glow"><span class="spinner"></span>鉴定中...</div>`;
+    return wrap;
+  },
+
+  _animateWear(el, value, duration = 1200) {
+    if (!el) return;
+    const final = typeof value === "number" ? value : parseFloat(value);
+    if (!isFinite(final)) {
+      el.textContent = value ?? "-";
+      return;
+    }
+    el.textContent = "0.000";
+    const start = performance.now();
+    const total = Math.max(400, duration);
+    const ease = (t) => 1 - Math.pow(1 - t, 2);
+    const self = this;
+    const finalText = typeof value === "string" ? value : final.toFixed(3);
+    const tick = (now) => {
+      if (self._skip) {
+        el.textContent = finalText;
+        return;
+      }
+      const progress = Math.min(1, (now - start) / total);
+      const eased = ease(progress);
+      el.textContent = (final * eased).toFixed(3);
+      if (progress < 1) requestAnimationFrame(tick);
+      else el.textContent = finalText;
+    };
+    requestAnimationFrame(tick);
   },
 
   _doSkip() { this._skip = true; },
