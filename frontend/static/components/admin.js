@@ -9,6 +9,14 @@ const AdminPage = {
       </div>
 
       <div class="card">
+        <h3>登录/注册模式</h3>
+        <div class="input-row">
+          <label><input type="checkbox" id="auth-mode-switch"/> 免验证码 & 注册送 20000 法币</label>
+        </div>
+        <div class="muted" id="auth-mode-desc"></div>
+      </div>
+
+      <div class="card">
         <h3>所有用户</h3>
         <div class="input-row">
           <input id="q" placeholder="按用户名/手机号搜索"/>
@@ -25,6 +33,8 @@ const AdminPage = {
 
         <div id="list"></div>
       </div>
+
+      <div id="inventory-view" style="display:none;"></div>
 
       <div class="card">
         <h3>余额操作</h3>
@@ -98,19 +108,61 @@ const AdminPage = {
   async bind() {
     if (!API._me?.is_admin) { alert("非管理员"); location.hash="#/home"; return; }
 
+    const modeSwitch = byId("auth-mode-switch");
+    const modeDesc = byId("auth-mode-desc");
+    modeDesc.textContent = "加载中...";
+
+    const renderModeDesc = (free) => {
+      modeDesc.textContent = free
+        ? "当前为免验证码模式：登录无需短信验证，注册时不强制手机且赠送 20000 法币。"
+        : "当前为短信验证模式：登录/注册均需短信验证码，新注册不再赠送法币。";
+    };
+
+    const loadAuthMode = async () => {
+      try {
+        const data = await API.adminAuthModeGet();
+        const free = !!(data && data.verification_free);
+        modeSwitch.checked = free;
+        renderModeDesc(free);
+      } catch (e) {
+        modeDesc.textContent = `加载失败：${e.message || e}`;
+      }
+    };
+
+    modeSwitch.onchange = async () => {
+      const desired = !!modeSwitch.checked;
+      modeSwitch.disabled = true;
+      try {
+        await API.adminAuthModeSet(desired);
+        await loadAuthMode();
+        alert("登录/注册模式已更新");
+      } catch (e) {
+        alert(e.message);
+        await loadAuthMode();
+      } finally {
+        modeSwitch.disabled = false;
+      }
+    };
+
+    await loadAuthMode();
+
     // —— 渲染函数们 —— //
     const renderUsers = (items=[])=>{
-      const rows = items.map(u=>`
+      const rows = items.map(u=>{
+        const encoded = encodeURIComponent(u.username || "");
+        return `
         <tr>
           <td>${escapeHtml(u.username||"")}</td>
           <td>${escapeHtml(u.phone||"")}</td>
           <td>${u.fiat}</td>
           <td>${u.coins}</td>
           <td>${u.is_admin?'是':'否'}</td>
-        </tr>`).join("");
+          <td><button class="btn btn-mini" data-action="view-inventory" data-username="${encoded}">查看仓库</button></td>
+        </tr>`;
+      }).join("");
       byId("list").innerHTML = `
         <table class="table">
-          <thead><tr><th>用户名</th><th>手机号</th><th>法币</th><th>三角币</th><th>管理员</th></tr></thead>
+          <thead><tr><th>用户名</th><th>手机号</th><th>法币</th><th>三角币</th><th>管理员</th><th>操作</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>`;
     };
@@ -148,6 +200,100 @@ const AdminPage = {
           <tbody>${rows}</tbody>
         </table>`;
     };
+
+    const inventoryBox = byId("inventory-view");
+    const hideInventory = () => {
+      if (!inventoryBox) return;
+      inventoryBox.innerHTML = "";
+      inventoryBox.style.display = "none";
+    };
+    const showInventoryLoading = (username="") => {
+      if (!inventoryBox) return;
+      const label = escapeHtml(username || "");
+      const suffix = label ? `${label} 的仓库` : "仓库";
+      inventoryBox.innerHTML = `<div class="card admin-inventory"><div class="muted">正在加载 ${suffix}...</div></div>`;
+      inventoryBox.style.display = "block";
+    };
+    const renderInventory = (payload) => {
+      if (!inventoryBox) return;
+      if (!payload) {
+        hideInventory();
+        return;
+      }
+      const items = payload.items || [];
+      const rows = items.map(item => {
+        const wearVal = typeof item.wear === "number" ? item.wear : parseFloat(item.wear);
+        const wearText = Number.isFinite(wearVal) ? wearVal.toFixed(3) : escapeHtml(item.wear ?? "-");
+        const isExq = !!item.exquisite;
+        const status = isExq ? '<span class="badge badge-exq">极品</span>' : '<span class="badge badge-prem">优品</span>';
+        const visual = item.visual || { body: [], attachments: [], template: item.template, hidden_template: false, effects: item.effects || [] };
+        let templateLabel = item.template_label || "";
+        let effectsLabel = (item.effects || []).join("、") || "无特效";
+        let previewHtml = `模板：${escapeHtml(templateLabel || "-")} · 特效：${escapeHtml(effectsLabel || "无特效")}`;
+        if (window.SkinVisuals) {
+          const info = SkinVisuals.describe(visual);
+          templateLabel = info.templateLabel || templateLabel;
+          effectsLabel = info.effectsLabel || effectsLabel;
+          const meta = SkinVisuals.formatMeta(visual);
+          previewHtml = SkinVisuals.render(visual, { compact: true, meta });
+        }
+        return `
+          <tr>
+            <td>${escapeHtml(item.name || "")}</td>
+            <td>${previewHtml}</td>
+            <td>${status}</td>
+            <td>${wearText}</td>
+            <td>${escapeHtml(templateLabel || "-")}</td>
+            <td>${escapeHtml(effectsLabel || "无特效")}</td>
+            <td>${escapeHtml(item.grade || "-")}</td>
+            <td>${escapeHtml(item.serial || "")}</td>
+          </tr>`;
+      }).join("");
+      const summary = `砖皮 ${payload.brick_total || 0} 件 · 极品 ${payload.exquisite_count || 0} · 优品 ${payload.premium_count || 0}`;
+      const table = items.length
+        ? `<table class="table"><thead><tr><th>名称</th><th>外观</th><th>极品/优品</th><th>磨损</th><th>模板</th><th>特效</th><th>品质</th><th>编号</th></tr></thead><tbody>${rows}</tbody></table>`
+        : `<div class="muted">该用户暂无砖皮。</div>`;
+      inventoryBox.innerHTML = `
+        <div class="card admin-inventory">
+          <div class="input-row" style="justify-content:space-between;align-items:center;">
+            <h3>${escapeHtml(payload.username || "")} 的仓库</h3>
+            <button class="btn btn-mini" id="close-inventory">关闭</button>
+          </div>
+          <div class="muted">${summary}</div>
+          ${table}
+        </div>`;
+      inventoryBox.style.display = "block";
+    };
+    hideInventory();
+
+    const listBox = byId("list");
+    if (listBox) {
+      listBox.addEventListener("click", async (evt) => {
+        const btn = evt.target.closest("button[data-action=\"view-inventory\"]");
+        if (!btn) return;
+        const username = decodeURIComponent(btn.dataset.username || "").trim();
+        if (!username) {
+          alert("未找到用户名");
+          return;
+        }
+        showInventoryLoading(username);
+        try {
+          const data = await API.adminUserInventory(username);
+          renderInventory(data);
+        } catch (e) {
+          inventoryBox.innerHTML = `<div class="card admin-inventory"><div class="muted">加载失败：${escapeHtml(e.message || e)}</div></div>`;
+          inventoryBox.style.display = "block";
+        }
+      });
+    }
+
+    if (inventoryBox) {
+      inventoryBox.addEventListener("click", (evt) => {
+        if (evt.target && evt.target.id === "close-inventory") {
+          hideInventory();
+        }
+      });
+    }
 
     // —— 充值申请首屏 & 短信日志加载 —— //
     try { const r = await API.adminTopupRequests(); renderReqs(r.items||[]); } catch(e){ /* 忽略 */ }

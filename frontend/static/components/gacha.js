@@ -1,6 +1,9 @@
 const GachaPage = {
   _timer: null,
   _skip: false,
+  _currentResults: null,
+  _selectedCount: 10,
+  _choiceButtons: null,
 
   async render() {
     const me = await API.me();
@@ -33,7 +36,10 @@ const GachaPage = {
       </div></div>
 
       <div class="input-row">
-        <input id="open-c" type="number" placeholder="开多少抽" value="10"/>
+        <div class="choice-group" id="open-choice">
+          <button class="btn" data-count="1">单抽</button>
+          <button class="btn active" data-count="10">十连</button>
+        </div>
         <button class="btn" id="do-open">开！</button>
         <button class="btn" id="skip" style="display:none;">跳过动画</button>
       </div>
@@ -46,6 +52,27 @@ const GachaPage = {
   bind() {
     byId("do-open").onclick = () => this._open();
     byId("skip").onclick    = () => this._doSkip();
+
+    const choiceWrap = byId("open-choice");
+    this._choiceButtons = choiceWrap ? Array.from(choiceWrap.querySelectorAll("button[data-count]")) : [];
+    const applySelect = (count) => {
+      this._selectedCount = count;
+      (this._choiceButtons || []).forEach(btn => {
+        const val = parseInt(btn.dataset.count || "0", 10);
+        btn.classList.toggle("active", val === count);
+      });
+    };
+    (this._choiceButtons || []).forEach(btn => {
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        if (byId("do-open").disabled) return;
+        const val = parseInt(btn.dataset.count || "0", 10);
+        if (val === 1 || val === 10) {
+          applySelect(val);
+        }
+      });
+    });
+    applySelect(this._selectedCount);
   },
 
   // —— 抽完后刷新顶部 & 概率/保底 —— //
@@ -135,10 +162,17 @@ const GachaPage = {
   },
   _showStage(html) { byId("open-stage").innerHTML = html; },
 
+  _setChoiceDisabled(disabled) {
+    (this._choiceButtons || []).forEach(btn => {
+      btn.disabled = !!disabled;
+    });
+  },
+
   async _open() {
-    const c = +byId("open-c").value || 1;
+    const c = [1, 10].includes(this._selectedCount) ? this._selectedCount : 1;
     this._skip = false;
     byId("do-open").disabled = true;
+    this._setChoiceDisabled(true);
     byId("skip").style.display = "none";
     byId("open-result").innerHTML = "";
 
@@ -151,23 +185,25 @@ const GachaPage = {
     catch (e) {
       alert(e.message);
       byId("do-open").disabled = false;
+      this._setChoiceDisabled(false);
       this._showStage("");
       return;
     }
     const list = data.results || [];
+    this._currentResults = list.slice();
     const maxR = this._maxRarity(list);
     const glowCls = this._glowClass(maxR);
     const glowCN  = this._glowCN(maxR);
 
     // ③ 先显示“中文光芒提示”
     await this._sleep(1200);
-    if (this._skip) return this._revealAll(list);
+    if (this._skip) return this._revealAll();
     this._showStage(`<div class="glow ${glowCls} fade-in">砖的颜色是...：<span class="hl-${glowCls}">${glowCN}</span></div>`);
     byId("skip").style.display = "inline-block";
 
     // ④ 800ms 后进入“砖皮优先鉴定”或直接逐条翻牌
     await this._sleep(800);
-    if (this._skip) return this._revealAll(list);
+    if (this._skip) return this._revealAll();
 
     const bricks = list.filter(x=>x.rarity==="BRICK");
     const others = list.filter(x=>x.rarity!=="BRICK");
@@ -192,33 +228,61 @@ const GachaPage = {
 
     // 逐把展示：名称 → 磨损 → 极品/优品
     for (let i = 0; i < bricks.length; i++) {
-      if (this._skip) return this._revealAll([...bricks, ...others]);
+      if (this._skip) return this._revealAll();
 
       const b = bricks[i];
       const item = document.createElement("div");
       item.className = "glow orange fade-in";
       item.style.marginBottom = "10px";
-      item.innerHTML = `<div class="row-reveal"><span class="spinner"></span>发现砖皮 #${i+1}</div>`;
       box.appendChild(item);
 
-      // 名称
-      await this._sleep(400); if (this._skip) return this._revealAll([...bricks, ...others]);
-      item.innerHTML = `<div class="row-reveal">名称：<span class="hl-orange">${b.name}</span></div>`;
+      const titleRow = document.createElement("div");
+      titleRow.className = "row-reveal";
+      titleRow.innerHTML = `<span class="spinner"></span>发现砖皮 #${i+1}`;
+      item.appendChild(titleRow);
 
-      // 磨损
-      await this._sleep(500); if (this._skip) return this._revealAll([...bricks, ...others]);
-      item.innerHTML += `<div class="row-reveal">磨损：${b.wear}</div>`;
+      await this._sleep(400); if (this._skip) return this._revealAll();
+      titleRow.innerHTML = `名称：<span class="hl-orange">${b.name}</span>`;
 
-      // 极品/优品
-      await this._sleep(600); if (this._skip) return this._revealAll([...bricks, ...others]);
+      await this._sleep(500); if (this._skip) return this._revealAll();
+      const wearRow = document.createElement("div");
+      wearRow.className = "row-reveal";
+      wearRow.innerHTML = `磨损：<span class="wear-value">0.000</span>`;
+      item.appendChild(wearRow);
+      const wearValue = wearRow.querySelector(".wear-value");
+      this._animateWear(wearValue, b.wear);
+
+      await this._sleep(600); if (this._skip) return this._revealAll();
+      let suspenseNode = null;
+      if (b.exquisite || b.exquisite === false) {
+        const isDiamond = this._isDiamondTemplate(b.template) || this._isDiamondTemplate(b.hidden_template);
+        const suspenseMs = isDiamond ? 8000 : (b.exquisite ? 4000 : 2500);
+        const message = isDiamond ? "钻石覆盖中..." : (b.exquisite ? "极品鉴定中..." : "优品鉴定中...");
+        suspenseNode = this._buildSuspenseRow(message, { diamond: isDiamond });
+        item.appendChild(suspenseNode);
+        await this._sleep(suspenseMs);
+        if (this._skip) return this._revealAll();
+        suspenseNode.remove();
+      }
+
       const badge = b.exquisite
         ? `<span class="badge badge-exq">极品</span>`
         : `<span class="badge badge-prem">优品</span>`;
-      item.innerHTML += `<div class="row-reveal">鉴定：${badge}</div>`;
+      const judgeRow = document.createElement("div");
+      judgeRow.className = "row-reveal";
+      judgeRow.innerHTML = `鉴定：${badge}`;
+      item.appendChild(judgeRow);
 
       if (window.SkinVisuals) {
+        await this._sleep(300); if (this._skip) return this._revealAll();
         const meta = this._visualMeta(b);
-        item.innerHTML += `<div class="row-reveal">${SkinVisuals.render(b.visual, { label: b.name, meta: meta })}</div>`;
+        const visual = b.visual || {
+          body: [], attachments: [], template: b.template, hidden_template: b.hidden_template, effects: b.effects
+        };
+        const previewRow = document.createElement("div");
+        previewRow.className = "row-reveal";
+        previewRow.innerHTML = SkinVisuals.render(visual, { label: b.name, meta: meta });
+        item.appendChild(previewRow);
       }
     }
 
@@ -262,9 +326,10 @@ const GachaPage = {
 
     let i = 0;
     const step = () => {
-      if (this._skip) return this._revealAll(list); // 随时可跳过
+      if (this._skip) return this._revealAll(); // 随时可跳过
       if (i >= list.length) {
         byId("do-open").disabled = false;
+        this._setChoiceDisabled(false);
         this._showStage("");      // 清掉上方阶段区
         this._refreshStats();     // 抽完刷新保底/概率/库存
         return;
@@ -283,20 +348,74 @@ const GachaPage = {
     if (this._timer) { clearTimeout(this._timer); this._timer = null; }
     byId("skip").style.display = "none";
 
-    const rows = list.map(x=>{
-      return `<tr>${this._rowHTML(x)}</tr>`;
-    }).join("");
+    const source = list ?? this._currentResults ?? [];
+    const bricks = [];
+    const others = [];
+    for (const item of source) {
+      const rarity = String(item.rarity || "").toUpperCase();
+      if (rarity === "BRICK") bricks.push(item);
+      else others.push(item);
+    }
+    const ordered = [...bricks, ...others];
+    const rows = ordered.map(x=>`<tr>${this._rowHTML(x)}</tr>`).join("");
+    const brickNote = bricks.length
+      ? `<div class="muted">跳过动画模式下已直接展示砖皮详情，并置顶本次的 ${bricks.length} 件砖皮。</div>`
+      : "";
+    const tableHTML = ordered.length
+      ? `<table class="table">${this._tableHead()}<tbody>${rows}</tbody></table>`
+      : `<div class="muted">本次未获得物品。</div>`;
 
     byId("open-stage").innerHTML = "";
     byId("open-result").innerHTML = `
       <div class="card fade-in">
-        <table class="table">
-          ${this._tableHead()}
-          <tbody>${rows}</tbody>
-        </table>
+        ${brickNote}
+        ${tableHTML}
       </div>`;
     byId("do-open").disabled = false;
+    this._setChoiceDisabled(false);
     this._refreshStats(); // 跳过路径也要刷新
+    this._currentResults = null;
+  },
+
+  _buildSuspenseRow(message = "鉴定中...", opts = {}) {
+    const wrap = document.createElement("div");
+    wrap.className = "row-reveal suspense-wrap";
+    const diamondCls = opts.diamond ? " diamond" : "";
+    wrap.innerHTML = `<div class="suspense-glow${diamondCls}"><span class="spinner"></span>${message}</div>`;
+    return wrap;
+  },
+
+  _isDiamondTemplate(name) {
+    if (!name) return false;
+    const key = String(name).toLowerCase();
+    return key.includes("white_diamond") || key.includes("yellow_diamond") || key.includes("pink_diamond");
+  },
+
+  _animateWear(el, value, duration = 1200) {
+    if (!el) return;
+    const final = typeof value === "number" ? value : parseFloat(value);
+    if (!isFinite(final)) {
+      el.textContent = value ?? "-";
+      return;
+    }
+    el.textContent = "0.000";
+    const start = performance.now();
+    const total = Math.max(400, duration);
+    const ease = (t) => 1 - Math.pow(1 - t, 2);
+    const self = this;
+    const finalText = typeof value === "string" ? value : final.toFixed(3);
+    const tick = (now) => {
+      if (self._skip) {
+        el.textContent = finalText;
+        return;
+      }
+      const progress = Math.min(1, (now - start) / total);
+      const eased = ease(progress);
+      el.textContent = (final * eased).toFixed(3);
+      if (progress < 1) requestAnimationFrame(tick);
+      else el.textContent = finalText;
+    };
+    requestAnimationFrame(tick);
   },
 
   _doSkip() { this._skip = true; },

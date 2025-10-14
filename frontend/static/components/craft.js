@@ -79,6 +79,29 @@ const CraftPage = {
   _rarityClass(r){ if(r==="BRICK")return"hl-orange"; if(r==="PURPLE")return"hl-purple"; if(r==="BLUE")return"hl-blue"; return"hl-green"; },
   _gradeClass(g){ return {S:"grade-s",A:"grade-a",B:"grade-b",C:"grade-c"}[g] || ""; },
 
+  _renderPreviewCell(x, opts = {}) {
+    if (!window.SkinVisuals) return "-";
+    const visual = x.visual || {
+      body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects
+    };
+    const html = SkinVisuals.render(visual, { compact: true, meta: opts.metaText ?? false });
+    return `<div class="market-preview-cell">${html}</div>`;
+  },
+
+  _visualMeta(x) {
+    if (!window.SkinVisuals) return "";
+    const visual = x.visual || {
+      body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects
+    };
+    const info = SkinVisuals.describe(visual);
+    const parts = [
+      `主体：${info.bodyText}`,
+      `配件：${info.attachmentText}`,
+      SkinVisuals.formatMeta(visual)
+    ];
+    return parts.join(" · ");
+  },
+
   _switchRarity(r){
     this._rarity = r;
     this._page = 1;                // 切换时回到第 1 页
@@ -254,12 +277,51 @@ const CraftPage = {
       byId("craft-stage").appendChild(box);
       const inspect = byId("inspect");
 
+      const wrap = document.createElement("div");
+      wrap.className = "glow orange fade-in";
+      inspect.appendChild(wrap);
+
+      const titleRow = document.createElement("div");
+      titleRow.className = "row-reveal";
+      titleRow.innerHTML = `<span class="spinner"></span>发现砖皮`;
+      wrap.appendChild(titleRow);
+
       await this._sleep(400); if (this._skip) return this._revealCraftAll(r);
-      inspect.innerHTML += `<div class="row-reveal">名称：<span class="hl-orange">${r.name}</span></div>`;
+      titleRow.innerHTML = `名称：<span class="hl-orange">${r.name}</span>`;
+
       await this._sleep(500); if (this._skip) return this._revealCraftAll(r);
-      inspect.innerHTML += `<div class="row-reveal">磨损：${r.wear}</div>`;
+      const wearRow = document.createElement("div");
+      wearRow.className = "row-reveal";
+      wearRow.innerHTML = `磨损：<span class="wear-value">0.000</span>`;
+      wrap.appendChild(wearRow);
+      const wearValue = wearRow.querySelector(".wear-value");
+      this._animateWear(wearValue, r.wear);
+
       await this._sleep(600); if (this._skip) return this._revealCraftAll(r);
-      inspect.innerHTML += `<div class="row-reveal">鉴定：${r.exquisite ? `<span class="badge badge-exq">极品</span>` : `<span class="badge badge-prem">优品</span>`}</div>`;
+      const isDiamond = this._isDiamondTemplate(r.template) || this._isDiamondTemplate(r.hidden_template);
+      const suspenseMs = isDiamond ? 8000 : (r.exquisite ? 4000 : 2500);
+      const message = isDiamond ? "钻石覆盖中..." : (r.exquisite ? "极品鉴定中..." : "优品鉴定中...");
+      const suspenseNode = this._buildSuspenseRow(message, { diamond: isDiamond });
+      wrap.appendChild(suspenseNode);
+      await this._sleep(suspenseMs); if (this._skip) return this._revealCraftAll(r);
+      suspenseNode.remove();
+
+      const judgeRow = document.createElement("div");
+      judgeRow.className = "row-reveal";
+      judgeRow.innerHTML = `鉴定：${r.exquisite ? `<span class="badge badge-exq">极品</span>` : `<span class="badge badge-prem">优品</span>`}`;
+      wrap.appendChild(judgeRow);
+
+      if (window.SkinVisuals) {
+        await this._sleep(300); if (this._skip) return this._revealCraftAll(r);
+        const meta = this._visualMeta(r);
+        const previewRow = document.createElement("div");
+        previewRow.className = "row-reveal";
+        const visual = r.visual || {
+          body: [], attachments: [], template: r.template, hidden_template: r.hidden_template, effects: r.effects
+        };
+        previewRow.innerHTML = SkinVisuals.render(visual, { label: r.name, meta: meta });
+        wrap.appendChild(previewRow);
+      }
 
       await this._sleep(500);
       this._revealCraftTable(r);
@@ -281,16 +343,19 @@ const CraftPage = {
     const exBadge = String(r.rarity).toUpperCase()==="BRICK"
       ? (r.exquisite ? `<span class="badge badge-exq">极品</span>` : `<span class="badge badge-prem">优品</span>`)
       : "-";
+    const previewMeta = this._visualMeta(r);
+    const preview = this._renderPreviewCell(r, { metaText: previewMeta });
 
     const wrap = document.createElement("div");
     wrap.className = "card fade-in";
     wrap.innerHTML = `
       <h3>合成结果</h3>
       <table class="table">
-        <thead><tr><th>名称</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
+        <thead><tr><th>名称</th><th>外观</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
         <tbody>
           <tr>
             <td class="${rc}">${r.name}</td>
+            <td>${preview}</td>
             <td class="${rc}">${r.rarity}</td>
             <td>${exBadge}</td>
             <td>${r.wear}</td>
@@ -307,7 +372,48 @@ const CraftPage = {
     resultBox.appendChild(wrap);
   },
 
+  _buildSuspenseRow(message = "鉴定中...", opts = {}) {
+    const wrap = document.createElement("div");
+    wrap.className = "row-reveal suspense-wrap";
+    const diamondCls = opts.diamond ? " diamond" : "";
+    wrap.innerHTML = `<div class="suspense-glow${diamondCls}"><span class="spinner"></span>${message}</div>`;
+    return wrap;
+  },
+
+  _animateWear(el, value, duration = 1200) {
+    if (!el) return;
+    const final = typeof value === "number" ? value : parseFloat(value);
+    if (!isFinite(final)) {
+      el.textContent = value ?? "-";
+      return;
+    }
+    el.textContent = "0.000";
+    const start = performance.now();
+    const total = Math.max(400, duration);
+    const ease = (t) => 1 - Math.pow(1 - t, 2);
+    const self = this;
+    const finalText = typeof value === "string" ? value : final.toFixed(3);
+    const tick = (now) => {
+      if (self._skip) {
+        el.textContent = finalText;
+        return;
+      }
+      const progress = Math.min(1, (now - start) / total);
+      const eased = ease(progress);
+      el.textContent = (final * eased).toFixed(3);
+      if (progress < 1) requestAnimationFrame(tick);
+      else el.textContent = finalText;
+    };
+    requestAnimationFrame(tick);
+  },
+
   _revealCraftAll(r){ byId("craft-stage").innerHTML = ""; this._revealCraftTable(r); const sk = byId("skip"); if (sk) sk.style.display = "none"; },
+
+  _isDiamondTemplate(name) {
+    if (!name) return false;
+    const key = String(name).toLowerCase();
+    return key.includes("white_diamond") || key.includes("yellow_diamond") || key.includes("pink_diamond");
+  },
 
   _autoPick(mode){
     const arr = this._sortedAll();
