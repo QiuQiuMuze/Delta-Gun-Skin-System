@@ -5,27 +5,21 @@ const AuthPage = {
       <div class="input-row">
         <input id="login-u" placeholder="用户名"/>
         <input id="login-p" type="password" placeholder="密码"/>
-        <button class="btn" id="login-btn">获取验证码</button>
-      </div>
-      <div class="input-row">
-        <input id="login-code" placeholder="短信验证码（第二步）"/>
-        <button class="btn" id="verify-btn">验证并登录</button>
+        <button class="btn" id="login-btn">登录</button>
       </div>
       <div class="kv">
         <div class="k">说明</div>
-        <div class="v">点击开始登录后，验证码请联系作者获取。</div>
+        <div class="v">登录现已取消短信验证码，输入账号密码即可完成登录。</div>
       </div>
     </div>
 
     <div class="card"><h2>注册</h2>
       <div class="input-row">
         <input id="reg-u" placeholder="用户名"/>
-        <input id="reg-phone" placeholder="手机号（1开头11位）"/>
-        <button class="btn" id="reg-send-code">获取验证码(注册)</button>
+        <input id="reg-p" type="password" placeholder="密码（强度校验）"/>
       </div>
       <div class="input-row">
-        <input id="reg-code" placeholder="短信验证码"/>
-        <input id="reg-p" type="password" placeholder="密码（强度校验）"/>
+        <input id="reg-phone" placeholder="手机号（可选）"/>
       </div>
       <div class="input-row">
         <label><input id="reg-admin" type="checkbox"/> 申请管理员</label>
@@ -37,7 +31,7 @@ const AuthPage = {
         <input id="admin-code" placeholder="管理员验证码（注册第二步）"/>
         <button class="btn" id="admin-verify">提交验证码成为管理员</button>
       </div>
-      <div class="muted">先点“获取验证码(注册)”收到短信，再填写验证码完成注册。若勾选“申请管理员”，注册后会再下发一个管理员验证码，需要额外验证。</div>
+      <div class="muted">注册无需验证码，新账号将自动获得 20000 法币。若勾选“申请管理员”，注册后会再下发一个管理员验证码，需要额外验证。</div>
     </div>
 
     <div class="card"><h2>重置密码</h2>
@@ -54,61 +48,41 @@ const AuthPage = {
   },
 
   bind() {
-    let loginUser = "";
     let regAdminUser = "";
 
-    // ===== 登录两步 =====
+    // ===== 登录 =====
     byId("login-btn").onclick = async () => {
       const u = byId("login-u").value.trim();
       const p = byId("login-p").value;
       if (!u || !p) return alert("请输入用户名和密码");
       try {
-        await API.loginStart(u, p);
-        loginUser = u;
-        alert("验证码已发送，请查看后输入");
-      } catch (e) { alert(e.message); }
-    };
-
-    byId("verify-btn").onclick = async () => {
-      const code = byId("login-code").value.trim();
-      if (!loginUser) return alert("请先执行登录第一步");
-      if (!code) return alert("请输入短信验证码");
-      try {
-        const d = await API.loginVerify(loginUser, code);
+        const d = await API.login(u, p);
         if (d && d.token) API.setToken(d.token);  // 存 token —— 使用 sessionStorage，互不影响其他标签页
         location.hash = "#/me";
       } catch (e) { alert(e.message); }
     };
 
-    // ===== 注册：发送注册验证码 =====
-    byId("reg-send-code").onclick = async () => {
-      const ph = byId("reg-phone").value.trim();
-      if (!ph) return alert("请输入手机号");
-      try {
-        await API.sendRegisterCode(ph);
-        alert("注册验证码已发送");
-      } catch (e) { alert(e.message); }
-    };
-
-    // ===== 注册提交（带 code）=====
+    // ===== 注册提交 =====
     byId("reg-btn").onclick = async () => {
       const u = byId("reg-u").value.trim();
       const ph = byId("reg-phone").value.trim();
-      const code = byId("reg-code").value.trim();
       const pw = byId("reg-p").value;
       const want_admin = !!byId("reg-admin").checked;
 
-      if (!u || !ph || !code || !pw)
-        return alert("请填写完整信息再注册");
+      if (!u || !pw)
+        return alert("请填写用户名和密码再注册");
+
+      if (ph && !/^1\d{10}$/.test(ph))
+        return alert("手机号需为1开头的11位数字（可留空）");
 
       try {
-        const r = await API.register(u, ph, code, pw, want_admin);
+        const r = await API.register(u, pw, want_admin, ph || null);
         if (want_admin) {
           regAdminUser = u;
           byId("admin-verify-box").style.display = "";
           alert("已申请管理员，请联系作者获取管理员验证码并在下方输入");
         } else {
-          alert("注册成功，请去登录");
+          alert("注册成功，已自动发放 20000 法币，请使用该账号登录");
         }
       } catch (e) { alert(e.message); }
     };
