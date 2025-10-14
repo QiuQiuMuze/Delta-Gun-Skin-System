@@ -124,6 +124,7 @@ const API = {
   exchange: (amount_fiat) => API.json("/wallet/exchange", "POST", { amount_fiat }),
 
   // ---- Shop / Gacha / Inventory / Craft ----
+  shopPrices: () => API.json("/shop/prices"),
   buyKeys: (count) => API.json("/shop/buy-keys", "POST", { count }),
   buyBricks: (count) => API.json("/shop/buy-bricks", "POST", { count }),
   odds: () => API.json("/odds"),
@@ -196,6 +197,12 @@ const API = {
 
   adminAuthModeSet: (verification_free) =>
     API.json("/admin/auth-mode", "POST", { verification_free }),
+
+  adminUserInventory: (username) => {
+    const usp = new URLSearchParams();
+    usp.append("username", username);
+    return API.json("/admin/user-inventory" + (usp.toString() ? "?" + usp.toString() : ""));
+  },
 
 
 
