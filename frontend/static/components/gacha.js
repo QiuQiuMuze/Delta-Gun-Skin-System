@@ -2,6 +2,8 @@ const GachaPage = {
   _timer: null,
   _skip: false,
   _currentResults: null,
+  _selectedCount: 10,
+  _choiceButtons: null,
 
   async render() {
     const me = await API.me();
@@ -34,7 +36,10 @@ const GachaPage = {
       </div></div>
 
       <div class="input-row">
-        <input id="open-c" type="number" placeholder="开多少抽" value="10"/>
+        <div class="choice-group" id="open-choice">
+          <button class="btn" data-count="1">单抽</button>
+          <button class="btn active" data-count="10">十连</button>
+        </div>
         <button class="btn" id="do-open">开！</button>
         <button class="btn" id="skip" style="display:none;">跳过动画</button>
       </div>
@@ -47,6 +52,27 @@ const GachaPage = {
   bind() {
     byId("do-open").onclick = () => this._open();
     byId("skip").onclick    = () => this._doSkip();
+
+    const choiceWrap = byId("open-choice");
+    this._choiceButtons = choiceWrap ? Array.from(choiceWrap.querySelectorAll("button[data-count]")) : [];
+    const applySelect = (count) => {
+      this._selectedCount = count;
+      (this._choiceButtons || []).forEach(btn => {
+        const val = parseInt(btn.dataset.count || "0", 10);
+        btn.classList.toggle("active", val === count);
+      });
+    };
+    (this._choiceButtons || []).forEach(btn => {
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        if (byId("do-open").disabled) return;
+        const val = parseInt(btn.dataset.count || "0", 10);
+        if (val === 1 || val === 10) {
+          applySelect(val);
+        }
+      });
+    });
+    applySelect(this._selectedCount);
   },
 
   // —— 抽完后刷新顶部 & 概率/保底 —— //
@@ -136,10 +162,17 @@ const GachaPage = {
   },
   _showStage(html) { byId("open-stage").innerHTML = html; },
 
+  _setChoiceDisabled(disabled) {
+    (this._choiceButtons || []).forEach(btn => {
+      btn.disabled = !!disabled;
+    });
+  },
+
   async _open() {
-    const c = +byId("open-c").value || 1;
+    const c = [1, 10].includes(this._selectedCount) ? this._selectedCount : 1;
     this._skip = false;
     byId("do-open").disabled = true;
+    this._setChoiceDisabled(true);
     byId("skip").style.display = "none";
     byId("open-result").innerHTML = "";
 
@@ -152,6 +185,7 @@ const GachaPage = {
     catch (e) {
       alert(e.message);
       byId("do-open").disabled = false;
+      this._setChoiceDisabled(false);
       this._showStage("");
       return;
     }
@@ -295,6 +329,7 @@ const GachaPage = {
       if (this._skip) return this._revealAll(); // 随时可跳过
       if (i >= list.length) {
         byId("do-open").disabled = false;
+        this._setChoiceDisabled(false);
         this._showStage("");      // 清掉上方阶段区
         this._refreshStats();     // 抽完刷新保底/概率/库存
         return;
@@ -337,6 +372,7 @@ const GachaPage = {
         ${tableHTML}
       </div>`;
     byId("do-open").disabled = false;
+    this._setChoiceDisabled(false);
     this._refreshStats(); // 跳过路径也要刷新
     this._currentResults = null;
   },
@@ -353,40 +389,6 @@ const GachaPage = {
     if (!name) return false;
     const key = String(name).toLowerCase();
     return key.includes("white_diamond") || key.includes("yellow_diamond") || key.includes("pink_diamond");
-  },
-
-  _animateWear(el, value, duration = 1200) {
-    if (!el) return;
-    const final = typeof value === "number" ? value : parseFloat(value);
-    if (!isFinite(final)) {
-      el.textContent = value ?? "-";
-      return;
-    }
-    el.textContent = "0.000";
-    const start = performance.now();
-    const total = Math.max(400, duration);
-    const ease = (t) => 1 - Math.pow(1 - t, 2);
-    const self = this;
-    const finalText = typeof value === "string" ? value : final.toFixed(3);
-    const tick = (now) => {
-      if (self._skip) {
-        el.textContent = finalText;
-        return;
-      }
-      const progress = Math.min(1, (now - start) / total);
-      const eased = ease(progress);
-      el.textContent = (final * eased).toFixed(3);
-      if (progress < 1) requestAnimationFrame(tick);
-      else el.textContent = finalText;
-    };
-    requestAnimationFrame(tick);
-  },
-
-  _buildSuspenseRow() {
-    const wrap = document.createElement("div");
-    wrap.className = "row-reveal suspense-wrap";
-    wrap.innerHTML = `<div class="suspense-glow"><span class="spinner"></span>鉴定中...</div>`;
-    return wrap;
   },
 
   _animateWear(el, value, duration = 1200) {

@@ -100,6 +100,13 @@ class PoolConfig(Base):
     purple_pity_max = Column(Integer, default=20)
     compression_alpha = Column(Float, default=0.5)
 
+class BrickMarketState(Base):
+    __tablename__ = "brick_market_state"
+    id = Column(Integer, primary_key=True)
+    price = Column(Float, default=100.0)
+    sentiment = Column(Float, default=0.0)
+    last_update = Column(Integer, default=0)
+
 class SmsCode(Base):
     __tablename__ = "sms_code"
     id = Column(Integer, primary_key=True)
@@ -383,8 +390,15 @@ def verify_otp(db: Session, phone: str, purpose: str, code: str) -> bool:
 
 # ---- Seed ----
 with SessionLocal() as _db:
-    if not _db.query(PoolConfig).first():
-        _db.add(PoolConfig())
+    cfg = _db.query(PoolConfig).first()
+    if not cfg:
+        cfg = PoolConfig()
+        _db.add(cfg)
+        _db.flush()
+    if not _db.query(BrickMarketState).first():
+        init_price = round(random.uniform(60, 120), 2)
+        _db.add(BrickMarketState(price=init_price, sentiment=0.0, last_update=int(time.time())))
+        cfg.brick_price = max(40, min(150, int(round(init_price))))
     if _db.query(Skin).count() == 0:
         skins = []
         skins.append(Skin(skin_id="BRK_M7_PRISM2", name="M7战斗步枪-棱镜攻势2", rarity="BRICK"))
@@ -458,12 +472,45 @@ BRICK_TEMPLATES = {
     "brick_brushed_metal",
     "brick_laser_gradient",
 }
+BRICK_TEMPLATE_LABELS = {
+    "brick_normal": "标准模板",
+    "brick_white_diamond": "白钻模板",
+    "brick_yellow_diamond": "黄钻模板",
+    "brick_pink_diamond": "粉钻模板",
+    "brick_brushed_metal": "金属拉丝",
+    "brick_laser_gradient": "镭射渐变",
+}
 EXQUISITE_ONLY_TEMPLATES = {
     "brick_white_diamond",
     "brick_yellow_diamond",
     "brick_pink_diamond",
     "brick_brushed_metal",
 }
+DIAMOND_TEMPLATE_KEYS = {
+    "brick_white_diamond",
+    "brick_yellow_diamond",
+    "brick_pink_diamond",
+}
+SPECIAL_PRICE_TEMPLATES = DIAMOND_TEMPLATE_KEYS | {"brick_brushed_metal"}
+
+def _pick_brick_template(exquisite: bool) -> str:
+    roll = secrets.randbelow(10000)
+    if exquisite:
+        if roll < 100:
+            # 1%：白钻/黄钻/粉钻，平均分配
+            trio = ["brick_white_diamond", "brick_yellow_diamond", "brick_pink_diamond"]
+            return trio[secrets.randbelow(len(trio))]
+        if roll < 600:
+            # 接下来的 5%
+            return "brick_brushed_metal"
+        if roll < 1600:
+            # 再 10%
+            return "brick_laser_gradient"
+        return "brick_normal"
+    # 优品：仅保留“标准/镭射渐变”模板
+    if roll < 1000:
+        return "brick_laser_gradient"
+    return "brick_normal"
 
 def _pick_brick_template(exquisite: bool) -> str:
     roll = secrets.randbelow(10000)
@@ -597,6 +644,61 @@ def ensure_visual(inv: Inventory) -> Dict[str, object]:
         "effects": effects,
         "changed": changed,
     }
+
+def _clamp_brick_price(val: float) -> float:
+    try:
+        return max(40.0, min(150.0, float(val)))
+    except Exception:
+        return 100.0
+
+def ensure_brick_market_state(db: Session, cfg: Optional[PoolConfig] = None) -> BrickMarketState:
+    state = db.query(BrickMarketState).first()
+    if not state:
+        init_price = round(random.uniform(60, 120), 2)
+        state = BrickMarketState(price=init_price, sentiment=0.0, last_update=int(time.time()))
+        db.add(state)
+        db.flush()
+        if cfg is None:
+            cfg = db.query(PoolConfig).first()
+        if cfg:
+            cfg.brick_price = max(40, min(150, int(round(init_price))))
+    return state
+
+def _sync_cfg_price(cfg: PoolConfig, state: BrickMarketState) -> int:
+    unit = max(40, min(150, int(round(_clamp_brick_price(state.price)))))
+    if cfg.brick_price != unit:
+        cfg.brick_price = unit
+    return unit
+
+def apply_brick_market_influence(db: Session, cfg: PoolConfig, results: List[Dict[str, Any]]):
+    state = ensure_brick_market_state(db, cfg)
+    bricks = [r for r in results if str(r.get("rarity", "")).upper() == "BRICK"]
+    score = 0.0
+    for item in bricks:
+        template = (item.get("template") or "").strip()
+        if item.get("exquisite"):
+            if template in SPECIAL_PRICE_TEMPLATES:
+                score += 3.0
+            else:
+                score -= 1.2
+        else:
+            score -= 0.3
+    noise = random.uniform(-1.2, 1.2)
+    baseline_pull = (95.0 - state.price) * 0.04
+    state.sentiment = state.sentiment * 0.88 + score
+    new_price = state.price + state.sentiment * 0.24 + noise + baseline_pull
+    state.price = _clamp_brick_price(new_price)
+    state.last_update = int(time.time())
+    _sync_cfg_price(cfg, state)
+
+def brick_price_snapshot(db: Session, cfg: PoolConfig) -> Dict[str, float]:
+    state = ensure_brick_market_state(db, cfg)
+    state.sentiment *= 0.92
+    drift = random.uniform(-0.8, 0.8) * 0.12
+    state.price = _clamp_brick_price(state.price + drift)
+    state.last_update = int(time.time())
+    unit = _sync_cfg_price(cfg, state)
+    return {"unit": unit, "raw": round(state.price, 2)}
 
 from pydantic import BaseModel as _BM
 class OddsOut(_BM):
@@ -766,6 +868,11 @@ def auth_mode(db: Session = Depends(get_db)):
     return {"verification_free": get_auth_free_mode(db)}
 
 
+@app.get("/auth/mode")
+def auth_mode(db: Session = Depends(get_db)):
+    return {"verification_free": get_auth_free_mode(db)}
+
+
 @app.post("/auth/send-code")
 def send_code(inp: SendCodeIn, db: Session = Depends(get_db)):
     phone = inp.phone
@@ -879,10 +986,30 @@ def buy_keys(inp: CountIn, user: User = Depends(user_from_token), db: Session = 
 def buy_bricks(inp: CountIn, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     if inp.count <= 0: raise HTTPException(400, "数量必须大于 0")
     cfg = db.query(PoolConfig).first()
-    cost = cfg.brick_price * inp.count
+    state = ensure_brick_market_state(db, cfg)
+    unit_price = _sync_cfg_price(cfg, state)
+    cost = unit_price * inp.count
     if user.coins < cost: raise HTTPException(400, "三角币不足")
     user.coins -= cost; user.unopened_bricks += inp.count
-    db.commit(); return {"ok": True, "coins": user.coins, "unopened_bricks": user.unopened_bricks}
+    db.commit();
+    return {
+        "ok": True,
+        "coins": user.coins,
+        "unopened_bricks": user.unopened_bricks,
+        "brick_price": unit_price,
+        "brick_price_raw": round(state.price, 2)
+    }
+
+@app.get("/shop/prices")
+def shop_prices(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    cfg = db.query(PoolConfig).first()
+    snapshot = brick_price_snapshot(db, cfg)
+    db.commit()
+    return {
+        "brick_price": snapshot["unit"],
+        "brick_price_raw": snapshot["raw"],
+        "key_price": cfg.key_price
+    }
 
 # ------------------ Gacha ------------------
 @app.get("/odds")
@@ -897,6 +1024,8 @@ def odds(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
 @app.post("/gacha/open")
 def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     if inp.count <= 0: raise HTTPException(400, "数量必须大于 0")
+    if inp.count not in (1, 10):
+        raise HTTPException(400, "当前仅支持单抽或十连")
     if user.unopened_bricks < inp.count: raise HTTPException(400, "未开砖数量不足")
     if user.keys < inp.count: raise HTTPException(400, "钥匙不足")
     cfg = db.query(PoolConfig).first()
@@ -964,6 +1093,7 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
             },
         })
 
+    apply_brick_market_influence(db, cfg, results)
     db.commit()
     return {"ok": True, "results": results}
 
@@ -1693,6 +1823,60 @@ def admin_users(q: _Optional[str]=None, page: int=1, page_size: int=20, admin=_D
     items=[dict(r) for r in cur.fetchall()]
     con.close()
     return {"items": items, "page": page, "page_size": page_size}
+
+@ext.get("/admin/user-inventory")
+def admin_user_inventory(username: str, admin=_Depends(_require_admin)):
+    uname = (username or "").strip()
+    if not uname:
+        raise _HTTPException(400, "username required")
+
+    with SessionLocal() as db:
+        user = db.query(User).filter_by(username=uname).first()
+        if not user:
+            raise _HTTPException(404, "user not found")
+
+        bricks = db.query(Inventory).filter_by(user_id=user.id, rarity="BRICK").order_by(Inventory.acquired_at.desc()).all()
+        exquisite = 0
+        premium = 0
+        changed = False
+        items: List[Dict[str, Any]] = []
+        for inv in bricks:
+            vis = ensure_visual(inv)
+            changed = changed or vis.get("changed")
+            is_exquisite = bool(inv.exquisite)
+            if is_exquisite:
+                exquisite += 1
+            else:
+                premium += 1
+            visual_payload = {
+                "body": vis["body"],
+                "attachments": vis["attachments"],
+                "template": vis["template"],
+                "hidden_template": vis["hidden_template"],
+                "effects": vis["effects"],
+            }
+            items.append({
+                "inv_id": inv.id,
+                "name": inv.name,
+                "serial": inv.serial,
+                "exquisite": is_exquisite,
+                "wear": round(inv.wear_bp / 100, 3),
+                "grade": inv.grade,
+                "template": vis["template"],
+                "template_label": BRICK_TEMPLATE_LABELS.get(vis["template"], vis["template"] or "无模板"),
+                "effects": vis["effects"],
+                "visual": visual_payload,
+            })
+        if changed:
+            db.commit()
+
+    return {
+        "username": uname,
+        "brick_total": len(items),
+        "exquisite_count": exquisite,
+        "premium_count": premium,
+        "items": items,
+    }
 
 # 管理员：发放法币
 @ext.post("/admin/grant-fiat")
