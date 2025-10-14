@@ -9,6 +9,14 @@ const AdminPage = {
       </div>
 
       <div class="card">
+        <h3>登录/注册模式</h3>
+        <div class="input-row">
+          <label><input type="checkbox" id="auth-mode-switch"/> 免验证码 & 注册送 20000 法币</label>
+        </div>
+        <div class="muted" id="auth-mode-desc"></div>
+      </div>
+
+      <div class="card">
         <h3>所有用户</h3>
         <div class="input-row">
           <input id="q" placeholder="按用户名/手机号搜索"/>
@@ -97,6 +105,44 @@ const AdminPage = {
 
   async bind() {
     if (!API._me?.is_admin) { alert("非管理员"); location.hash="#/home"; return; }
+
+    const modeSwitch = byId("auth-mode-switch");
+    const modeDesc = byId("auth-mode-desc");
+    modeDesc.textContent = "加载中...";
+
+    const renderModeDesc = (free) => {
+      modeDesc.textContent = free
+        ? "当前为免验证码模式：登录无需短信验证，注册时不强制手机且赠送 20000 法币。"
+        : "当前为短信验证模式：登录/注册均需短信验证码，新注册不再赠送法币。";
+    };
+
+    const loadAuthMode = async () => {
+      try {
+        const data = await API.adminAuthModeGet();
+        const free = !!(data && data.verification_free);
+        modeSwitch.checked = free;
+        renderModeDesc(free);
+      } catch (e) {
+        modeDesc.textContent = `加载失败：${e.message || e}`;
+      }
+    };
+
+    modeSwitch.onchange = async () => {
+      const desired = !!modeSwitch.checked;
+      modeSwitch.disabled = true;
+      try {
+        await API.adminAuthModeSet(desired);
+        await loadAuthMode();
+        alert("登录/注册模式已更新");
+      } catch (e) {
+        alert(e.message);
+        await loadAuthMode();
+      } finally {
+        modeSwitch.disabled = false;
+      }
+    };
+
+    await loadAuthMode();
 
     // —— 渲染函数们 —— //
     const renderUsers = (items=[])=>{
