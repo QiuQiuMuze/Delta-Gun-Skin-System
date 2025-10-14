@@ -285,13 +285,14 @@ const GachaPage = {
 
     const bricks = list.filter(x=>x.rarity === "BRICK");
     const others = list.filter(x=>x.rarity !== "BRICK");
-    const rows = others.map(x=>`<tr>${this._rowHTML(x)}</tr>`).join("");
+    const ordered = [...bricks, ...others];
+    const rows = ordered.map(x=>`<tr>${this._rowHTML(x)}</tr>`).join("");
     const brickNote = bricks.length
-      ? `<div class="muted">跳过动画模式不展示砖皮详情，本次已收纳 ${bricks.length} 件砖皮。</div>`
+      ? `<div class="muted">跳过动画模式下已直接展示砖皮详情，并置顶本次的 ${bricks.length} 件砖皮。</div>`
       : "";
-    const tableHTML = others.length
+    const tableHTML = ordered.length
       ? `<table class="table">${this._tableHead()}<tbody>${rows}</tbody></table>`
-      : `<div class="muted">本次仅获得砖皮，共 ${bricks.length} 件。</div>`;
+      : `<div class="muted">本次未获得物品。</div>`;
 
     byId("open-stage").innerHTML = "";
     byId("open-result").innerHTML = `

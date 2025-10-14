@@ -746,6 +746,11 @@ def auth_mode(db: Session = Depends(get_db)):
     return {"verification_free": get_auth_free_mode(db)}
 
 
+@app.get("/auth/mode")
+def auth_mode(db: Session = Depends(get_db)):
+    return {"verification_free": get_auth_free_mode(db)}
+
+
 @app.post("/auth/send-code")
 def send_code(inp: SendCodeIn, db: Session = Depends(get_db)):
     phone = inp.phone
