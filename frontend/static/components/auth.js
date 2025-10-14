@@ -42,7 +42,7 @@ const AuthPage = {
       <div class="muted" id="reg-hint"></div>
     </div>
 
-    <div class="card"><h2>重置密码</h2>
+    <div class="card" id="reset-card"><h2>重置密码</h2>
       <div class="input-row">
         <input id="rp-phone" placeholder="绑定手机号"/>
         <button class="btn" id="rp-send">发送验证码</button>
@@ -68,6 +68,7 @@ const AuthPage = {
     const regCodeRow = byId("reg-code-row");
     const regSendBtn = byId("reg-send-code");
     const regPhoneInput = byId("reg-phone");
+    const resetCard = byId("reset-card");
 
     const applyMode = () => {
       const free = !!authState.verification_free;
@@ -83,12 +84,14 @@ const AuthPage = {
         regCodeRow.style.display = "none";
         regPhoneInput.value = "";
         regPhoneInput.disabled = true;
+        if (resetCard) resetCard.style.display = "none";
       } else {
         regPhoneRow.style.display = "";
         regSendBtn.style.display = "";
         regCodeRow.style.display = "";
         regPhoneInput.disabled = false;
         regPhoneInput.placeholder = "手机号（1开头11位）";
+        if (resetCard) resetCard.style.display = "";
       }
       regHint.textContent = free
         ? "注册无需短信验证码且无需填写手机号，新账号将自动获得 20000 法币。若勾选“申请管理员”，注册后会额外发放管理员验证码，需要再验证一次。"
