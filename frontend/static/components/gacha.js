@@ -1,6 +1,7 @@
 const GachaPage = {
   _timer: null,
   _skip: false,
+  _currentResults: null,
 
   async render() {
     const me = await API.me();
@@ -155,19 +156,20 @@ const GachaPage = {
       return;
     }
     const list = data.results || [];
+    this._currentResults = list.slice();
     const maxR = this._maxRarity(list);
     const glowCls = this._glowClass(maxR);
     const glowCN  = this._glowCN(maxR);
 
     // ③ 先显示“中文光芒提示”
     await this._sleep(1200);
-    if (this._skip) return this._revealAll(list);
+    if (this._skip) return this._revealAll();
     this._showStage(`<div class="glow ${glowCls} fade-in">砖的颜色是...：<span class="hl-${glowCls}">${glowCN}</span></div>`);
     byId("skip").style.display = "inline-block";
 
     // ④ 800ms 后进入“砖皮优先鉴定”或直接逐条翻牌
     await this._sleep(800);
-    if (this._skip) return this._revealAll(list);
+    if (this._skip) return this._revealAll();
 
     const bricks = list.filter(x=>x.rarity==="BRICK");
     const others = list.filter(x=>x.rarity!=="BRICK");
@@ -192,7 +194,7 @@ const GachaPage = {
 
     // 逐把展示：名称 → 磨损 → 极品/优品
     for (let i = 0; i < bricks.length; i++) {
-      if (this._skip) return this._revealAll([...bricks, ...others]);
+      if (this._skip) return this._revealAll();
 
       const b = bricks[i];
       const item = document.createElement("div");
@@ -205,10 +207,10 @@ const GachaPage = {
       titleRow.innerHTML = `<span class="spinner"></span>发现砖皮 #${i+1}`;
       item.appendChild(titleRow);
 
-      await this._sleep(400); if (this._skip) return this._revealAll([...bricks, ...others]);
+      await this._sleep(400); if (this._skip) return this._revealAll();
       titleRow.innerHTML = `名称：<span class="hl-orange">${b.name}</span>`;
 
-      await this._sleep(500); if (this._skip) return this._revealAll([...bricks, ...others]);
+      await this._sleep(500); if (this._skip) return this._revealAll();
       const wearRow = document.createElement("div");
       wearRow.className = "row-reveal";
       wearRow.innerHTML = `磨损：<span class="wear-value">0.000</span>`;
@@ -216,13 +218,16 @@ const GachaPage = {
       const wearValue = wearRow.querySelector(".wear-value");
       this._animateWear(wearValue, b.wear);
 
-      await this._sleep(600); if (this._skip) return this._revealAll([...bricks, ...others]);
+      await this._sleep(600); if (this._skip) return this._revealAll();
       let suspenseNode = null;
       if (b.exquisite || b.exquisite === false) {
-        suspenseNode = this._buildSuspenseRow();
+        const isDiamond = this._isDiamondTemplate(b.template) || this._isDiamondTemplate(b.hidden_template);
+        const suspenseMs = isDiamond ? 8000 : (b.exquisite ? 4000 : 2500);
+        const message = isDiamond ? "钻石覆盖中..." : (b.exquisite ? "极品鉴定中..." : "优品鉴定中...");
+        suspenseNode = this._buildSuspenseRow(message, { diamond: isDiamond });
         item.appendChild(suspenseNode);
-        await this._sleep(b.exquisite ? 1200 : 900);
-        if (this._skip) return this._revealAll([...bricks, ...others]);
+        await this._sleep(suspenseMs);
+        if (this._skip) return this._revealAll();
         suspenseNode.remove();
       }
 
@@ -235,7 +240,7 @@ const GachaPage = {
       item.appendChild(judgeRow);
 
       if (window.SkinVisuals) {
-        await this._sleep(300); if (this._skip) return this._revealAll([...bricks, ...others]);
+        await this._sleep(300); if (this._skip) return this._revealAll();
         const meta = this._visualMeta(b);
         const visual = b.visual || {
           body: [], attachments: [], template: b.template, hidden_template: b.hidden_template, effects: b.effects
@@ -287,7 +292,7 @@ const GachaPage = {
 
     let i = 0;
     const step = () => {
-      if (this._skip) return this._revealAll(list); // 随时可跳过
+      if (this._skip) return this._revealAll(); // 随时可跳过
       if (i >= list.length) {
         byId("do-open").disabled = false;
         this._showStage("");      // 清掉上方阶段区
@@ -308,9 +313,10 @@ const GachaPage = {
     if (this._timer) { clearTimeout(this._timer); this._timer = null; }
     byId("skip").style.display = "none";
 
+    const source = list ?? this._currentResults ?? [];
     const bricks = [];
     const others = [];
-    for (const item of list) {
+    for (const item of source) {
       const rarity = String(item.rarity || "").toUpperCase();
       if (rarity === "BRICK") bricks.push(item);
       else others.push(item);
@@ -332,6 +338,48 @@ const GachaPage = {
       </div>`;
     byId("do-open").disabled = false;
     this._refreshStats(); // 跳过路径也要刷新
+    this._currentResults = null;
+  },
+
+  _buildSuspenseRow(message = "鉴定中...", opts = {}) {
+    const wrap = document.createElement("div");
+    wrap.className = "row-reveal suspense-wrap";
+    const diamondCls = opts.diamond ? " diamond" : "";
+    wrap.innerHTML = `<div class="suspense-glow${diamondCls}"><span class="spinner"></span>${message}</div>`;
+    return wrap;
+  },
+
+  _isDiamondTemplate(name) {
+    if (!name) return false;
+    const key = String(name).toLowerCase();
+    return key.includes("white_diamond") || key.includes("yellow_diamond") || key.includes("pink_diamond");
+  },
+
+  _animateWear(el, value, duration = 1200) {
+    if (!el) return;
+    const final = typeof value === "number" ? value : parseFloat(value);
+    if (!isFinite(final)) {
+      el.textContent = value ?? "-";
+      return;
+    }
+    el.textContent = "0.000";
+    const start = performance.now();
+    const total = Math.max(400, duration);
+    const ease = (t) => 1 - Math.pow(1 - t, 2);
+    const self = this;
+    const finalText = typeof value === "string" ? value : final.toFixed(3);
+    const tick = (now) => {
+      if (self._skip) {
+        el.textContent = finalText;
+        return;
+      }
+      const progress = Math.min(1, (now - start) / total);
+      const eased = ease(progress);
+      el.textContent = (final * eased).toFixed(3);
+      if (progress < 1) requestAnimationFrame(tick);
+      else el.textContent = finalText;
+    };
+    requestAnimationFrame(tick);
   },
 
   _buildSuspenseRow() {
