@@ -76,13 +76,17 @@ const API = {
   },
 
   // ---- Auth ----
-  // 注册第一步：下发手机验证码（purpose 固定 "register"）
+  authMode: () => API.json("/auth/mode"),
+
+  register: (username, password, want_admin = false, phone = null, reg_code = null) => {
+    const payload = { username, password, want_admin };
+    if (phone) payload.phone = phone;
+    if (reg_code) payload.reg_code = reg_code;
+    return API.json("/auth/register", "POST", payload);
+  },
+
   sendRegisterCode: (phone) =>
     API.json("/auth/send-code", "POST", { phone, purpose: "register" }),
-
-  // 注册第二步：提交用户名/手机号/短信码/密码（后端会校验短信码）
-register: (username, phone, code, password, want_admin = false) =>
-  API.json("/auth/register", "POST", { username, phone, reg_code: code, password, want_admin }),
 
   loginStart: (username, password) =>
     API.json("/auth/login/start", "POST", { username, password }),
@@ -90,7 +94,7 @@ register: (username, phone, code, password, want_admin = false) =>
   loginVerify: (username, code) =>
     API.json("/auth/login/verify", "POST", { username, code }),
 
-  // 通用短信（目前用于“重置密码”）
+  // 通用短信（目前用于“重置密码”等用途）
   sendCode: (phone, purpose) =>
     API.json("/auth/send-code", "POST", { phone, purpose }),
 
@@ -120,6 +124,7 @@ register: (username, phone, code, password, want_admin = false) =>
   exchange: (amount_fiat) => API.json("/wallet/exchange", "POST", { amount_fiat }),
 
   // ---- Shop / Gacha / Inventory / Craft ----
+  shopPrices: () => API.json("/shop/prices"),
   buyKeys: (count) => API.json("/shop/buy-keys", "POST", { count }),
   buyBricks: (count) => API.json("/shop/buy-bricks", "POST", { count }),
   odds: () => API.json("/odds"),
@@ -186,6 +191,18 @@ register: (username, phone, code, password, want_admin = false) =>
 
   adminDeleteUserConfirm: (target_username, code) =>
     API.json("/admin/delete-user/confirm", "POST", { target_username, code }),
+
+
+  adminAuthModeGet: () => API.json("/admin/auth-mode"),
+
+  adminAuthModeSet: (verification_free) =>
+    API.json("/admin/auth-mode", "POST", { verification_free }),
+
+  adminUserInventory: (username) => {
+    const usp = new URLSearchParams();
+    usp.append("username", username);
+    return API.json("/admin/user-inventory" + (usp.toString() ? "?" + usp.toString() : ""));
+  },
 
 
 
