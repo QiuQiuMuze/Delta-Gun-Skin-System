@@ -732,6 +732,24 @@ def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
     token = mk_jwt(u.username, u.session_ver)
     return {"ok": True, "token": token, "msg": "登录成功"}
 
+@app.post("/auth/login/verify")
+def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
+    # 登录验证码已取消，保留路由仅用于兼容旧版本
+    u = db.query(User).filter_by(username=data.username).first()
+    if not u:
+        raise HTTPException(401, "用户不存在")
+    raise HTTPException(400, "当前版本登录无需验证码，请使用最新客户端")
+
+
+@app.get("/auth/mode")
+def auth_mode(db: Session = Depends(get_db)):
+    return {"verification_free": get_auth_free_mode(db)}
+
+
+@app.get("/auth/mode")
+def auth_mode(db: Session = Depends(get_db)):
+    return {"verification_free": get_auth_free_mode(db)}
+
 
 @app.get("/auth/mode")
 def auth_mode(db: Session = Depends(get_db)):

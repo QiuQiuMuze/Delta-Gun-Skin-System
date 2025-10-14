@@ -56,7 +56,6 @@ const AuthPage = {
   },
 
   bind() {
-    let loginUser = "";
     let regAdminUser = "";
     let authState = { verification_free: true };
 
