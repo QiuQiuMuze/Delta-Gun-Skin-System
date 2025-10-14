@@ -79,6 +79,29 @@ const CraftPage = {
   _rarityClass(r){ if(r==="BRICK")return"hl-orange"; if(r==="PURPLE")return"hl-purple"; if(r==="BLUE")return"hl-blue"; return"hl-green"; },
   _gradeClass(g){ return {S:"grade-s",A:"grade-a",B:"grade-b",C:"grade-c"}[g] || ""; },
 
+  _renderPreviewCell(x, opts = {}) {
+    if (!window.SkinVisuals) return "-";
+    const visual = x.visual || {
+      body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects
+    };
+    const html = SkinVisuals.render(visual, { compact: true, meta: opts.metaText ?? false });
+    return `<div class="market-preview-cell">${html}</div>`;
+  },
+
+  _visualMeta(x) {
+    if (!window.SkinVisuals) return "";
+    const visual = x.visual || {
+      body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects
+    };
+    const info = SkinVisuals.describe(visual);
+    const parts = [
+      `主体：${info.bodyText}`,
+      `配件：${info.attachmentText}`,
+      SkinVisuals.formatMeta(visual)
+    ];
+    return parts.join(" · ");
+  },
+
   _switchRarity(r){
     this._rarity = r;
     this._page = 1;                // 切换时回到第 1 页
@@ -281,16 +304,19 @@ const CraftPage = {
     const exBadge = String(r.rarity).toUpperCase()==="BRICK"
       ? (r.exquisite ? `<span class="badge badge-exq">极品</span>` : `<span class="badge badge-prem">优品</span>`)
       : "-";
+    const previewMeta = this._visualMeta(r);
+    const preview = this._renderPreviewCell(r, { metaText: previewMeta });
 
     const wrap = document.createElement("div");
     wrap.className = "card fade-in";
     wrap.innerHTML = `
       <h3>合成结果</h3>
       <table class="table">
-        <thead><tr><th>名称</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
+        <thead><tr><th>名称</th><th>外观</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
         <tbody>
           <tr>
             <td class="${rc}">${r.name}</td>
+            <td>${preview}</td>
             <td class="${rc}">${r.rarity}</td>
             <td>${exBadge}</td>
             <td>${r.wear}</td>

@@ -77,12 +77,21 @@ const AuthPage = {
         ? "登录现已取消短信验证码，输入账号密码即可完成登录。"
         : "当前模式需短信验证码：先输入账号密码点击“获取验证码”，再在下方输入短信码完成登录。";
 
-      regPhoneRow.style.display = "";
-      regSendBtn.style.display = free ? "none" : "";
-      regCodeRow.style.display = free ? "none" : "";
-      regPhoneInput.placeholder = free ? "手机号（可选）" : "手机号（1开头11位）";
+      if (free) {
+        regPhoneRow.style.display = "none";
+        regSendBtn.style.display = "none";
+        regCodeRow.style.display = "none";
+        regPhoneInput.value = "";
+        regPhoneInput.disabled = true;
+      } else {
+        regPhoneRow.style.display = "";
+        regSendBtn.style.display = "";
+        regCodeRow.style.display = "";
+        regPhoneInput.disabled = false;
+        regPhoneInput.placeholder = "手机号（1开头11位）";
+      }
       regHint.textContent = free
-        ? "注册无需短信验证码，新账号将自动获得 20000 法币。若勾选“申请管理员”，注册后会额外发放管理员验证码，需要再验证一次。"
+        ? "注册无需短信验证码且无需填写手机号，新账号将自动获得 20000 法币。若勾选“申请管理员”，注册后会额外发放管理员验证码，需要再验证一次。"
         : "当前模式需手机号 + 注册验证码，注册不再额外赠送法币。请先点击“获取验证码(注册)”获得短信码。";
       if (free) loginUser = "";
     };
@@ -136,7 +145,7 @@ const AuthPage = {
 
     byId("reg-btn").onclick = async () => {
       const u = byId("reg-u").value.trim();
-      const ph = regPhoneInput.value.trim();
+      const ph = authState.verification_free ? "" : regPhoneInput.value.trim();
       const regCodeInput = byId("reg-code");
       const code = regCodeInput ? regCodeInput.value.trim() : "";
       const pw = byId("reg-p").value;
@@ -145,10 +154,7 @@ const AuthPage = {
       if (!u || !pw)
         return alert("请填写用户名和密码再注册");
 
-      if (authState.verification_free) {
-        if (ph && !/^1\d{10}$/.test(ph))
-          return alert("手机号需为1开头的11位数字（可留空）");
-      } else {
+      if (!authState.verification_free) {
         if (!/^1\d{10}$/.test(ph))
           return alert("请输入正确的手机号（1开头11位）");
         if (!code)

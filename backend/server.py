@@ -751,6 +751,11 @@ def auth_mode(db: Session = Depends(get_db)):
     return {"verification_free": get_auth_free_mode(db)}
 
 
+@app.get("/auth/mode")
+def auth_mode(db: Session = Depends(get_db)):
+    return {"verification_free": get_auth_free_mode(db)}
+
+
 @app.post("/auth/send-code")
 def send_code(inp: SendCodeIn, db: Session = Depends(get_db)):
     phone = inp.phone
@@ -1093,6 +1098,16 @@ def craft_compose(inp: ComposeIn,
         "inv_id": inv.id,
         "skin_id": skin.skin_id, "name": skin.name, "rarity": skin.rarity,
         "exquisite": exquisite, "wear": f"{avg_bp/100:.2f}", "grade": grade, "serial": inv.serial,
+        "template": profile["template"],
+        "hidden_template": profile["hidden_template"],
+        "effects": profile["effects"],
+        "visual": {
+            "body": profile["body"],
+            "attachments": profile["attachments"],
+            "template": profile["template"],
+            "hidden_template": profile["hidden_template"],
+            "effects": profile["effects"],
+        },
     }}
 
 # ------------------ Market 交易行 ------------------
