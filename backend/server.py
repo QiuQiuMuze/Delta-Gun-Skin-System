@@ -512,6 +512,25 @@ def _pick_brick_template(exquisite: bool) -> str:
         return "brick_laser_gradient"
     return "brick_normal"
 
+def _pick_brick_template(exquisite: bool) -> str:
+    roll = secrets.randbelow(10000)
+    if exquisite:
+        if roll < 100:
+            # 1%：白钻/黄钻/粉钻，平均分配
+            trio = ["brick_white_diamond", "brick_yellow_diamond", "brick_pink_diamond"]
+            return trio[secrets.randbelow(len(trio))]
+        if roll < 600:
+            # 接下来的 5%
+            return "brick_brushed_metal"
+        if roll < 1600:
+            # 再 10%
+            return "brick_laser_gradient"
+        return "brick_normal"
+    # 优品：仅保留“标准/镭射渐变”模板
+    if roll < 1000:
+        return "brick_laser_gradient"
+    return "brick_normal"
+
 def _pick_color() -> Dict[str, str]:
     base = secrets.choice(COLOR_PALETTE)
     return {"hex": base["hex"], "name": base["name"]}
@@ -814,6 +833,39 @@ def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
     db.commit()
     token = mk_jwt(u.username, u.session_ver)
     return {"ok": True, "token": token, "msg": "登录成功"}
+
+@app.post("/auth/login/verify")
+def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
+    # 登录验证码已取消，保留路由仅用于兼容旧版本
+    u = db.query(User).filter_by(username=data.username).first()
+    if not u:
+        raise HTTPException(401, "用户不存在")
+    raise HTTPException(400, "当前版本登录无需验证码，请使用最新客户端")
+
+
+@app.get("/auth/mode")
+def auth_mode(db: Session = Depends(get_db)):
+    return {"verification_free": get_auth_free_mode(db)}
+
+
+@app.get("/auth/mode")
+def auth_mode(db: Session = Depends(get_db)):
+    return {"verification_free": get_auth_free_mode(db)}
+
+
+@app.get("/auth/mode")
+def auth_mode(db: Session = Depends(get_db)):
+    return {"verification_free": get_auth_free_mode(db)}
+
+
+@app.get("/auth/mode")
+def auth_mode(db: Session = Depends(get_db)):
+    return {"verification_free": get_auth_free_mode(db)}
+
+
+@app.get("/auth/mode")
+def auth_mode(db: Session = Depends(get_db)):
+    return {"verification_free": get_auth_free_mode(db)}
 
 
 @app.get("/auth/mode")
