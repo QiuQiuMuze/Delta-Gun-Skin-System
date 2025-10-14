@@ -80,6 +80,11 @@ class Inventory(Base):
     effect_tags = Column(String, default="")        # JSON: ["glow", ...]
     hidden_template = Column(Boolean, default=False)
 
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=False)
+
 class PoolConfig(Base):
     __tablename__ = "pool_config"
     id = Column(Integer, primary_key=True)
@@ -149,9 +154,9 @@ RarityT = Literal["BRICK", "PURPLE", "BLUE", "GREEN"]
 
 class RegisterIn(BaseModel):
     username: str
-    phone: str
     password: str
-    reg_code: str  # ★ 新增：注册短信验证码
+    phone: Optional[str] = None
+    reg_code: Optional[str] = None
     # 新增：是否申请管理员（默认否，保持兼容）
     want_admin: bool = False
 
@@ -298,6 +303,33 @@ UPPER_RE = re.compile(r"[A-Z]")
 LOWER_RE = re.compile(r"[a-z]")
 DIGIT_SEQ_RE = re.compile(r"012345|123456|234567|345678|456789|987654|876543|765432|654321|543210")
 PHONE_RE = re.compile(r"^1\d{10}$")  # 以1开头的11位纯数字
+VIRTUAL_PHONE_PREFIX = "virtual:"
+AUTH_MODE_KEY = "auth_free_mode"
+
+def get_auth_free_mode(db: Session) -> bool:
+    row = db.query(SystemSetting).filter_by(key=AUTH_MODE_KEY).first()
+    if not row:
+        return True
+    return str(row.value) != "0"
+
+def _alloc_virtual_phone(db: Session, username: str) -> str:
+    """为无需绑定手机号的账户生成内部占位符，保持唯一性。"""
+    # 采用 username 作为种子，避免生成过于随机的占位串，便于排查
+    base = f"{VIRTUAL_PHONE_PREFIX}{username.lower()}"
+    candidate = base
+    # 若用户名重复导致冲突，则附加随机后缀重试
+    if not db.query(User).filter_by(phone=candidate).first():
+        return candidate
+    for _ in range(8):
+        suffix = secrets.token_hex(3)
+        candidate = f"{base}:{suffix}"
+        if not db.query(User).filter_by(phone=candidate).first():
+            return candidate
+    # 极端情况下依旧冲突，则退回到完全随机的 token
+    while True:
+        candidate = f"{VIRTUAL_PHONE_PREFIX}{secrets.token_hex(4)}"
+        if not db.query(User).filter_by(phone=candidate).first():
+            return candidate
 
 def check_password_complexity(p: str):
     if len(p) < 8:
@@ -418,41 +450,43 @@ COLOR_PALETTE = [
     {"hex": "#2f4858", "name": "石墨蓝"},
 ]
 
-TEMPLATE_POOLS = {
-    "BRICK_PREMIUM": ["prism_flux", "ember_strata", "ion_tessellate"],
-    "BRICK_EXQUISITE": ["aurora_matrix", "nebula_glass", "ion_tessellate"],
-    "BRICK_DIAMOND": ["diamond_veil"],
-    "PURPLE": ["ion_glaze", "vapor_trace", "phase_shift"],
-    "BLUE": ["urban_mesh", "fiber_wave", "midnight_line"],
-    "GREEN": ["field_classic", "steel_ridge", "matte_guard"],
+BRICK_TEMPLATES = {
+    "brick_normal",
+    "brick_white_diamond",
+    "brick_yellow_diamond",
+    "brick_pink_diamond",
+    "brick_brushed_metal",
+    "brick_laser_gradient",
+}
+EXQUISITE_ONLY_TEMPLATES = {
+    "brick_white_diamond",
+    "brick_yellow_diamond",
+    "brick_pink_diamond",
+    "brick_brushed_metal",
 }
 
-EFFECT_POOLS = {
-    "BRICK_PREMIUM": ["glow", "pulse", "sheen"],
-    "BRICK_EXQUISITE": ["glow", "pulse", "sparkle", "trail", "refraction"],
-    "BRICK_DIAMOND": ["sparkle", "refraction", "glow", "pulse", "trail"],
-    "PURPLE": ["glow", "sheen", "flux"],
-    "BLUE": ["sheen", "pulse"],
-    "GREEN": ["sheen"],
-}
+def _pick_brick_template(exquisite: bool) -> str:
+    roll = secrets.randbelow(10000)
+    if exquisite:
+        if roll < 100:
+            # 1%：白钻/黄钻/粉钻，平均分配
+            trio = ["brick_white_diamond", "brick_yellow_diamond", "brick_pink_diamond"]
+            return trio[secrets.randbelow(len(trio))]
+        if roll < 600:
+            # 接下来的 5%
+            return "brick_brushed_metal"
+        if roll < 1600:
+            # 再 10%
+            return "brick_laser_gradient"
+        return "brick_normal"
+    # 优品：仅保留“标准/镭射渐变”模板
+    if roll < 1000:
+        return "brick_laser_gradient"
+    return "brick_normal"
 
 def _pick_color() -> Dict[str, str]:
     base = secrets.choice(COLOR_PALETTE)
     return {"hex": base["hex"], "name": base["name"]}
-
-def _ensure_unique_effects(options, min_count, max_count):
-    if not options:
-        return []
-    hi = min(len(options), max_count)
-    lo = min(min_count, hi)
-    if hi <= 0:
-        return []
-    if lo > hi:
-        lo = hi
-    count = lo if lo == hi else random.randint(lo, hi)
-    if count <= 0:
-        return []
-    return random.sample(options, count)
 
 def generate_visual_profile(rarity: str, exquisite: bool) -> Dict[str, object]:
     body_layers = 2 if secrets.randbelow(100) < 55 else 1
@@ -460,42 +494,15 @@ def generate_visual_profile(rarity: str, exquisite: bool) -> Dict[str, object]:
     attachments = [_pick_color()]
 
     rarity = (rarity or "").upper()
-    template_key = "matte_guard"
-    effects_key = "GREEN"
+    template_key = ""
     hidden_template = False
-
     if rarity == "BRICK":
+        template_key = _pick_brick_template(bool(exquisite))
+        effects = ["sheen"]
         if exquisite:
-            roll = secrets.randbelow(100)
-            if roll == 0:
-                template_key = secrets.choice(TEMPLATE_POOLS["BRICK_DIAMOND"])
-                effects_key = "BRICK_DIAMOND"
-                hidden_template = True
-            else:
-                pool = TEMPLATE_POOLS.get("BRICK_EXQUISITE") or TEMPLATE_POOLS["BRICK_PREMIUM"]
-                template_key = secrets.choice(pool)
-                effects_key = "BRICK_EXQUISITE"
-        else:
-            template_key = secrets.choice(TEMPLATE_POOLS["BRICK_PREMIUM"])
-            effects_key = "BRICK_PREMIUM"
-    elif rarity == "PURPLE":
-        template_key = secrets.choice(TEMPLATE_POOLS["PURPLE"])
-        effects_key = "PURPLE"
-    elif rarity == "BLUE":
-        template_key = secrets.choice(TEMPLATE_POOLS["BLUE"])
-        effects_key = "BLUE"
+            effects.extend(["bold_tracer", "kill_counter"])
     else:
-        template_key = secrets.choice(TEMPLATE_POOLS["GREEN"])
-        effects_key = "GREEN"
-
-    if effects_key == "BRICK_DIAMOND":
-        effects = _ensure_unique_effects(EFFECT_POOLS[effects_key], 4, 5)
-    elif rarity == "BRICK" and exquisite:
-        effects = _ensure_unique_effects(EFFECT_POOLS[effects_key], 3, 4)
-    elif rarity == "BRICK":
-        effects = _ensure_unique_effects(EFFECT_POOLS[effects_key], 1, 2)
-    else:
-        effects = _ensure_unique_effects(EFFECT_POOLS.get(effects_key, []), 0, 2)
+        effects = []
 
     return {
         "body": body,
@@ -517,33 +524,69 @@ def ensure_visual(inv: Inventory) -> Dict[str, object]:
     body = _load_json_field(inv.body_colors, [])
     attachments = _load_json_field(inv.attachment_colors, [])
     effects = _load_json_field(inv.effect_tags, [])
-    template = inv.template_name or "matte_guard"
+    template = inv.template_name or ""
     hidden_template = bool(inv.hidden_template)
     changed = False
 
-    if not body or not attachments:
-        profile = generate_visual_profile(inv.rarity, bool(inv.exquisite))
-        body = profile["body"]
-        attachments = profile["attachments"]
-        template = profile["template"]
-        effects = profile["effects"]
-        hidden_template = profile["hidden_template"]
-        inv.body_colors = json.dumps(body, ensure_ascii=False)
-        inv.attachment_colors = json.dumps(attachments, ensure_ascii=False)
-        inv.template_name = template
-        inv.effect_tags = json.dumps(effects, ensure_ascii=False)
-        inv.hidden_template = hidden_template
-        changed = True
-    else:
-        # 兼容旧版：如果 effect/template 缺失，生成默认值
-        if not template:
+    rarity = (inv.rarity or "").upper()
+
+    if rarity == "BRICK":
+        if not body or not attachments or template not in BRICK_TEMPLATES:
             profile = generate_visual_profile(inv.rarity, bool(inv.exquisite))
+            body = profile["body"]
+            attachments = profile["attachments"]
             template = profile["template"]
+            effects = profile["effects"]
+            hidden_template = False
+            inv.body_colors = json.dumps(body, ensure_ascii=False)
+            inv.attachment_colors = json.dumps(attachments, ensure_ascii=False)
             inv.template_name = template
-            if not effects:
-                effects = profile["effects"]
-                inv.effect_tags = json.dumps(effects, ensure_ascii=False)
-            inv.hidden_template = profile["hidden_template"]
+            inv.effect_tags = json.dumps(effects, ensure_ascii=False)
+            inv.hidden_template = 0
+            changed = True
+        if not bool(inv.exquisite) and template in EXQUISITE_ONLY_TEMPLATES:
+            profile = generate_visual_profile(inv.rarity, False)
+            body = profile["body"]
+            attachments = profile["attachments"]
+            template = profile["template"]
+            effects = profile["effects"]
+            hidden_template = False
+            inv.body_colors = json.dumps(body, ensure_ascii=False)
+            inv.attachment_colors = json.dumps(attachments, ensure_ascii=False)
+            inv.template_name = template
+            inv.effect_tags = json.dumps(effects, ensure_ascii=False)
+            inv.hidden_template = 0
+            changed = True
+        desired_effects = ["sheen"]
+        if bool(inv.exquisite):
+            desired_effects.extend(["bold_tracer", "kill_counter"])
+        if effects != desired_effects:
+            effects = desired_effects
+            inv.effect_tags = json.dumps(desired_effects, ensure_ascii=False)
+            changed = True
+        if hidden_template:
+            inv.hidden_template = 0
+            hidden_template = False
+            changed = True
+    else:
+        if not body or not attachments:
+            profile = generate_visual_profile(inv.rarity, bool(inv.exquisite))
+            body = profile["body"]
+            attachments = profile["attachments"]
+            inv.body_colors = json.dumps(body, ensure_ascii=False)
+            inv.attachment_colors = json.dumps(attachments, ensure_ascii=False)
+            changed = True
+        if template:
+            template = ""
+            inv.template_name = ""
+            changed = True
+        if effects:
+            effects = []
+            inv.effect_tags = json.dumps([], ensure_ascii=False)
+            changed = True
+        if hidden_template:
+            inv.hidden_template = 0
+            hidden_template = False
             changed = True
 
     return {
@@ -595,62 +638,104 @@ def compute_odds(u: User, cfg: PoolConfig) -> OddsOut:
 # ------------------ Auth ------------------
 @app.post("/auth/register")
 def register(data: RegisterIn, db: Session = Depends(get_db)):
-    if db.query(User).filter_by(username=data.username).first():
+    username = (data.username or "").strip()
+    if not username:
+        raise HTTPException(400, "用户名不能为空")
+
+    if db.query(User).filter_by(username=username).first():
         raise HTTPException(400, "用户名已存在，请更换用户名")
 
-    # 手机号校验：以1开头11位
-    if not PHONE_RE.fullmatch(data.phone):
-        raise HTTPException(400, "手机号无效：必须以1开头且为11位纯数字")
-    # 不能占用已绑定手机号
-    if db.query(User).filter_by(phone=data.phone).first():
-        raise HTTPException(400, "手机号已被绑定，请使用其他手机号")
+    free_mode = get_auth_free_mode(db)
+    phone_raw = (data.phone or "").strip()
+    if free_mode:
+        if phone_raw:
+            if not PHONE_RE.fullmatch(phone_raw):
+                raise HTTPException(400, "手机号无效：必须以1开头且为11位纯数字")
+            if db.query(User).filter_by(phone=phone_raw).first():
+                raise HTTPException(400, "手机号已被绑定，请使用其他手机号")
+            phone_value = phone_raw
+        else:
+            phone_value = _alloc_virtual_phone(db, username)
+    else:
+        if not phone_raw:
+            raise HTTPException(400, "当前模式需要填写手机号")
+        if not PHONE_RE.fullmatch(phone_raw):
+            raise HTTPException(400, "手机号无效：必须以1开头且为11位纯数字")
+        if db.query(User).filter_by(phone=phone_raw).first():
+            raise HTTPException(400, "手机号已被绑定，请使用其他手机号")
+        phone_value = phone_raw
 
-    # 先做密码强度校验（失败不消耗验证码）
+    # 先做密码强度校验
     check_password_complexity(data.password)
 
-    # ★ 最后一步才校验并消耗“注册验证码”
-    if not verify_otp(db, data.phone, "register", data.reg_code):
-        raise HTTPException(401, "注册验证码错误或已过期")
+    if not free_mode:
+        reg_code = (data.reg_code or "").strip()
+        if not reg_code:
+            raise HTTPException(400, "当前模式注册需要短信验证码")
+        if not verify_otp(db, phone_value, "register", reg_code):
+            raise HTTPException(401, "注册验证码错误或已过期")
 
-    u = User(username=data.username, phone=data.phone, password_hash=hash_pw(data.password))
+    fiat_bonus = 20000 if free_mode else 0
+    u = User(username=username, phone=phone_value, password_hash=hash_pw(data.password), fiat=fiat_bonus)
     db.add(u); db.commit()
 
     # 若申请管理员：下发管理员验证码（写入 admin_pending）
     try:
         if data.want_admin:
-            put_admin_pending(data.username)
+            put_admin_pending(username)
             return {"ok": True, "admin_verify_required": True, "msg": "已申请管理员，请查看 sms_codes.txt 并在登录页验证"}
     except NameError:
         pass
 
+    if free_mode:
+        return {"ok": True, "msg": "注册成功，系统已发放 20000 法币，请登录"}
     return {"ok": True, "msg": "注册成功，请登录"}
 
 
 @app.post("/auth/login/start")
 def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
     u = db.query(User).filter_by(username=data.username).first()
-    if not u: raise HTTPException(401, "用户不存在")
+    if not u:
+        raise HTTPException(401, "用户不存在")
     if not verify_pw(data.password, u.password_hash):
         raise HTTPException(401, "密码错误")
-    # 60s 限流：同一手机号 login2
-    _sms_rate_guard("login2", u.phone)
+    free_mode = get_auth_free_mode(db)
+    if free_mode:
+        u.session_ver = int(u.session_ver or 0) + 1
+        db.commit()
+        token = mk_jwt(u.username, u.session_ver)
+        return {"ok": True, "token": token, "msg": "登录成功"}
+
+    phone = u.phone or ""
+    if not PHONE_RE.fullmatch(phone):
+        raise HTTPException(400, "账号未绑定有效手机号，请联系管理员")
+    _sms_rate_guard("login2", phone)
     code = f"{secrets.randbelow(1_000_000):06d}"
-    write_sms_line(u.phone, code, "login2")
-    save_otp(db, u.phone, "login2", code)
+    write_sms_line(phone, code, "login2")
+    save_otp(db, phone, "login2", code)
     return {"ok": True, "msg": "验证码已发送到绑定手机号（查看 sms_codes.txt）"}
 
 @app.post("/auth/login/verify")
 def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
     u = db.query(User).filter_by(username=data.username).first()
-    if not u: raise HTTPException(401, "用户不存在")
-    if not verify_otp(db, u.phone, "login2", data.code):
+    if not u:
+        raise HTTPException(401, "用户不存在")
+    if get_auth_free_mode(db):
+        raise HTTPException(400, "当前模式登录无需验证码，请直接登录")
+    phone = u.phone or ""
+    if not PHONE_RE.fullmatch(phone):
+        raise HTTPException(400, "账号未绑定有效手机号，请联系管理员")
+    if not verify_otp(db, phone, "login2", data.code):
         raise HTTPException(401, "验证码错误或已过期")
-    # ★ 每次登录成功都会话版本 +1
     u.session_ver = int(u.session_ver or 0) + 1
     db.commit()
-    # ★ token 携带 sv
     token = mk_jwt(u.username, u.session_ver)
     return {"ok": True, "token": token, "msg": "登录成功"}
+
+
+@app.get("/auth/mode")
+def auth_mode(db: Session = Depends(get_db)):
+    return {"verification_free": get_auth_free_mode(db)}
 
 
 @app.post("/auth/send-code")
@@ -658,21 +743,27 @@ def send_code(inp: SendCodeIn, db: Session = Depends(get_db)):
     phone = inp.phone
     purpose = inp.purpose  # "login" | "reset" | "register"
 
+    free_mode = get_auth_free_mode(db)
+    if purpose in ("login", "register") and free_mode:
+        raise HTTPException(400, "当前登录/注册无需验证码")
+
     # 基本格式校验
     if not PHONE_RE.fullmatch(phone):
         raise HTTPException(400, "手机号格式不正确")
 
     # 分用途校验
-    if purpose in ("login", "reset"):
+    if purpose == "reset" or (purpose == "login" and not free_mode):
         # 登录 / 重置密码：要求手机号已经绑定
         if not db.query(User).filter_by(phone=phone).first():
             raise HTTPException(404, "手机号尚未注册")
-    elif purpose == "register":
+    elif purpose == "register" and not free_mode:
         # 注册：要求手机号目前未被占用
         if db.query(User).filter_by(phone=phone).first():
             raise HTTPException(400, "该手机号已被占用")
-    else:
+    elif purpose not in ("reset", "login", "register"):
         raise HTTPException(400, "不支持的验证码用途")
+    else:
+        raise HTTPException(400, "当前模式无需该验证码")
     # 60s 限流：同一手机号+用途
     _sms_rate_guard(purpose, phone)
 
@@ -697,8 +788,11 @@ def reset_password(inp: ResetPwdIn, db: Session = Depends(get_db)):
 
 @app.get("/me")
 def me(user: User = Depends(user_from_token)):
+    phone = user.phone or ""
+    if phone.startswith(VIRTUAL_PHONE_PREFIX):
+        phone = ""
     return {
-        "username": user.username, "phone": user.phone,
+        "username": user.username, "phone": phone,
         "fiat": user.fiat, "coins": user.coins, "keys": user.keys,
         "unopened_bricks": user.unopened_bricks,
         "pity_brick": user.pity_brick, "pity_purple": user.pity_purple,
@@ -995,7 +1089,7 @@ def craft_compose(inp: ComposeIn,
             "template": profile["template"],
             "hidden_template": profile["hidden_template"],
             "effects": profile["effects"],
-        }
+        },
     }}
 
 # ------------------ Market 交易行 ------------------
@@ -1237,6 +1331,23 @@ def _conn():
     c.row_factory = sqlite3.Row
     return c
 
+def _get_auth_mode_flag() -> bool:
+    con = _conn(); cur = con.cursor()
+    cur.execute("SELECT value FROM system_settings WHERE key=?", (AUTH_MODE_KEY,))
+    row = cur.fetchone()
+    con.close()
+    if not row:
+        return True
+    return str(row["value"]) != "0"
+
+def _set_auth_mode_flag(flag: bool):
+    con = _conn(); cur = con.cursor()
+    cur.execute(
+        "REPLACE INTO system_settings(key, value) VALUES (?, ?)",
+        (AUTH_MODE_KEY, "1" if flag else "0")
+    )
+    con.commit(); con.close()
+
 def _ts(): return int(_time.time())
 
 def _write_sms(tag, code, purpose, amount=None):
@@ -1348,6 +1459,20 @@ def put_admin_pending(username: str):
     con.commit(); con.close()
     _write_sms(username, code, "admin-verify")
     return code
+
+@ext.get("/admin/auth-mode")
+def admin_auth_mode(admin=_Depends(_require_admin)):
+    return {"verification_free": _get_auth_mode_flag()}
+
+@ext.post("/admin/auth-mode")
+def admin_set_auth_mode(payload: dict, admin=_Depends(_require_admin)):
+    raw = (payload or {}).get("verification_free")
+    if isinstance(raw, str):
+        flag = raw.strip().lower() in ("1", "true", "yes", "on")
+    else:
+        flag = bool(raw)
+    _set_auth_mode_flag(flag)
+    return {"ok": True, "verification_free": flag}
 
 # 充值两段式：请求验证码（携带金额）
 @ext.post("/wallet/topup/request")
