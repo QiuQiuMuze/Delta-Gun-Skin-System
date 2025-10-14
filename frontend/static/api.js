@@ -76,19 +76,14 @@ const API = {
   },
 
   // ---- Auth ----
-  // 注册第一步：下发手机验证码（purpose 固定 "register"）
-  sendRegisterCode: (phone) =>
-    API.json("/auth/send-code", "POST", { phone, purpose: "register" }),
+  register: (username, password, want_admin = false, phone = null) => {
+    const payload = { username, password, want_admin };
+    if (phone) payload.phone = phone;
+    return API.json("/auth/register", "POST", payload);
+  },
 
-  // 注册第二步：提交用户名/手机号/短信码/密码（后端会校验短信码）
-register: (username, phone, code, password, want_admin = false) =>
-  API.json("/auth/register", "POST", { username, phone, reg_code: code, password, want_admin }),
-
-  loginStart: (username, password) =>
+  login: (username, password) =>
     API.json("/auth/login/start", "POST", { username, password }),
-
-  loginVerify: (username, code) =>
-    API.json("/auth/login/verify", "POST", { username, code }),
 
   // 通用短信（目前用于“重置密码”）
   sendCode: (phone, purpose) =>
