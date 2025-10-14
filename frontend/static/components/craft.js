@@ -298,9 +298,12 @@ const CraftPage = {
       this._animateWear(wearValue, r.wear);
 
       await this._sleep(600); if (this._skip) return this._revealCraftAll(r);
-      const suspenseNode = this._buildSuspenseRow();
+      const isDiamond = this._isDiamondTemplate(r.template) || this._isDiamondTemplate(r.hidden_template);
+      const suspenseMs = isDiamond ? 8000 : (r.exquisite ? 4000 : 2500);
+      const message = isDiamond ? "钻石覆盖中..." : (r.exquisite ? "极品鉴定中..." : "优品鉴定中...");
+      const suspenseNode = this._buildSuspenseRow(message, { diamond: isDiamond });
       wrap.appendChild(suspenseNode);
-      await this._sleep(r.exquisite ? 1200 : 900); if (this._skip) return this._revealCraftAll(r);
+      await this._sleep(suspenseMs); if (this._skip) return this._revealCraftAll(r);
       suspenseNode.remove();
 
       const judgeRow = document.createElement("div");
@@ -369,10 +372,11 @@ const CraftPage = {
     resultBox.appendChild(wrap);
   },
 
-  _buildSuspenseRow() {
+  _buildSuspenseRow(message = "鉴定中...", opts = {}) {
     const wrap = document.createElement("div");
     wrap.className = "row-reveal suspense-wrap";
-    wrap.innerHTML = `<div class="suspense-glow"><span class="spinner"></span>鉴定中...</div>`;
+    const diamondCls = opts.diamond ? " diamond" : "";
+    wrap.innerHTML = `<div class="suspense-glow${diamondCls}"><span class="spinner"></span>${message}</div>`;
     return wrap;
   },
 
@@ -404,6 +408,12 @@ const CraftPage = {
   },
 
   _revealCraftAll(r){ byId("craft-stage").innerHTML = ""; this._revealCraftTable(r); const sk = byId("skip"); if (sk) sk.style.display = "none"; },
+
+  _isDiamondTemplate(name) {
+    if (!name) return false;
+    const key = String(name).toLowerCase();
+    return key.includes("white_diamond") || key.includes("yellow_diamond") || key.includes("pink_diamond");
+  },
 
   _autoPick(mode){
     const arr = this._sortedAll();
