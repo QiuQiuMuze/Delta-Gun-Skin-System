@@ -283,17 +283,22 @@ const GachaPage = {
     if (this._timer) { clearTimeout(this._timer); this._timer = null; }
     byId("skip").style.display = "none";
 
-    const rows = list.map(x=>{
-      return `<tr>${this._rowHTML(x)}</tr>`;
-    }).join("");
+    const bricks = list.filter(x=>x.rarity === "BRICK");
+    const others = list.filter(x=>x.rarity !== "BRICK");
+    const ordered = [...bricks, ...others];
+    const rows = ordered.map(x=>`<tr>${this._rowHTML(x)}</tr>`).join("");
+    const brickNote = bricks.length
+      ? `<div class="muted">跳过动画模式下已直接展示砖皮详情，并置顶本次的 ${bricks.length} 件砖皮。</div>`
+      : "";
+    const tableHTML = ordered.length
+      ? `<table class="table">${this._tableHead()}<tbody>${rows}</tbody></table>`
+      : `<div class="muted">本次未获得物品。</div>`;
 
     byId("open-stage").innerHTML = "";
     byId("open-result").innerHTML = `
       <div class="card fade-in">
-        <table class="table">
-          ${this._tableHead()}
-          <tbody>${rows}</tbody>
-        </table>
+        ${brickNote}
+        ${tableHTML}
       </div>`;
     byId("do-open").disabled = false;
     this._refreshStats(); // 跳过路径也要刷新
