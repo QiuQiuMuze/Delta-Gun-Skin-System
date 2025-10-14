@@ -76,16 +76,25 @@ const API = {
   },
 
   // ---- Auth ----
-  register: (username, password, want_admin = false, phone = null) => {
+  authMode: () => API.json("/auth/mode"),
+
+  register: (username, password, want_admin = false, phone = null, reg_code = null) => {
     const payload = { username, password, want_admin };
     if (phone) payload.phone = phone;
+    if (reg_code) payload.reg_code = reg_code;
     return API.json("/auth/register", "POST", payload);
   },
 
-  login: (username, password) =>
+  sendRegisterCode: (phone) =>
+    API.json("/auth/send-code", "POST", { phone, purpose: "register" }),
+
+  loginStart: (username, password) =>
     API.json("/auth/login/start", "POST", { username, password }),
 
-  // 通用短信（目前用于“重置密码”）
+  loginVerify: (username, code) =>
+    API.json("/auth/login/verify", "POST", { username, code }),
+
+  // 通用短信（目前用于“重置密码”等用途）
   sendCode: (phone, purpose) =>
     API.json("/auth/send-code", "POST", { phone, purpose }),
 
@@ -181,6 +190,12 @@ const API = {
 
   adminDeleteUserConfirm: (target_username, code) =>
     API.json("/admin/delete-user/confirm", "POST", { target_username, code }),
+
+
+  adminAuthModeGet: () => API.json("/admin/auth-mode"),
+
+  adminAuthModeSet: (verification_free) =>
+    API.json("/admin/auth-mode", "POST", { verification_free }),
 
 
 

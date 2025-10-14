@@ -80,6 +80,11 @@ class Inventory(Base):
     effect_tags = Column(String, default="")        # JSON: ["glow", ...]
     hidden_template = Column(Boolean, default=False)
 
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=False)
+
 class PoolConfig(Base):
     __tablename__ = "pool_config"
     id = Column(Integer, primary_key=True)
@@ -299,6 +304,13 @@ LOWER_RE = re.compile(r"[a-z]")
 DIGIT_SEQ_RE = re.compile(r"012345|123456|234567|345678|456789|987654|876543|765432|654321|543210")
 PHONE_RE = re.compile(r"^1\d{10}$")  # 以1开头的11位纯数字
 VIRTUAL_PHONE_PREFIX = "virtual:"
+AUTH_MODE_KEY = "auth_free_mode"
+
+def get_auth_free_mode(db: Session) -> bool:
+    row = db.query(SystemSetting).filter_by(key=AUTH_MODE_KEY).first()
+    if not row:
+        return True
+    return str(row.value) != "0"
 
 def _alloc_virtual_phone(db: Session, username: str) -> str:
     """为无需绑定手机号的账户生成内部占位符，保持唯一性。"""
@@ -446,18 +458,29 @@ BRICK_TEMPLATES = {
     "brick_brushed_metal",
     "brick_laser_gradient",
 }
+EXQUISITE_ONLY_TEMPLATES = {
+    "brick_white_diamond",
+    "brick_yellow_diamond",
+    "brick_pink_diamond",
+    "brick_brushed_metal",
+}
 
-def _pick_brick_template() -> str:
+def _pick_brick_template(exquisite: bool) -> str:
     roll = secrets.randbelow(10000)
-    if roll < 100:
-        # 1%：白钻/黄钻/粉钻，平均分配
-        trio = ["brick_white_diamond", "brick_yellow_diamond", "brick_pink_diamond"]
-        return trio[secrets.randbelow(len(trio))]
-    if roll < 600:
-        # 接下来的 5%
-        return "brick_brushed_metal"
-    if roll < 1600:
-        # 再 10%
+    if exquisite:
+        if roll < 100:
+            # 1%：白钻/黄钻/粉钻，平均分配
+            trio = ["brick_white_diamond", "brick_yellow_diamond", "brick_pink_diamond"]
+            return trio[secrets.randbelow(len(trio))]
+        if roll < 600:
+            # 接下来的 5%
+            return "brick_brushed_metal"
+        if roll < 1600:
+            # 再 10%
+            return "brick_laser_gradient"
+        return "brick_normal"
+    # 优品：仅保留“标准/镭射渐变”模板
+    if roll < 1000:
         return "brick_laser_gradient"
     return "brick_normal"
 
@@ -474,7 +497,7 @@ def generate_visual_profile(rarity: str, exquisite: bool) -> Dict[str, object]:
     template_key = ""
     hidden_template = False
     if rarity == "BRICK":
-        template_key = _pick_brick_template()
+        template_key = _pick_brick_template(bool(exquisite))
         effects = ["sheen"]
         if exquisite:
             effects.extend(["bold_tracer", "kill_counter"])
@@ -510,6 +533,19 @@ def ensure_visual(inv: Inventory) -> Dict[str, object]:
     if rarity == "BRICK":
         if not body or not attachments or template not in BRICK_TEMPLATES:
             profile = generate_visual_profile(inv.rarity, bool(inv.exquisite))
+            body = profile["body"]
+            attachments = profile["attachments"]
+            template = profile["template"]
+            effects = profile["effects"]
+            hidden_template = False
+            inv.body_colors = json.dumps(body, ensure_ascii=False)
+            inv.attachment_colors = json.dumps(attachments, ensure_ascii=False)
+            inv.template_name = template
+            inv.effect_tags = json.dumps(effects, ensure_ascii=False)
+            inv.hidden_template = 0
+            changed = True
+        if not bool(inv.exquisite) and template in EXQUISITE_ONLY_TEMPLATES:
+            profile = generate_visual_profile(inv.rarity, False)
             body = profile["body"]
             attachments = profile["attachments"]
             template = profile["template"]
@@ -609,20 +645,38 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
     if db.query(User).filter_by(username=username).first():
         raise HTTPException(400, "用户名已存在，请更换用户名")
 
+    free_mode = get_auth_free_mode(db)
     phone_raw = (data.phone or "").strip()
-    if phone_raw:
+    if free_mode:
+        if phone_raw:
+            if not PHONE_RE.fullmatch(phone_raw):
+                raise HTTPException(400, "手机号无效：必须以1开头且为11位纯数字")
+            if db.query(User).filter_by(phone=phone_raw).first():
+                raise HTTPException(400, "手机号已被绑定，请使用其他手机号")
+            phone_value = phone_raw
+        else:
+            phone_value = _alloc_virtual_phone(db, username)
+    else:
+        if not phone_raw:
+            raise HTTPException(400, "当前模式需要填写手机号")
         if not PHONE_RE.fullmatch(phone_raw):
             raise HTTPException(400, "手机号无效：必须以1开头且为11位纯数字")
         if db.query(User).filter_by(phone=phone_raw).first():
             raise HTTPException(400, "手机号已被绑定，请使用其他手机号")
         phone_value = phone_raw
-    else:
-        phone_value = _alloc_virtual_phone(db, username)
 
     # 先做密码强度校验
     check_password_complexity(data.password)
 
-    u = User(username=username, phone=phone_value, password_hash=hash_pw(data.password), fiat=20000)
+    if not free_mode:
+        reg_code = (data.reg_code or "").strip()
+        if not reg_code:
+            raise HTTPException(400, "当前模式注册需要短信验证码")
+        if not verify_otp(db, phone_value, "register", reg_code):
+            raise HTTPException(401, "注册验证码错误或已过期")
+
+    fiat_bonus = 20000 if free_mode else 0
+    u = User(username=username, phone=phone_value, password_hash=hash_pw(data.password), fiat=fiat_bonus)
     db.add(u); db.commit()
 
     # 若申请管理员：下发管理员验证码（写入 admin_pending）
@@ -633,7 +687,9 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
     except NameError:
         pass
 
-    return {"ok": True, "msg": "注册成功，系统已发放 20000 法币，请登录"}
+    if free_mode:
+        return {"ok": True, "msg": "注册成功，系统已发放 20000 法币，请登录"}
+    return {"ok": True, "msg": "注册成功，请登录"}
 
 
 @app.post("/auth/login/start")
@@ -643,6 +699,34 @@ def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
         raise HTTPException(401, "用户不存在")
     if not verify_pw(data.password, u.password_hash):
         raise HTTPException(401, "密码错误")
+    free_mode = get_auth_free_mode(db)
+    if free_mode:
+        u.session_ver = int(u.session_ver or 0) + 1
+        db.commit()
+        token = mk_jwt(u.username, u.session_ver)
+        return {"ok": True, "token": token, "msg": "登录成功"}
+
+    phone = u.phone or ""
+    if not PHONE_RE.fullmatch(phone):
+        raise HTTPException(400, "账号未绑定有效手机号，请联系管理员")
+    _sms_rate_guard("login2", phone)
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    write_sms_line(phone, code, "login2")
+    save_otp(db, phone, "login2", code)
+    return {"ok": True, "msg": "验证码已发送到绑定手机号（查看 sms_codes.txt）"}
+
+@app.post("/auth/login/verify")
+def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
+    u = db.query(User).filter_by(username=data.username).first()
+    if not u:
+        raise HTTPException(401, "用户不存在")
+    if get_auth_free_mode(db):
+        raise HTTPException(400, "当前模式登录无需验证码，请直接登录")
+    phone = u.phone or ""
+    if not PHONE_RE.fullmatch(phone):
+        raise HTTPException(400, "账号未绑定有效手机号，请联系管理员")
+    if not verify_otp(db, phone, "login2", data.code):
+        raise HTTPException(401, "验证码错误或已过期")
     u.session_ver = int(u.session_ver or 0) + 1
     db.commit()
     token = mk_jwt(u.username, u.session_ver)
@@ -657,12 +741,18 @@ def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
     raise HTTPException(400, "当前版本登录无需验证码，请使用最新客户端")
 
 
+@app.get("/auth/mode")
+def auth_mode(db: Session = Depends(get_db)):
+    return {"verification_free": get_auth_free_mode(db)}
+
+
 @app.post("/auth/send-code")
 def send_code(inp: SendCodeIn, db: Session = Depends(get_db)):
     phone = inp.phone
     purpose = inp.purpose  # "login" | "reset" | "register"
 
-    if purpose in ("login", "register"):
+    free_mode = get_auth_free_mode(db)
+    if purpose in ("login", "register") and free_mode:
         raise HTTPException(400, "当前登录/注册无需验证码")
 
     # 基本格式校验
@@ -670,12 +760,18 @@ def send_code(inp: SendCodeIn, db: Session = Depends(get_db)):
         raise HTTPException(400, "手机号格式不正确")
 
     # 分用途校验
-    if purpose == "reset":
-        # 重置密码：要求手机号已经绑定
+    if purpose == "reset" or (purpose == "login" and not free_mode):
+        # 登录 / 重置密码：要求手机号已经绑定
         if not db.query(User).filter_by(phone=phone).first():
             raise HTTPException(404, "手机号尚未注册")
-    else:
+    elif purpose == "register" and not free_mode:
+        # 注册：要求手机号目前未被占用
+        if db.query(User).filter_by(phone=phone).first():
+            raise HTTPException(400, "该手机号已被占用")
+    elif purpose not in ("reset", "login", "register"):
         raise HTTPException(400, "不支持的验证码用途")
+    else:
+        raise HTTPException(400, "当前模式无需该验证码")
     # 60s 限流：同一手机号+用途
     _sms_rate_guard(purpose, phone)
 
@@ -992,16 +1088,6 @@ def craft_compose(inp: ComposeIn,
         "inv_id": inv.id,
         "skin_id": skin.skin_id, "name": skin.name, "rarity": skin.rarity,
         "exquisite": exquisite, "wear": f"{avg_bp/100:.2f}", "grade": grade, "serial": inv.serial,
-        "template": profile["template"],
-        "hidden_template": profile["hidden_template"],
-        "effects": profile["effects"],
-        "visual": {
-            "body": profile["body"],
-            "attachments": profile["attachments"],
-            "template": profile["template"],
-            "hidden_template": profile["hidden_template"],
-            "effects": profile["effects"],
-        }
     }}
 
 # ------------------ Market 交易行 ------------------
@@ -1243,6 +1329,23 @@ def _conn():
     c.row_factory = sqlite3.Row
     return c
 
+def _get_auth_mode_flag() -> bool:
+    con = _conn(); cur = con.cursor()
+    cur.execute("SELECT value FROM system_settings WHERE key=?", (AUTH_MODE_KEY,))
+    row = cur.fetchone()
+    con.close()
+    if not row:
+        return True
+    return str(row["value"]) != "0"
+
+def _set_auth_mode_flag(flag: bool):
+    con = _conn(); cur = con.cursor()
+    cur.execute(
+        "REPLACE INTO system_settings(key, value) VALUES (?, ?)",
+        (AUTH_MODE_KEY, "1" if flag else "0")
+    )
+    con.commit(); con.close()
+
 def _ts(): return int(_time.time())
 
 def _write_sms(tag, code, purpose, amount=None):
@@ -1354,6 +1457,20 @@ def put_admin_pending(username: str):
     con.commit(); con.close()
     _write_sms(username, code, "admin-verify")
     return code
+
+@ext.get("/admin/auth-mode")
+def admin_auth_mode(admin=_Depends(_require_admin)):
+    return {"verification_free": _get_auth_mode_flag()}
+
+@ext.post("/admin/auth-mode")
+def admin_set_auth_mode(payload: dict, admin=_Depends(_require_admin)):
+    raw = (payload or {}).get("verification_free")
+    if isinstance(raw, str):
+        flag = raw.strip().lower() in ("1", "true", "yes", "on")
+    else:
+        flag = bool(raw)
+    _set_auth_mode_flag(flag)
+    return {"ok": True, "verification_free": flag}
 
 # 充值两段式：请求验证码（携带金额）
 @ext.post("/wallet/topup/request")
