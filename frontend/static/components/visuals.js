@@ -1,5 +1,12 @@
 (function(){
   const TEMPLATE_LABELS = {
+    "brick_normal": "标准模板",
+    "brick_white_diamond": "白钻切面",
+    "brick_yellow_diamond": "黄钻切面",
+    "brick_pink_diamond": "粉钻切面",
+    "brick_brushed_metal": "金属拉丝",
+    "brick_laser_gradient": "镭射渐变",
+    // 兼容旧数据
     "prism_flux": "棱镜流光",
     "ember_strata": "余烬分层",
     "ion_tessellate": "离子镶嵌",
@@ -24,10 +31,18 @@
     sparkle: "星火闪烁",
     trail: "残影拖尾",
     refraction: "晶体折射",
-    flux: "相位流动"
+    flux: "相位流动",
+    bold_tracer: "显眼曳光",
+    kill_counter: "击杀字数"
   };
 
   const TEMPLATE_CLASS_MAP = {
+    brick_normal: "tmpl-brick-normal",
+    brick_white_diamond: "tmpl-brick-white",
+    brick_yellow_diamond: "tmpl-brick-yellow",
+    brick_pink_diamond: "tmpl-brick-pink",
+    brick_brushed_metal: "tmpl-brick-brushed",
+    brick_laser_gradient: "tmpl-brick-laser",
     prism_flux: "tmpl-prism",
     ember_strata: "tmpl-ember",
     ion_tessellate: "tmpl-ion",
@@ -52,7 +67,9 @@
     sparkle: "effect-sparkle",
     trail: "effect-trail",
     refraction: "effect-refraction",
-    flux: "effect-flux"
+    flux: "effect-flux",
+    bold_tracer: "effect-bold-tracer",
+    kill_counter: "effect-kill-counter"
   };
 
   const COLOR_LOOKUP = {
@@ -350,7 +367,74 @@
   ];
 
   function templatePreset(key, base){
-    switch(key){
+    const k = String(key || "").toLowerCase();
+    switch(k){
+      case "":
+        return { type: "none" };
+      case "brick_normal":
+        return {
+          type: "bands",
+          colors: [
+            darken(base.bodySecondary, 0.18),
+            lighten(base.bodySecondary, 0.12),
+            lighten(base.bodyPrimary, 0.32)
+          ],
+          angle: -16,
+          opacity: 0.58
+        };
+      case "brick_white_diamond":
+        return {
+          type: "diamond",
+          colors: [
+            "rgba(255,255,255,0.95)",
+            lighten(base.bodySecondary, 0.45),
+            lighten(base.attachmentSecondary, 0.6)
+          ],
+          opacity: 0.82
+        };
+      case "brick_yellow_diamond":
+        return {
+          type: "diamond",
+          colors: [
+            lighten(base.bodySecondary, 0.55),
+            "rgba(255,214,102,0.95)",
+            "rgba(255,240,180,0.85)"
+          ],
+          opacity: 0.8
+        };
+      case "brick_pink_diamond":
+        return {
+          type: "diamond",
+          colors: [
+            lighten(base.bodySecondary, 0.58),
+            "rgba(239,71,111,0.9)",
+            "rgba(255,182,193,0.85)"
+          ],
+          opacity: 0.8
+        };
+      case "brick_brushed_metal":
+        return {
+          type: "brushed",
+          colors: [
+            lighten(base.bodySecondary, 0.4),
+            lighten(base.bodySecondary, 0.18),
+            darken(base.bodySecondary, 0.28)
+          ],
+          angle: -14,
+          opacity: 0.72
+        };
+      case "brick_laser_gradient":
+        return {
+          type: "laser",
+          stops: [
+            { offset: "0%", color: lighten(base.bodyPrimary, 0.6), opacity: 0.92 },
+            { offset: "45%", color: lighten(base.attachmentSecondary, 0.55), opacity: 0.88 },
+            { offset: "100%", color: lighten(base.attachmentPrimary, 0.35), opacity: 0.9 }
+          ],
+          accent: lighten(base.attachmentSecondary, 0.85),
+          streaks: true,
+          opacity: 0.78
+        };
       case "prism_flux":
         return {
           type: "gradient",
@@ -492,10 +576,17 @@
   }
 
   function buildTemplateAssets(info, uniq, base, derived, bodyClipId){
+    if (!info.template) {
+      return { defs: "", overlay: "" };
+    }
     const preset = templatePreset(info.template, base);
     const overlayId = `tmpl-${uniq}`;
     let defs = "";
     let overlay = "";
+
+    if (!preset || preset.type === "none") {
+      return { defs: "", overlay: "" };
+    }
 
     if (preset.type === "gradient") {
       const [x1, y1, x2, y2] = preset.orientation || ["0%", "0%", "100%", "100%"];
@@ -555,6 +646,32 @@
         `<polygon points="16,9 24,0 32,9 24,18" fill="${preset.colors[1]}" opacity="0.55"/>` +
       "</pattern>";
       overlay += `<g class="m7-template m7-template--diamond" clip-path="url(#${bodyClipId})"><path d="${PATHS.bodyPanel}" fill="url(#${patternId})" opacity="${preset.opacity ?? 0.75}"/></g>`;
+    } else if (preset.type === "brushed") {
+      const patternId = `${overlayId}-brushed`;
+      const angle = preset.angle || -12;
+      const baseTone = preset.colors?.[1] || lighten(base.bodySecondary, 0.2);
+      const highlight = preset.colors?.[0] || lighten(base.bodySecondary, 0.45);
+      const shadow = preset.colors?.[2] || darken(base.bodySecondary, 0.3);
+      defs += `<pattern id="${patternId}" width="140" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(${angle})">` +
+        `<rect x="0" y="0" width="140" height="6" fill="${baseTone}" opacity="${preset.opacity ?? 0.7}"/>` +
+        `<rect x="0" y="0" width="140" height="2" fill="${highlight}" opacity="0.55"/>` +
+        `<rect x="0" y="3" width="140" height="1" fill="${shadow}" opacity="0.45"/>` +
+        `<rect x="0" y="5" width="140" height="1" fill="${highlight}" opacity="0.3"/>` +
+      "</pattern>";
+      overlay += `<g class="m7-template m7-template--brushed" clip-path="url(#${bodyClipId})"><path d="${PATHS.bodyPanel}" fill="url(#${patternId})" opacity="1"/></g>`;
+    } else if (preset.type === "laser") {
+      const gradId = `${overlayId}-laser`;
+      defs += `<linearGradient id="${gradId}" x1="0%" y1="0%" x2="100%" y2="0%">` +
+        (preset.stops || []).map(s => `<stop offset="${s.offset}" stop-color="${s.color}" stop-opacity="${s.opacity ?? 1}"/>`).join("") +
+      "</linearGradient>";
+      overlay += `<g class="m7-template m7-template--laser" clip-path="url(#${bodyClipId})"><path d="${PATHS.bodyPanel}" fill="url(#${gradId})" opacity="${preset.opacity ?? 0.72}"/></g>`;
+      if (preset.streaks) {
+        const accent = preset.accent || lighten(base.attachmentSecondary, 0.85, 0.75);
+        overlay += `<g class="m7-template m7-template--laser-streaks" clip-path="url(#${bodyClipId})">` +
+          `<path d="M228 124 C312 94 448 90 520 126" stroke="${accent}" stroke-width="6" stroke-linecap="round" opacity="0.35"/>` +
+          `<path d="M236 150 C332 118 462 108 512 140" stroke="${lighten(accent, 0.1, 0.6)}" stroke-width="4" stroke-linecap="round" opacity="0.3"/>` +
+        "</g>";
+      }
     }
 
     if (info.hidden) {
@@ -608,6 +725,28 @@
         `<stop offset="100%" stop-color="${derived.accentGlow}" stop-opacity="0"/>` +
       "</linearGradient>";
       overlay += `<g class="m7-effect m7-effect--refraction" clip-path="url(#${bodyClipId})"><polygon points="220,100 470,70 520,124 300,172" fill="url(#${refId})" opacity="0.65"/></g>`;
+    }
+
+    if (set.has("bold_tracer")) {
+      const tracerId = `effect-bold-${uniq}`;
+      defs += `<linearGradient id="${tracerId}" x1="0%" y1="0%" x2="100%" y2="0%">` +
+        `<stop offset="0%" stop-color="${lighten(base.attachmentSecondary, 0.75, 0.9)}" stop-opacity="0"/>` +
+        `<stop offset="35%" stop-color="${lighten(base.attachmentSecondary, 0.65, 0.85)}" stop-opacity="0.85"/>` +
+        `<stop offset="100%" stop-color="${lighten(base.bodySecondary, 0.45, 0.7)}" stop-opacity="0"/>` +
+      "</linearGradient>";
+      overlay += `<path class="m7-effect m7-effect--bold-tracer" d="M588 130 C636 128 684 120 722 110" stroke="url(#${tracerId})" stroke-width="10" stroke-linecap="round" fill="none" opacity="0.85"/>`;
+    }
+
+    if (set.has("kill_counter")) {
+      const counterId = `effect-counter-${uniq}`;
+      defs += `<linearGradient id="${counterId}" x1="0%" y1="0%" x2="100%" y2="100%">` +
+        `<stop offset="0%" stop-color="rgba(20,24,36,0.9)"/>` +
+        `<stop offset="100%" stop-color="rgba(48,56,72,0.9)"/>` +
+      "</linearGradient>";
+      overlay += `<g class="m7-effect m7-effect--kill-counter">` +
+        `<rect x="420" y="96" width="68" height="32" rx="6" ry="6" fill="url(#${counterId})" stroke="${lighten(base.attachmentSecondary, 0.6)}" stroke-width="2" opacity="0.9"/>` +
+        `<text x="454" y="118" fill="${lighten(base.attachmentSecondary, 0.85)}" font-size="14" font-family="'Orbitron', 'DIN', monospace" text-anchor="middle">K-99</text>` +
+      "</g>";
     }
 
     return { defs, overlay };
@@ -892,14 +1031,14 @@
     const v = visual || {};
     const bodyRaw = ensureArray(v.body).map(normalizeColor).filter(Boolean);
     const attachRaw = ensureArray(v.attachments).map(normalizeColor).filter(Boolean);
-    const templateKey = String(v.template || "matte_guard").toLowerCase();
+    const templateKey = v.template ? String(v.template).toLowerCase() : "";
     const effectsRaw = ensureArray(v.effects).map(e => String(e || "").toLowerCase()).filter(Boolean);
 
     return {
       bodyColors: bodyRaw.length ? bodyRaw : [DEFAULT_COLOR],
       attachmentColors: attachRaw.length ? attachRaw : [DEFAULT_COLOR],
       template: templateKey,
-      templateLabel: TEMPLATE_LABELS[templateKey] || templateKey || "标准涂装",
+      templateLabel: templateKey ? (TEMPLATE_LABELS[templateKey] || templateKey) : "无模板",
       hidden: !!v.hidden_template,
       effects: effectsRaw,
       effectsLabel: effectsRaw.length ? effectsRaw.map(e => EFFECT_LABELS[e] || e).join("、") : "无特效",
@@ -965,7 +1104,12 @@
       detailLine: lighten(base.bodySecondary, 0.6),
       detailShadow: darken(base.bodyPrimary, 0.35)
     };
-    const canvasClasses = ["skin-preview__canvas", `tpl-${info.template}`];
+    const canvasClasses = ["skin-preview__canvas"];
+    if (info.template) {
+      canvasClasses.push(`tpl-${info.template}`);
+    } else {
+      canvasClasses.push("tpl-none");
+    }
     const canvasStyle = [
       `--preview-width:${width}px`,
       `--preview-height:${height}px`,
@@ -1008,7 +1152,11 @@
     render,
     describe,
     formatMeta,
-    templateLabel: (key) => TEMPLATE_LABELS[String(key || "").toLowerCase()] || key,
+    templateLabel: (key) => {
+      const k = String(key || "").toLowerCase();
+      if (!k) return "无模板";
+      return TEMPLATE_LABELS[k] || k;
+    },
     effectLabel: (key) => EFFECT_LABELS[String(key || "").toLowerCase()] || key,
   };
 })();
