@@ -35,8 +35,6 @@ const GachaPage = {
         未出紫：<span id="pity-purple">${odds.pity_purple}</span>（还差 <span id="left-purple">${left_purple}</span> 抽保底）
       </div></div>
 
-      <div id="open-stage" class="open-stage"></div>
-      <div id="open-result"></div>
       <div class="draw-actions">
         <div class="draw-panels">
           <button class="draw-panel draw-btn draw-btn-single" data-count="1">
@@ -49,9 +47,11 @@ const GachaPage = {
           </button>
         </div>
         <div class="draw-helper">
-          <button class="btn ghost" id="skip" style="display:none;">跳过动画</button>
+          <button class="btn ghost" id="skip" style="visibility:hidden;" disabled>跳过动画</button>
         </div>
       </div>
+      <div id="open-stage" class="open-stage"></div>
+      <div id="open-result"></div>
     </div>`;
   },
 
@@ -237,7 +237,11 @@ const GachaPage = {
     this._skip = false;
     this._opening = true;
     this._setDrawDisabled(true);
-    byId("skip").style.display = "none";
+    const skipBtn = byId("skip");
+    if (skipBtn) {
+      skipBtn.disabled = true;
+      skipBtn.style.visibility = "hidden";
+    }
     byId("open-result").innerHTML = "";
 
     // 自动补购所需钥匙/砖
@@ -274,7 +278,10 @@ const GachaPage = {
     await this._sleep(1200);
     if (this._skip) return this._revealAll();
     this._showStage(`<div class="glow ${glowCls} fade-in">砖的颜色是...：<span class="hl-${glowCls}">${glowCN}</span></div>`);
-    byId("skip").style.display = "inline-block";
+    if (skipBtn) {
+      skipBtn.disabled = false;
+      skipBtn.style.visibility = "visible";
+    }
 
     // ④ 800ms 后进入“砖皮优先鉴定”或直接逐条翻牌
     await this._sleep(800);
@@ -421,7 +428,11 @@ const GachaPage = {
 
   _revealAll(list) {
     if (this._timer) { clearTimeout(this._timer); this._timer = null; }
-    byId("skip").style.display = "none";
+    const skipBtn = byId("skip");
+    if (skipBtn) {
+      skipBtn.disabled = true;
+      skipBtn.style.visibility = "hidden";
+    }
 
     const source = list ?? this._currentResults ?? [];
     const bricks = [];

@@ -334,7 +334,7 @@ main#page { padding:16px; max-width:1100px; margin:0 auto; }
 .tpl-none .skin-preview__canvas { border-color:rgba(118,132,148,0.28); }
 
 /* —— 抽卡操作区域 —— */
-.draw-actions { display:flex; flex-direction:column; gap:16px; margin-top:28px; }
+.draw-actions { display:flex; flex-direction:column; gap:16px; margin:20px 0 12px; }
 .draw-panels { display:flex; flex-wrap:wrap; gap:16px; }
 .draw-panel { flex:1 1 220px; border:none; border-radius:14px; padding:18px 20px; text-align:left; color:#fff; cursor:pointer; position:relative; overflow:hidden; transition:transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease; }
 .draw-panel:disabled { cursor:not-allowed; filter:grayscale(0.5); opacity:0.7; }
@@ -344,7 +344,7 @@ main#page { padding:16px; max-width:1100px; margin:0 auto; }
 .draw-panel__desc { display:block; font-size:13px; opacity:0.85; }
 .draw-btn-single { background:linear-gradient(135deg, #ff9d4d, #ff6f3c); box-shadow:0 8px 20px rgba(255,111,60,0.35); }
 .draw-btn-ten { background:linear-gradient(135deg, #785bff, #4a1fff); box-shadow:0 8px 20px rgba(74,31,255,0.32); }
-.draw-helper { display:flex; justify-content:flex-end; }
+.draw-helper { display:flex; justify-content:flex-end; min-height:38px; align-items:center; }
 .draw-helper .btn { min-width:120px; }
 @media (max-width:720px) {
   .draw-panel { flex:1 1 100%; }

@@ -803,7 +803,13 @@ def build_brick_histogram(layers: List[Dict[str, Any]], player_orders: List[Bric
         cur = upper
     return buckets
 
-def brick_purchase_plan(db: Session, cfg: PoolConfig, count: int, max_price: Optional[int] = None) -> tuple[List[Dict[str, Any]], int]:
+def brick_purchase_plan(
+    db: Session,
+    cfg: PoolConfig,
+    count: int,
+    max_price: Optional[int] = None,
+    exclude_user_id: Optional[int] = None,
+) -> tuple[List[Dict[str, Any]], int]:
     remaining = int(count or 0)
     if remaining <= 0:
         return [], 0
@@ -814,6 +820,8 @@ def brick_purchase_plan(db: Session, cfg: PoolConfig, count: int, max_price: Opt
         BrickSellOrder.remaining > 0,
     ).order_by(BrickSellOrder.price.asc(), BrickSellOrder.created_at.asc(), BrickSellOrder.id.asc()).all()
     for order in player_orders:
+        if exclude_user_id is not None and order.user_id == exclude_user_id:
+            continue
         if max_price is not None and order.price > max_price:
             break
         take = min(remaining, order.remaining)
@@ -850,7 +858,13 @@ def process_brick_buy_orders(db: Session, cfg: PoolConfig) -> List[Dict[str, Any
         if not buyer:
             order.active = False
             continue
-        plan, leftover = brick_purchase_plan(db, cfg, order.remaining, max_price=order.target_price)
+        plan, leftover = brick_purchase_plan(
+            db,
+            cfg,
+            order.remaining,
+            max_price=order.target_price,
+            exclude_user_id=order.user_id,
+        )
         total_qty = sum(item["quantity"] for item in plan)
         if total_qty < order.remaining:
             continue
@@ -878,8 +892,12 @@ def process_brick_buy_orders(db: Session, cfg: PoolConfig) -> List[Dict[str, Any
             if item["type"] == "player" and item.get("order"):
                 sell_order: BrickSellOrder = item["order"]
                 seller = db.query(User).filter_by(id=sell_order.user_id).first()
+                if seller and seller.id == buyer.id:
+                    continue
                 if seller:
-                    seller.coins += item["price"] * item["quantity"]
+                    gross = item["price"] * item["quantity"]
+                    net = (gross * 95) // 100
+                    seller.coins += net
                 sell_order.remaining -= item["quantity"]
                 if sell_order.remaining <= 0:
                     sell_order.active = False
@@ -1206,7 +1224,7 @@ def buy_keys(inp: CountIn, user: User = Depends(user_from_token), db: Session = 
 def buy_bricks(inp: CountIn, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     if inp.count <= 0: raise HTTPException(400, "数量必须大于 0")
     cfg = db.query(PoolConfig).first()
-    plan, leftover = brick_purchase_plan(db, cfg, inp.count)
+    plan, leftover = brick_purchase_plan(db, cfg, inp.count, exclude_user_id=user.id)
     total_qty = sum(item["quantity"] for item in plan)
     if total_qty < inp.count:
         raise HTTPException(400, "当前可购砖数量不足")
@@ -1236,8 +1254,12 @@ def buy_bricks(inp: CountIn, user: User = Depends(user_from_token), db: Session 
         if item["type"] == "player" and item.get("order"):
             sell_order: BrickSellOrder = item["order"]
             seller = db.query(User).filter_by(id=sell_order.user_id).first()
+            if seller and seller.id == user.id:
+                continue
             if seller:
-                seller.coins += item["price"] * item["quantity"]
+                gross = item["price"] * item["quantity"]
+                net = (gross * 95) // 100
+                seller.coins += net
             sell_order.remaining -= item["quantity"]
             if sell_order.remaining <= 0:
                 sell_order.active = False
@@ -1280,7 +1302,7 @@ def shop_prices(user: User = Depends(user_from_token), db: Session = Depends(get
 @app.get("/shop/brick-quote")
 def shop_brick_quote(count: int = Query(..., ge=1), user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     cfg = db.query(PoolConfig).first()
-    plan, leftover = brick_purchase_plan(db, cfg, count)
+    plan, leftover = brick_purchase_plan(db, cfg, count, exclude_user_id=user.id)
     total_qty = sum(item["quantity"] for item in plan)
     total_cost = sum(item["price"] * item["quantity"] for item in plan)
     return {
@@ -1568,7 +1590,6 @@ def brick_order_book(user: User = Depends(user_from_token), db: Session = Depend
     player_rows = db.query(BrickSellOrder, User).join(User, BrickSellOrder.user_id == User.id, isouter=True)\
         .filter(BrickSellOrder.active == True, BrickSellOrder.source == "player", BrickSellOrder.remaining > 0)\
         .order_by(BrickSellOrder.price.asc(), BrickSellOrder.created_at.asc(), BrickSellOrder.id.asc()).all()
-    sell_entries = []
     my_sell = []
     for order, seller in player_rows:
         entry = {
@@ -1580,12 +1601,10 @@ def brick_order_book(user: User = Depends(user_from_token), db: Session = Depend
             "mine": order.user_id == user.id,
             "created_at": order.created_at,
         }
-        sell_entries.append(entry)
         if entry["mine"]:
             my_sell.append(entry)
     buy_orders = db.query(BrickBuyOrder).filter(BrickBuyOrder.active == True, BrickBuyOrder.remaining > 0)\
         .order_by(BrickBuyOrder.target_price.desc(), BrickBuyOrder.created_at.asc(), BrickBuyOrder.id.asc()).all()
-    buy_entries = []
     my_buy = []
     for order in buy_orders:
         entry = {
@@ -1597,15 +1616,14 @@ def brick_order_book(user: User = Depends(user_from_token), db: Session = Depend
             "created_at": order.created_at,
             "mine": order.user_id == user.id,
         }
-        buy_entries.append(entry)
         if entry["mine"]:
             my_buy.append(entry)
     histogram = build_brick_histogram(layers, [row[0] for row in player_rows])
     return {
         "official_price": cfg.brick_price,
         "official_layers": layers,
-        "player_sells": sell_entries,
-        "player_buys": buy_entries,
+        "player_sells": [],
+        "player_buys": [],
         "my_sells": my_sell,
         "my_buys": my_buy,
         "histogram": histogram,
@@ -1618,8 +1636,8 @@ def brick_sell(inp: BrickSellIn, user: User = Depends(user_from_token), db: Sess
     price = int(inp.price or 0)
     if qty <= 0:
         raise HTTPException(400, "数量必须大于 0")
-    if price <= 0:
-        raise HTTPException(400, "价格必须大于 0")
+    if price <= 40:
+        raise HTTPException(400, "价格必须大于 40")
     sellable = int(user.unopened_bricks or 0) - int(user.gift_unopened_bricks or 0)
     if sellable < qty:
         raise HTTPException(400, "可售砖数量不足，赠送砖不可出售")
@@ -1660,8 +1678,8 @@ def brick_buy_order(inp: BrickBuyOrderIn, user: User = Depends(user_from_token),
     target_price = int(inp.target_price or 0)
     if qty <= 0:
         raise HTTPException(400, "数量必须大于 0")
-    if target_price <= 0:
-        raise HTTPException(400, "价格必须大于 0")
+    if target_price <= 40:
+        raise HTTPException(400, "价格必须大于 40")
     total_cost = target_price * qty
     if user.coins < total_cost:
         raise HTTPException(400, "三角币不足")
