@@ -2,6 +2,15 @@
 const WalletPage = {
   async render() {
     const me = await API.me();
+    const detailList = Array.isArray(me.unopened_bricks_detail) ? me.unopened_bricks_detail : [];
+    const esc = (typeof escapeHtml === 'function') ? escapeHtml : (v => String(v ?? ""));
+    const breakdown = detailList.length
+      ? `<ul class="brick-breakdown">${detailList.map(item => {
+          const name = esc(item.name || item.season || '默认赛季');
+          const locked = item.gift_locked ? `<span class="muted">（含赠送 ${item.gift_locked}）</span>` : '';
+          return `<li>${name}：<b>${item.count}</b>${locked}</li>`;
+        }).join('')}</ul>`
+      : '<div class="muted small">暂无赛季拆分</div>';
     return `
     <div class="card">
       <h2>我的钱包</h2>
@@ -16,6 +25,7 @@ const WalletPage = {
         </div>
         <div class="kv"><div class="k">钥匙</div><div class="v" id="key-balance">${me.keys}</div></div>
         <div class="kv"><div class="k">未开砖</div><div class="v" id="brick-balance">${me.unopened_bricks}</div></div>
+        <div class="kv kv-wide"><div class="k">赛季拆分</div><div class="v">${breakdown}</div></div>
       </div>
     </div>
 
