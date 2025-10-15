@@ -17,6 +17,14 @@ const AdminPage = {
       </div>
 
       <div class="card">
+        <h3>饼干工厂小游戏</h3>
+        <div class="input-row">
+          <label><input type="checkbox" id="cookie-toggle"/> 对玩家开放饼干工厂</label>
+        </div>
+        <div class="muted" id="cookie-toggle-desc">加载中...</div>
+      </div>
+
+      <div class="card">
         <h3>所有用户</h3>
         <div class="input-row">
           <input id="q" placeholder="按用户名/手机号搜索"/>
@@ -110,7 +118,10 @@ const AdminPage = {
 
     const modeSwitch = byId("auth-mode-switch");
     const modeDesc = byId("auth-mode-desc");
+    const cookieSwitch = byId("cookie-toggle");
+    const cookieDesc = byId("cookie-toggle-desc");
     modeDesc.textContent = "加载中...";
+    if (cookieDesc) cookieDesc.textContent = "加载中...";
 
     const renderModeDesc = (free) => {
       modeDesc.textContent = free
@@ -145,6 +156,58 @@ const AdminPage = {
     };
 
     await loadAuthMode();
+
+    const updateCookieDesc = (info = {}) => {
+      if (!cookieDesc) return;
+      const enabled = !!info.enabled;
+      const profiles = info.profiles != null ? info.profiles : "-";
+      const total = info.total_bricks != null ? info.total_bricks : "-";
+      cookieDesc.innerHTML = enabled
+        ? `当前已向玩家开放。参与玩家：<b>${profiles}</b> · 累计产出砖：<b>${total}</b>`
+        : `当前为关闭状态，普通玩家无法看到该页面。`; 
+    };
+
+    const loadCookie = async () => {
+      if (!cookieSwitch) return;
+      cookieSwitch.disabled = true;
+      try {
+        const info = await API.cookieAdminStatus();
+        cookieSwitch.checked = !!info.enabled;
+        updateCookieDesc(info);
+        API._features = {
+          ...(API._features || {}),
+          cookie_factory: {
+            enabled: !!info.enabled,
+            available: !!info.enabled || !!API._me?.is_admin,
+          }
+        };
+        if (typeof renderNav === 'function') renderNav();
+      } catch (e) {
+        if (cookieDesc) cookieDesc.textContent = `加载失败：${e.message || e}`;
+      } finally {
+        cookieSwitch.disabled = false;
+      }
+    };
+
+    if (cookieSwitch) {
+      cookieSwitch.onchange = async () => {
+        const desired = !!cookieSwitch.checked;
+        cookieSwitch.disabled = true;
+        try {
+          await API.cookieAdminToggle(desired);
+          await loadCookie();
+          if (CookieFactoryPage && typeof CookieFactoryPage.refresh === 'function') {
+            await CookieFactoryPage.refresh();
+          }
+        } catch (e) {
+          alert(e.message || '更新失败');
+          await loadCookie();
+        } finally {
+          cookieSwitch.disabled = false;
+        }
+      };
+      await loadCookie();
+    }
 
     // —— 渲染函数们 —— //
     const renderUsers = (items=[])=>{
