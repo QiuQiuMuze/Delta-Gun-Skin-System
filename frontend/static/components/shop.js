@@ -1,11 +1,39 @@
 const ShopPage = {
   _state: null,
-  render() {
+  _seasonCatalog: [],
+  _seasonMap: {},
+  _selectedSeason: null,
+  async render() {
+    const catalog = await API.seasonCatalog().catch(() => ({ seasons: [], latest: null }));
+    this._seasonCatalog = Array.isArray(catalog?.seasons) ? catalog.seasons : [];
+    this._seasonMap = {};
+    this._seasonCatalog.forEach(season => {
+      if (!season?.id) return;
+      this._seasonMap[season.id] = season;
+      this._seasonMap[String(season.id).toUpperCase()] = season;
+    });
+    if (!this._selectedSeason) {
+      this._selectedSeason = catalog?.latest || (this._seasonCatalog[0]?.id ?? "ALL");
+    }
+    const seasonOptions = ['<option value="ALL">全部赛季</option>']
+      .concat(this._seasonCatalog.map(season => {
+        const selected = this._selectedSeason === season.id ? 'selected' : '';
+        return `<option value="${season.id}" ${selected}>${season.name}</option>`;
+      }))
+      .join("");
+    const seasonPanel = this._renderSeasonCatalog(this._selectedSeason);
     const isAdmin = !!(API._me && API._me.is_admin);
     return `
     <div class="card shop-card">
       <h2>商店</h2>
       <div class="shop-price" id="shop-prices">加载实时价格...</div>
+      <div class="shop-season" id="shop-season-board">
+        <div class="input-row">
+          <label class="input-label" for="shop-season-select">赛季枪皮</label>
+          <select id="shop-season-select">${seasonOptions}</select>
+        </div>
+        <div class="shop-season__catalog" id="shop-season-catalog">${seasonPanel}</div>
+      </div>
       <div class="shop-board">
         <div class="shop-board__hist">
           <h3>砖价区间</h3>
@@ -63,6 +91,60 @@ const ShopPage = {
         </div>
       </div>
     </div>`;
+  },
+  _renderSeasonCatalog(seasonId) {
+    if (!this._seasonCatalog.length) {
+      return `<div class="muted">暂无赛季数据。</div>`;
+    }
+    const esc = (typeof escapeHtml === 'function') ? escapeHtml : (v => String(v ?? ""));
+    if (!seasonId || seasonId === "ALL") {
+      const groups = [
+        { key: "bricks", title: "砖皮", cls: "hl-orange" },
+        { key: "purples", title: "紫皮", cls: "hl-purple" },
+        { key: "blues", title: "蓝皮", cls: "hl-blue" },
+        { key: "greens", title: "绿皮", cls: "hl-green" }
+      ];
+      const cards = this._seasonCatalog.map(entry => {
+        const chips = groups.map(group => {
+          const count = Array.isArray(entry[group.key]) ? entry[group.key].length : 0;
+          return `<span class="shop-season__chip ${group.cls}">${group.title}×${count}</span>`;
+        }).join("");
+        const tagline = entry.tagline ? `<div class="shop-season__card-meta">主题：${esc(entry.tagline)}</div>` : "";
+        const desc = entry.description ? `<div class="shop-season__card-desc">${esc(entry.description)}</div>` : "";
+        return `<div class="shop-season__card">
+          <h4>${esc(entry.name || entry.id)}</h4>
+          ${tagline}
+          ${desc}
+          <div class="shop-season__card-counts">${chips}</div>
+        </div>`;
+      }).join("");
+      return cards ? `<div class="shop-season__grid">${cards}</div>` : `<div class="muted">暂无赛季数据。</div>`;
+    }
+    const key = String(seasonId);
+    let entry = this._seasonMap[key] || this._seasonMap[key.toUpperCase()];
+    if (!entry) {
+      entry = this._seasonCatalog.find(s => String(s.id) === key || String(s.id).toUpperCase() === key.toUpperCase());
+    }
+    if (!entry) return `<div class="muted">暂无赛季数据。</div>`;
+    const groups = [
+      { key: "bricks", title: "砖皮", cls: "hl-orange" },
+      { key: "purples", title: "紫皮", cls: "hl-purple" },
+      { key: "blues", title: "蓝皮", cls: "hl-blue" },
+      { key: "greens", title: "绿皮", cls: "hl-green" }
+    ];
+    const listHtml = groups.map(group => {
+      const list = entry[group.key] || [];
+      const items = list.length
+        ? list.map(item => `<li class="${group.cls}">${esc(item.name || item.skin_id || '未知皮肤')}</li>`).join("")
+        : '<li class="muted">暂无</li>';
+      return `<div class="shop-season__group shop-season__group--${group.key}">
+        <h4>${group.title}（${list.length}）</h4>
+        <ul>${items}</ul>
+      </div>`;
+    }).join("");
+    const tagline = entry.tagline ? `<div class="shop-season__tagline">主题：${esc(entry.tagline)}</div>` : "";
+    const desc = entry.description ? `<div class="shop-season__desc">${esc(entry.description)}</div>` : "";
+    return `<div class="shop-season__meta">${tagline}${desc}</div><div class="shop-season__groups">${listHtml}</div>`;
   },
   bind() {
     this._state = { price: null, book: null };
@@ -180,6 +262,14 @@ const ShopPage = {
     const sellPrice = byId("sell-price");
     const buyCount = byId("buyorder-count");
     const buyPrice = byId("buyorder-price");
+    const seasonSelect = byId("shop-season-select");
+    const seasonCatalogBox = byId("shop-season-catalog");
+    if (seasonSelect && seasonCatalogBox) {
+      seasonSelect.addEventListener('change', () => {
+        this._selectedSeason = seasonSelect.value || "ALL";
+        seasonCatalogBox.innerHTML = this._renderSeasonCatalog(this._selectedSeason);
+      });
+    }
 
     byId("buy-keys").onclick = async () => {
       const n = parseInt(keyInput.value, 10) || 0;

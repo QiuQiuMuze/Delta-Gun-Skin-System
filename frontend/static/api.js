@@ -4,6 +4,7 @@ const API = {
   _tokenKey: "token",
   _me: null,
   _features: {},
+  _seasonCatalog: null,
 
   // 初始化：若发现旧 localStorage token，则迁移到本标签页的 sessionStorage
   initSession() {
@@ -135,7 +136,18 @@ const API = {
     return API.json(`/shop/brick-quote?${usp.toString()}`);
   },
   odds: () => API.json("/odds"),
-  open: (count) => API.json("/gacha/open", "POST", { count }),
+  seasonCatalog: async function(force = false) {
+    if (!force && this._seasonCatalog) return this._seasonCatalog;
+    const data = await API.json("/seasons/catalog");
+    this._seasonCatalog = data || { seasons: [], latest: null };
+    return this._seasonCatalog;
+  },
+
+  open: (count, season = null) => {
+    const payload = { count };
+    if (season) payload.season = season;
+    return API.json("/gacha/open", "POST", payload);
+  },
   inventory: (show_on_market = false) =>
     API.json("/inventory" + (show_on_market ? "?show_on_market=true" : "")),
   inventoryByColor: (show_on_market = false) =>
