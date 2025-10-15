@@ -13,11 +13,11 @@ const ShopPage = {
         <div class="shop-board__lists">
           <div class="shop-board__column">
             <h3>玩家在售</h3>
-            <div class="order-list" id="player-sell-list"><div class="muted">加载中...</div></div>
+            <div class="order-list" id="player-sell-list"><div class="muted">玩家挂单信息现已不对外公开展示。</div></div>
           </div>
           <div class="shop-board__column">
             <h3>收购委托</h3>
-            <div class="order-list" id="player-buy-list"><div class="muted">加载中...</div></div>
+            <div class="order-list" id="player-buy-list"><div class="muted">收购委托列表对外不可见。</div></div>
           </div>
         </div>
       </div>
@@ -44,7 +44,7 @@ const ShopPage = {
           <div class="muted small">赠送资金购得的砖不可售卖。</div>
           <div class="input-row">
             <input id="sell-count" type="number" min="1" placeholder="数量（≥1）"/>
-            <input id="sell-price" type="number" min="1" placeholder="单价（≥1）"/>
+            <input id="sell-price" type="number" min="41" placeholder="单价（>40）"/>
             <button class="btn" id="sell-bricks">上架</button>
           </div>
           <div class="order-list small" id="my-sell-orders"><div class="muted">暂无挂单</div></div>
@@ -54,7 +54,7 @@ const ShopPage = {
           <div class="muted small">达到目标价即成交，超出差价会返还。</div>
           <div class="input-row">
             <input id="buyorder-count" type="number" min="1" placeholder="数量（≥1）"/>
-            <input id="buyorder-price" type="number" min="1" placeholder="目标单价"/>
+            <input id="buyorder-price" type="number" min="41" placeholder="目标单价（>40）"/>
             <button class="btn" id="place-buyorder">提交</button>
           </div>
           <div class="order-list small" id="my-buy-orders"><div class="muted">暂无委托</div></div>
@@ -142,8 +142,6 @@ const ShopPage = {
 
     const renderOrders = () => {
       const book = this._state.book;
-      renderOrderSection(sellList, (book?.player_sells || []).slice(0, 8), { empty: "暂无玩家挂单" });
-      renderOrderSection(buyList, (book?.player_buys || []).slice(0, 8), { empty: "暂无收购委托", type: "buy" });
       renderOrderSection(mySellList, book?.my_sells || [], { empty: "暂无挂单", allowCancel: true, cancelAction: "cancel-sell" });
       renderOrderSection(myBuyList, book?.my_buys || [], { empty: "暂无委托", allowCancel: true, cancelAction: "cancel-buy", type: "buy" });
     };
@@ -180,7 +178,12 @@ const ShopPage = {
       const n = parseInt(keyInput.value, 10) || 0;
       if (n <= 0) return alert("数量必须 ≥ 1");
       try {
-        await API.buyKeys(n);
+        const ret = await API.buyKeys(n);
+        if (ret && typeof ret.coins === "number") {
+          API._me = { ...(API._me || {}), coins: ret.coins, keys: ret.keys };
+        } else {
+          await API.me();
+        }
         alert("购买成功");
         await loadPrices();
       } catch (e) {
@@ -199,6 +202,15 @@ const ShopPage = {
         msgLines.push("是否继续？");
         if (!confirm(msgLines.join("\n"))) return;
         const res = await API.buyBricks(n);
+        if (res && typeof res.coins === "number") {
+          API._me = {
+            ...(API._me || {}),
+            coins: res.coins,
+            unopened_bricks: res.unopened_bricks,
+          };
+        } else {
+          await API.me();
+        }
         const segmentText = res?.segments?.map(seg => `${seg.source === "player" ? "玩家" : "官方"} ${seg.price} ×${seg.quantity}`).join("，");
         const extra = segmentText ? `成交明细：${segmentText}` : "";
         alert([`购砖成功，花费 ${res?.spent ?? quote?.total_cost ?? 0} 三角币。`, extra].filter(Boolean).join("\n"));
@@ -211,12 +223,18 @@ const ShopPage = {
     byId("sell-bricks").onclick = async () => {
       const qty = parseInt(sellCount.value, 10) || 0;
       const price = parseInt(sellPrice.value, 10) || 0;
-      if (qty <= 0 || price <= 0) return alert("数量和价格必须 ≥ 1");
+      if (qty <= 0) return alert("数量必须 ≥ 1");
+      if (price <= 40) return alert("单价必须大于 40");
       try {
         const res = await API.brickSell(qty, price);
         alert(`已上架 ${qty} 块砖（#${res.order_id}）。`);
         sellCount.value = "";
         sellPrice.value = "";
+        if (API._me) {
+          API._me = { ...API._me, unopened_bricks: Math.max(0, (API._me.unopened_bricks || 0) - qty) };
+        } else {
+          await API.me();
+        }
         await loadBook();
       } catch (e) {
         alert(e.message || "上架失败");
@@ -226,7 +244,8 @@ const ShopPage = {
     byId("place-buyorder").onclick = async () => {
       const qty = parseInt(buyCount.value, 10) || 0;
       const price = parseInt(buyPrice.value, 10) || 0;
-      if (qty <= 0 || price <= 0) return alert("数量和价格必须 ≥ 1");
+      if (qty <= 0) return alert("数量必须 ≥ 1");
+      if (price <= 40) return alert("目标单价必须大于 40");
       try {
         const res = await API.brickBuyOrder(qty, price);
         let msg;
@@ -244,7 +263,7 @@ const ShopPage = {
         alert(`委托创建成功（#${res.order_id}）。${msg}`);
         buyCount.value = "";
         buyPrice.value = "";
-        await Promise.all([loadPrices(), loadBook()]);
+        await Promise.all([loadPrices(), loadBook(), API.me()]);
       } catch (e) {
         alert(e.message || "提交失败");
       }
@@ -261,7 +280,7 @@ const ShopPage = {
         } else if (btn.dataset.action === "cancel-buy") {
           await API.brickCancelBuyOrder(id);
         }
-        await Promise.all([loadPrices(), loadBook()]);
+        await Promise.all([loadPrices(), loadBook(), API.me()]);
       } catch (e) {
         alert(e.message || "撤销失败");
       }
