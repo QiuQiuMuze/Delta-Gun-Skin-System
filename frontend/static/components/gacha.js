@@ -4,14 +4,40 @@ const GachaPage = {
   _currentResults: null,
   _drawButtons: null,
   _opening: false,
+  _seasons: [],
+  _selectedSeason: null,
+  _brickCounts: [],
 
   async render() {
     const me = await API.me();
     const od = await API.odds();
+    const seasonPayload = await API.seasons().catch(() => ({ seasons: [] }));
     const odds = od.odds || od;
     const lim = od.limits || { brick_pity_max:75, purple_pity_max:20 };
     const left_brick  = Math.max(0, lim.brick_pity_max  - (odds.pity_brick  + 1));
     const left_purple = Math.max(0, lim.purple_pity_max - (odds.pity_purple + 1));
+
+    this._seasons = Array.isArray(seasonPayload?.seasons)
+      ? seasonPayload.seasons.map(info => ({
+          season: Number(info?.season || 0),
+          label: `${info?.code || `S${info?.season || ''}`}${info?.name ? ` ${info.name}` : ''}`.trim() || `S${info?.season}`,
+        }))
+        .filter(item => item.season > 0)
+        .sort((a, b) => a.season - b.season)
+      : [];
+    if (this._seasons.length) {
+      if (typeof this._selectedSeason !== 'number' || !this._seasons.some(s => s.season === this._selectedSeason)) {
+        this._selectedSeason = this._seasons[this._seasons.length - 1].season;
+      }
+    } else {
+      this._selectedSeason = null;
+    }
+    this._brickCounts = Array.isArray(me?.brick_season_counts) ? me.brick_season_counts.slice() : [];
+    const seasonOptions = this._seasons.length
+      ? this._seasons.map(info => `<option value="${info.season}"${info.season === this._selectedSeason ? ' selected' : ''}>${escapeHtml(info.label)}</option>`).join('')
+      : `<option value="" disabled>暂无赛季</option>`;
+    const seasonDisabled = this._seasons.length ? '' : 'disabled';
+    const seasonSummary = this._formatSeasonSummary();
 
     return `
     <div class="card"><h2>开砖</h2>
@@ -20,6 +46,13 @@ const GachaPage = {
         <div class="kv"><div class="k">未开砖</div><div class="v" id="stat-bricks">${me.unopened_bricks}</div></div>
         <div class="kv"><div class="k">三角币</div><div class="v" id="stat-coins">${me.coins}</div></div>
       </div>
+
+      <div class="kv"><div class="k">抽取赛季</div>
+        <div class="v">
+          <select id="gacha-season" ${seasonDisabled}>${seasonOptions}</select>
+        </div>
+      </div>
+      <div class="kv"><div class="k">砖皮赛季分布</div><div class="v" id="gacha-season-summary">${seasonSummary}</div></div>
 
       <div class="kv"><div class="k">当前概率</div>
         <div class="v">
@@ -68,6 +101,19 @@ const GachaPage = {
         }
       });
     });
+
+    const seasonSel = byId("gacha-season");
+    if (seasonSel) {
+      if (typeof this._selectedSeason === 'number') {
+        seasonSel.value = String(this._selectedSeason);
+      }
+      seasonSel.onchange = () => {
+        const val = parseInt(seasonSel.value, 10);
+        if (!Number.isNaN(val)) {
+          this._selectedSeason = val;
+        }
+      };
+    }
   },
 
   // —— 抽完后刷新顶部 & 概率/保底 —— //
@@ -78,6 +124,9 @@ const GachaPage = {
       byId("stat-keys").textContent   = me.keys;
       byId("stat-bricks").textContent = me.unopened_bricks;
       byId("stat-coins").textContent  = me.coins;
+      this._brickCounts = Array.isArray(me?.brick_season_counts) ? me.brick_season_counts.slice() : [];
+      const seasonSummary = byId("gacha-season-summary");
+      if (seasonSummary) seasonSummary.innerHTML = this._formatSeasonSummary();
       // 概率
       const odds = od.odds || od;
       byId("od-brick").textContent  = odds.brick;
@@ -104,6 +153,19 @@ const GachaPage = {
   _gradeClass(g) { return { "S":"grade-s", "A":"grade-a", "B":"grade-b", "C":"grade-c" }[g] || ""; },
   _glowClass(maxR) { return maxR==="BRICK" ? "orange" : maxR==="PURPLE" ? "purple" : maxR==="BLUE" ? "blue" : "green"; },
   _glowCN(maxR)    { return maxR==="BRICK" ? "橙色"  : maxR==="PURPLE" ? "紫色"   : maxR==="BLUE" ? "蓝色"   : "绿色"; },
+  _formatSeasonSummary(counts) {
+    const list = Array.isArray(counts) ? counts : this._brickCounts;
+    if (!list || !list.length) {
+      return '<span class="muted">暂无数据</span>';
+    }
+    return list
+      .map(item => {
+        const label = item?.label || (item?.season ? `S${item.season}` : '未知赛季');
+        const count = item?.count ?? 0;
+        return `<span class="badge">${escapeHtml(label)} ×${count}</span>`;
+      })
+      .join(' ');
+  },
   _maxRarity(list) {
     if (list.some(x=>x.rarity==="BRICK")) return "BRICK";
     if (list.some(x=>x.rarity==="PURPLE")) return "PURPLE";
@@ -111,7 +173,7 @@ const GachaPage = {
     return "GREEN";
   },
   _tableHead() {
-    return `<thead><tr><th>名称</th><th>外观</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>`;
+    return `<thead><tr><th>名称</th><th>外观</th><th>赛季</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>`;
   },
   _renderPreviewCell(x, opts = {}) {
     if (!window.SkinVisuals) return "-";
@@ -148,6 +210,7 @@ const GachaPage = {
     return `
       <td class="${rc}">${x.name}</td>
       <td>${preview}</td>
+      <td>${escapeHtml(x.season_label || '-')}</td>
       <td class="${rc}">${x.rarity}</td>
       <td>${exBadge}</td>
       <td>${x.wear}</td>
@@ -259,7 +322,11 @@ const GachaPage = {
 
     // ② 调用后端
     let data;
-    try { data = await API.open(c); }
+    const payload = { count: c };
+    if (typeof this._selectedSeason === 'number') {
+      payload.season = this._selectedSeason;
+    }
+    try { data = await API.open(payload); }
     catch (e) {
       alert(e.message);
       this._setDrawDisabled(false);

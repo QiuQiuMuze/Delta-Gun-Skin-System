@@ -76,7 +76,9 @@
     const hidden_template = x.hidden_template ?? x.visual?.hidden_template ?? false;
     const effects = x.effects ?? x.visual?.effects ?? [];
     const visual = x.visual || { body: [], attachments: [], template, hidden_template, effects };
-    return { inv_id, name, rarity, wear, grade, serial, exquisite, on_market, template, hidden_template, effects, visual };
+    const season = (typeof x.season === 'number' && isFinite(x.season)) ? x.season : (isFinite(parseInt(x.season,10)) ? parseInt(x.season,10) : null);
+    const season_label = x.season_label || (season ? `S${season}` : '-');
+    return { inv_id, name, rarity, wear, grade, serial, exquisite, on_market, template, hidden_template, effects, visual, season, season_label };
   }
 
   function btn(label, active, attrs){
@@ -87,10 +89,12 @@
     _tab: "browse", // browse | sell | mine
 
     // 浏览筛选（英文保留）
-    _filters: { rarity:"ALL", skin_id:"", exquisite:"ANY", grade:"ANY", order:"price_asc" },
+    _filters: { rarity:"ALL", skin_id:"", exquisite:"ANY", grade:"ANY", order:"price_asc", season:"ALL" },
 
     // 上架筛选（中文 UI）
     _sellView: { rarity:"BRICK", exqMode:"ANY", sortWear:"asc" },
+
+    _seasonOptions: [],
 
     _inventoryAll: [],  // 所有未上架
     _inventory: [],     // 筛选后
@@ -101,6 +105,7 @@
       var self = this;
       setTimeout(function(){
         API.me().then(u => { self._me = u || {}; }).catch(()=>{});
+        self._loadSeasons();
         self._loadInventory();
         self._loadBrowse();
         self._loadMine();
@@ -137,6 +142,7 @@
             '<option value="ANY">品质(全部)</option>'+
             '<option value="S">S</option><option value="A">A</option><option value="B">B</option><option value="C">C</option>'+
           '</select>'+
+          '<select id="f-season"></select>'+
           '<select id="f-order">'+
             '<option value="price_asc">价格 ↑</option>'+
             '<option value="price_desc">价格 ↓</option>'+
@@ -187,27 +193,68 @@
       });
 
       // 浏览筛选
+      this._renderSeasonFilter();
       $id('f-rarity').value=this._filters.rarity;
       $id('f-skin').value=this._filters.skin_id;
       $id('f-exq').value=this._filters.exquisite;
       $id('f-grade').value=this._filters.grade;
       $id('f-order').value=this._filters.order;
+      const seasonSel = $id('f-season');
+      if (seasonSel) seasonSel.value = this._filters.season === 'ALL' ? 'ALL' : String(this._filters.season);
       $id('f-apply').onclick=()=>{
+        const seasonVal=$id('f-season').value;
         this._filters={
           rarity:$id('f-rarity').value,
           skin_id:($id('f-skin').value||"").trim(),
           exquisite:$id('f-exq').value,
           grade:$id('f-grade').value,
-          order:$id('f-order').value
+          order:$id('f-order').value,
+          season: seasonVal === 'ALL' ? 'ALL' : Number(seasonVal)
         };
         this._loadBrowse();
       };
+      if (seasonSel) {
+        seasonSel.onchange = () => {
+          const val = seasonSel.value;
+          this._filters.season = val === 'ALL' ? 'ALL' : Number(val);
+        };
+      }
 
       // 上架事件
       $id('sell-submit').onclick=()=>this._doSell();
       $id('sell-price').oninput=()=>{
         $id('sell-submit').disabled = !this._sellSelected || !($id('sell-price').value.trim());
       };
+    },
+
+    _loadSeasons: function(){
+      API.seasons()
+        .then(data => {
+          const arr = Array.isArray(data?.seasons) ? data.seasons : [];
+          this._seasonOptions = arr
+            .map(info => ({
+              season: Number(info?.season || 0),
+              label: `${info?.code || `S${info?.season || ''}`}${info?.name ? ` ${info.name}` : ''}`.trim() || `S${info?.season}`
+            }))
+            .filter(item => item.season > 0)
+            .sort((a,b) => a.season - b.season);
+          this._renderSeasonFilter();
+        })
+        .catch(() => {
+          this._seasonOptions = [];
+          this._renderSeasonFilter();
+        });
+    },
+
+    _renderSeasonFilter: function(){
+      const sel = $id('f-season');
+      if (!sel) return;
+      const options = ['<option value="ALL">赛季(全部)</option>']
+        .concat((this._seasonOptions || []).map(info => `<option value="${info.season}">${esc(info.label)}</option>`))
+        .join('');
+      sel.innerHTML = options;
+      const val = this._filters.season === 'ALL' ? 'ALL' : String(this._filters.season);
+      sel.value = val;
     },
 
     // ===== 加载库存（优先 by-color；失败回退 /inventory） =====
@@ -315,6 +362,7 @@
           '<td><input type="radio" name="sellPick" data-inv="'+it.inv_id+'" '+checked+'></td>'+
           '<td>'+esc(it.inv_id)+'</td>'+
           '<td class="'+rc+'">'+esc(it.name)+'</td>'+
+          '<td>'+esc(it.season_label || '-')+'</td>'+
           '<td class="'+rc+'">'+esc(it.rarity)+'</td>'+
           '<td>'+ex+'</td>'+
           '<td>'+(isNaN(it.wear)?'-':it.wear)+'</td>'+
@@ -325,7 +373,7 @@
       host.innerHTML =
         '<div class="muted">已选：'+(this._sellSelected?esc(this._sellSelected):'无')+'</div>'+
         '<table class="table">'+
-        '<thead><tr><th>选</th><th>inv_id</th><th>名称</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>'+
+        '<thead><tr><th>选</th><th>inv_id</th><th>名称</th><th>赛季</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>'+
         '<tbody>'+rows+'</tbody></table>';
 
       host.querySelectorAll('[data-inv]').forEach(el=>{
@@ -366,6 +414,7 @@
       if (f.exquisite==="EXQ") qs.is_exquisite = "true";
       if (f.exquisite==="PREM") qs.is_exquisite = "false";
       if (f.grade!=="ANY") qs.grade = f.grade;
+      if (f.season && f.season !== "ALL") qs.season = f.season;
 
       API.marketBrowse(qs)
         .then(data=>{
@@ -385,7 +434,9 @@
               template: x.template ?? x.visual?.template,
               hidden_template: x.hidden_template ?? x.visual?.hidden_template ?? false,
               effects: x.effects ?? x.visual?.effects ?? [],
-              visual: x.visual || { body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects }
+              visual: x.visual || { body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects },
+              season: (typeof x.season === 'number' && isFinite(x.season)) ? x.season : (isFinite(parseInt(x.season,10)) ? parseInt(x.season,10) : null),
+              season_label: x.season_label || (x.season ? `S${x.season}` : '-')
             };
           });
 
@@ -398,6 +449,7 @@
               '<td>'+esc(x.seller||"玩家")+'</td>'+
               '<td class="'+rc+'">'+esc(x.name)+'</td>'+
               '<td>'+preview+'</td>'+
+              '<td>'+esc(x.season_label || '-')+'</td>'+
               '<td class="'+rc+'">'+esc(x.rarity)+'</td>'+
               '<td>'+ex+'</td>'+
               '<td>'+(isNaN(x.wear)?'-':x.wear)+'</td>'+
@@ -409,7 +461,7 @@
           }
           $id('mk-browse-list').innerHTML =
             '<table class="table">'+
-            '<thead><tr><th>上架玩家</th><th>名称</th><th>外观</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th><th>价格</th><th>操作</th></tr></thead>'+
+            '<thead><tr><th>上架玩家</th><th>名称</th><th>外观</th><th>赛季</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th><th>价格</th><th>操作</th></tr></thead>'+
             '<tbody>'+rows+'</tbody></table>';
 
           $id('mk-browse-list').querySelectorAll('[data-buy]').forEach((btn)=>{
@@ -445,7 +497,9 @@
               template: x.template ?? x.visual?.template,
               hidden_template: x.hidden_template ?? x.visual?.hidden_template ?? false,
               effects: x.effects ?? x.visual?.effects ?? [],
-              visual: x.visual || { body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects }
+              visual: x.visual || { body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects },
+              season: (typeof x.season === 'number' && isFinite(x.season)) ? x.season : (isFinite(parseInt(x.season,10)) ? parseInt(x.season,10) : null),
+              season_label: x.season_label || (x.season ? `S${x.season}` : '-')
             };
           });
           for (var i=0;i<list.length;i++){
@@ -455,6 +509,7 @@
             rows+='<tr>'+
               '<td class="'+rc+'">'+esc(x.name)+'</td>'+
               '<td>'+preview+'</td>'+
+              '<td>'+esc(x.season_label || '-')+'</td>'+
               '<td class="'+rc+'">'+esc(x.rarity)+'</td>'+
               '<td>'+ex+'</td>'+
               '<td>'+(isNaN(x.wear)?'-':x.wear)+'</td>'+
@@ -465,7 +520,7 @@
             '</tr>';
           }
           $id('mk-mine-list').innerHTML =
-            '<table class="table"><thead><tr><th>名称</th><th>外观</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th><th>价格</th><th>操作</th></tr></thead>'+
+            '<table class="table"><thead><tr><th>名称</th><th>外观</th><th>赛季</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th><th>价格</th><th>操作</th></tr></thead>'+
             '<tbody>'+rows+'</tbody></table>';
 
           $id('mk-mine-list').querySelectorAll('[data-off]').forEach((btn)=>{

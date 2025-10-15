@@ -135,11 +135,48 @@ const API = {
     return API.json(`/shop/brick-quote?${usp.toString()}`);
   },
   odds: () => API.json("/odds"),
-  open: (count) => API.json("/gacha/open", "POST", { count }),
-  inventory: (show_on_market = false) =>
-    API.json("/inventory" + (show_on_market ? "?show_on_market=true" : "")),
-  inventoryByColor: (show_on_market = false) =>
-    API.json("/inventory/by-color" + (show_on_market ? "?show_on_market=true" : "")),
+  seasons: () => API.json("/seasons"),
+  open: (count, opts = {}) => {
+    let payload = {};
+    if (typeof count === "object" && count !== null) {
+      payload.count = Number(count.count ?? count.quantity ?? 1);
+      if (count.season != null) payload.season = Number(count.season);
+    } else {
+      payload.count = Number(count ?? 1);
+      if (opts && typeof opts === "object" && opts.season != null) {
+        payload.season = Number(opts.season);
+      }
+    }
+    if (!payload.count || payload.count <= 0) payload.count = 1;
+    return API.json("/gacha/open", "POST", payload);
+  },
+  inventory: (options = {}) => {
+    const usp = new URLSearchParams();
+    if (typeof options === "boolean") {
+      if (options) usp.append("show_on_market", "true");
+    } else if (options && typeof options === "object") {
+      if (options.show_on_market) usp.append("show_on_market", "true");
+      if (options.season != null && options.season !== "ALL") {
+        usp.append("season", String(options.season));
+      }
+      if (options.rarity) usp.append("rarity", String(options.rarity));
+    }
+    const qs = usp.toString();
+    return API.json(`/inventory${qs ? `?${qs}` : ""}`);
+  },
+  inventoryByColor: (options = {}) => {
+    const usp = new URLSearchParams();
+    if (typeof options === "boolean") {
+      if (options) usp.append("show_on_market", "true");
+    } else if (options && typeof options === "object") {
+      if (options.show_on_market) usp.append("show_on_market", "true");
+      if (options.season != null && options.season !== "ALL") {
+        usp.append("season", String(options.season));
+      }
+    }
+    const qs = usp.toString();
+    return API.json(`/inventory/by-color${qs ? `?${qs}` : ""}`);
+  },
   craft: (from_rarity, inv_ids) =>
     API.json("/craft/compose", "POST", { from_rarity, inv_ids }),
   mailbox: (limit = 20) => {

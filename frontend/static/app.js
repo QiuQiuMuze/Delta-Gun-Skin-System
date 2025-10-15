@@ -43,6 +43,10 @@ const Pages = {
         API.mailbox().catch(() => ({ brick: { buy: [], sell: [] }, skin: { buy: [], sell: [] } })),
       ]);
       const mail = mailboxRaw || { brick: { buy: [], sell: [] }, skin: { buy: [], sell: [] } };
+      const seasonCounts = Array.isArray(d.brick_season_counts) ? d.brick_season_counts : [];
+      const seasonSummary = seasonCounts.length
+        ? seasonCounts.map(item => `<span class="badge">${escapeHtml(item.label || `S${item.season}`)} ×${item.count}</span>`).join(' ')
+        : '<span class="muted">暂无砖皮</span>';
       const formatTs = (ts) => {
         if (!ts) return "-";
         const date = new Date(ts * 1000);
@@ -63,6 +67,8 @@ const Pages = {
           const meta = mode === "buy"
             ? `花费 <b>${total}</b> 三角币 · 均价 ${unit}`
             : `售出金额 <b>${total}</b> 三角币 · 实得 <b>${net}</b>`;
+          const season = item.season_label || (item.season ? `S${item.season}` : "");
+          const seasonHtml = season ? ` · <span class="mail-entry__season">${escapeHtml(season)}</span>` : "";
           return `
             <div class="mail-entry">
               <div class="mail-entry__head">
@@ -71,7 +77,7 @@ const Pages = {
               </div>
               <div class="mail-entry__body">
                 <span class="mail-entry__name">${name}</span>
-                <span class="mail-entry__meta">${meta}</span>
+                <span class="mail-entry__meta">${meta}${seasonHtml}</span>
               </div>
             </div>`;
         }).join("");
@@ -89,6 +95,7 @@ const Pages = {
           <div class="kv"><div class="k">钥匙</div><div class="v">${d.keys}</div></div>
           <div class="kv"><div class="k">未开砖</div><div class="v">${d.unopened_bricks}</div></div>
           <div class="kv"><div class="k">是否管理员</div><div class="v">${d.is_admin ? '是' : '否'}</div></div>
+          <div class="kv"><div class="k">砖皮赛季分布</div><div class="v" id="me-brick-season">${seasonSummary}</div></div>
         </div>
         <div class="mailbox">
           <div class="mailbox-header">

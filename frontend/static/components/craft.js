@@ -7,6 +7,8 @@ const CraftPage = {
   _page: 1,
   _pageSize: 50,
   _skip: false,
+  _seasonOptions: [],
+  _seasonFilter: 'ALL',
 
   async render() {
     // 先渲染骨架，异步加载数据
@@ -45,6 +47,21 @@ const CraftPage = {
 
   // —— 加载库存：updateOnly=true 时仅更新数据，不重置顶部结果UI —— //
   async _load(updateOnly=false) {
+    if (!this._seasonOptions.length) {
+      try {
+        const seasonPayload = await API.seasons();
+        const arr = Array.isArray(seasonPayload?.seasons) ? seasonPayload.seasons : [];
+        this._seasonOptions = arr
+          .map(info => ({
+            season: Number(info?.season || 0),
+            label: `${info?.code || `S${info?.season || ''}`}${info?.name ? ` ${info.name}` : ''}`.trim() || `S${info?.season}`
+          }))
+          .filter(item => item.season > 0)
+          .sort((a,b)=>a.season-b.season);
+      } catch (_) {
+        this._seasonOptions = [];
+      }
+    }
     let grouped = await API.inventoryByColor().catch(()=>null);
     if (!grouped || (!grouped.GREEN && !grouped.BLUE && !grouped.PURPLE)) {
       const flat = await API.inventory().catch(()=>({items:[]}));
@@ -72,7 +89,14 @@ const CraftPage = {
                  : (typeof x.wear_bp==="number" ? Number((x.wear_bp/100).toFixed(2)) : NaN);
     const grade  = x.grade ?? x.quality ?? "";
     const serial = x.serial ?? x.sn ?? "";
-    return { inv_id, name, rarity, wear, grade, serial };
+    let season = null;
+    if (typeof x.season === 'number' && Number.isFinite(x.season)) season = x.season;
+    else if (typeof x.season === 'string' && x.season.trim()) {
+      const parsed = parseInt(x.season, 10);
+      if (!Number.isNaN(parsed)) season = parsed;
+    }
+    const season_label = x.season_label || (season ? `S${season}` : '-');
+    return { inv_id, name, rarity, wear, grade, serial, season, season_label };
   },
 
   _rarityToTarget(r){ return { GREEN:"BLUE", BLUE:"PURPLE", PURPLE:"BRICK" }[r] || ""; },
@@ -142,12 +166,16 @@ const CraftPage = {
     const target = this._rarityToTarget(this._rarity);
     const box = byId("craft-toolbar");
     box.style.display = "block";
+    const seasonOptions = ['<option value="ALL">赛季（全部）</option>']
+      .concat((this._seasonOptions || []).map(info => `<option value="${info.season}">${escapeHtml(info.label)}</option>`))
+      .join('');
     box.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
         <div>
           <strong>从 <span class="${this._rarityClass(this._rarity)}">${this._rarity}</span> 合成 → <span class="${this._rarityClass(target)}">${target}</span></strong>
         </div>
         <div class="input-row" style="margin:0;">
+          <select id="craft-season">${seasonOptions}</select>
           <input id="seq-input" placeholder="按序号（当前页）：如 1,3,5-12,20" style="min-width:280px"/>
           <button class="btn" id="seq-apply">添加</button>
           <button class="btn" id="auto-low">自动放置（磨损最低 20）</button>
@@ -164,11 +192,26 @@ const CraftPage = {
     byId("auto-high").onclick= ()=>{ this._autoPick("high"); this._renderListAndPager(); this._renderSummary(); };
     byId("auto-rand").onclick= ()=>{ this._autoPick("rand"); this._renderListAndPager(); this._renderSummary(); };
     byId("sel-clear").onclick = ()=>{ this._selected.clear(); this._renderListAndPager(); this._renderSummary(); };
+    const seasonSel = byId("craft-season");
+    if (seasonSel) {
+      seasonSel.value = this._seasonFilter === 'ALL' ? 'ALL' : String(this._seasonFilter);
+      seasonSel.onchange = () => {
+        const val = seasonSel.value;
+        this._seasonFilter = val === 'ALL' ? 'ALL' : Number(val);
+        this._page = 1;
+        this._selected.clear();
+        this._renderListAndPager();
+        this._renderSummary();
+      };
+    }
   },
 
   _sortedAll() {
     // 全量排序（S>A>B>C，磨损升序）
-    const arr = (this._data[this._rarity] || []).slice();
+    let arr = (this._data[this._rarity] || []).slice();
+    if (this._seasonFilter !== 'ALL') {
+      arr = arr.filter(item => item.season === this._seasonFilter);
+    }
     const gradeOrder={S:0,A:1,B:2,C:3};
     arr.sort((a,b)=> (gradeOrder[a.grade]??9)-(gradeOrder[b.grade]??9) || ((isNaN(a.wear)?999:a.wear)-(isNaN(b.wear)?999:b.wear)));
     return arr;
@@ -193,13 +236,15 @@ const CraftPage = {
     const rows = pageArr.map((x,i)=>{
       const checked=this._selected.has(x.inv_id)?"checked":"";
       const rc=this._rarityClass(x.rarity);
+      const wearTxt = isNaN(x.wear)?"-":Number(x.wear).toFixed(2);
       return `<tr>
         <td><input type="checkbox" data-inv="${x.inv_id}" ${checked}/></td>
         <td>${start + i + 1}</td>
         <td>${x.inv_id}</td>
-        <td class="${rc}">${x.name}</td>
+        <td class="${rc}">${escapeHtml(x.name)}</td>
+        <td>${escapeHtml(x.season_label || '-')}</td>
         <td class="${rc}">${x.rarity}</td>
-        <td>${isNaN(x.wear)?"-":x.wear.toFixed(2)}</td>
+        <td>${wearTxt}</td>
         <td>${x.grade||"-"}</td>
         <td>${x.serial||"-"}</td>
       </tr>`;
@@ -208,7 +253,7 @@ const CraftPage = {
     listBox.innerHTML = `
       <h3>可选列表（共 ${total} 件，当前第 ${this._page}/${totalPages} 页；每页 ${this._pageSize}）</h3>
       <table class="table">
-        <thead><tr><th>选</th><th>#</th><th>inv_id</th><th>名称</th><th>稀有度</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
+        <thead><tr><th>选</th><th>#</th><th>inv_id</th><th>名称</th><th>赛季</th><th>稀有度</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     `;

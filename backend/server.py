@@ -36,6 +36,25 @@ Base = declarative_base()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 http_bearer = HTTPBearer()
 
+
+def _ensure_column(table: str, column: str, ddl: str) -> None:
+    try:
+        with sqlite3.connect(DB_PATH_FS) as con:
+            con.row_factory = sqlite3.Row
+            cur = con.cursor()
+            cur.execute(f"PRAGMA table_info({table})")
+            cols = {row["name"] for row in cur.fetchall()}
+            if column not in cols:
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+                con.commit()
+    except Exception:
+        pass
+
+
+_ensure_column("skins", "season", "INTEGER DEFAULT 6")
+_ensure_column("inventory", "season", "INTEGER DEFAULT 6")
+_ensure_column("trade_logs", "season", "INTEGER")
+
 # ------------------ ORM ------------------
 class User(Base):
     __tablename__ = "users"
@@ -64,6 +83,7 @@ class Skin(Base):
     name = Column(String, nullable=False)
     rarity = Column(String, nullable=False)  # BRICK/PURPLE/BLUE/GREEN
     active = Column(Boolean, default=True)
+    season = Column(Integer, default=6)
 
 class Inventory(Base):
     __tablename__ = "inventory"
@@ -85,6 +105,7 @@ class Inventory(Base):
     hidden_template = Column(Boolean, default=False)
     sell_locked = Column(Boolean, default=False)
     lock_reason = Column(String, default="")
+    season = Column(Integer, default=6)
 
 class SystemSetting(Base):
     __tablename__ = "system_settings"
@@ -198,6 +219,7 @@ class TradeLog(Base):
     quantity = Column(Integer, nullable=False, default=1)
     unit_price = Column(Integer, nullable=False, default=0)
     total_amount = Column(Integer, nullable=False, default=0)
+    season = Column(Integer, nullable=True)
     net_amount = Column(Integer, nullable=False, default=0)
     created_at = Column(Integer, default=lambda: int(time.time()))
 
@@ -304,6 +326,7 @@ class WalletOp(BaseModel):
 
 class CountIn(BaseModel):
     count: int = 1
+    season: Optional[int] = None
 
 class BrickSellIn(BaseModel):
     quantity: int
@@ -535,32 +558,23 @@ with SessionLocal() as _db:
         init_price = round(random.uniform(60, 120), 2)
         _db.add(BrickMarketState(price=init_price, sentiment=0.0, last_update=int(time.time())))
         cfg.brick_price = max(40, min(150, int(round(init_price))))
-    if _db.query(Skin).count() == 0:
-        skins = []
-        skins.append(Skin(skin_id="BRK_M7_PRISM2", name="M7战斗步枪-棱镜攻势2", rarity="BRICK"))
-        skins += [
-            Skin(skin_id="EPI_AUG_DESTINY",  name="AUG突击步枪-天命", rarity="PURPLE"),
-            Skin(skin_id="EPI_P90_DESTINY",  name="P90冲锋枪-天命",   rarity="PURPLE"),
-            Skin(skin_id="EPI_SR25_DESTINY", name="SR-25射手步枪-天命", rarity="PURPLE"),
-        ]
-        skins += [
-            Skin(skin_id="RAR_PTR32_GRANITE", name="PTR-32突击步枪-花岗岩", rarity="BLUE"),
-            Skin(skin_id="RAR_ASVAL_HORIZON", name="AS Val突击步枪-地平线", rarity="BLUE"),
-            Skin(skin_id="RAR_SR3M_GRANITE",  name="SR-3M紧凑突击步枪-花岗岩", rarity="BLUE"),
-            Skin(skin_id="RAR_QCQ171_HORIZON",name="QCQ171冲锋枪-地平线", rarity="BLUE"),
-            Skin(skin_id="RAR_M1014_GRANITE", name="M1014散弹枪-花岗岩", rarity="BLUE"),
-            Skin(skin_id="RAR_M870_HORIZON",  name="M870散弹枪-地平线", rarity="BLUE"),
-        ]
-        skins += [
-            Skin(skin_id="UNC_ASVAL_BEAST",   name="AS Val突击步枪-猛兽", rarity="GREEN"),
-            Skin(skin_id="UNC_AUG_BEAST",     name="AUG突击步枪-猛兽",  rarity="GREEN"),
-            Skin(skin_id="UNC_M4A1_BEAST",    name="M4A1突击步枪-猛兽", rarity="GREEN"),
-            Skin(skin_id="UNC_AK12_OLDIND",   name="AK-12突击步枪-旧工业", rarity="GREEN"),
-            Skin(skin_id="UNC_SCARH_OLDIND",  name="SCAR-H突击步枪-旧工业", rarity="GREEN"),
-            Skin(skin_id="UNC_WARRIORSMG_OLDIND", name="勇士冲锋枪-旧工业", rarity="GREEN"),
-        ]
-        for s in skins:
-            _db.add(s)
+    existing = {row.skin_id: row for row in _db.query(Skin).all()}
+    for entry in SKIN_DEFINITIONS:
+        skin_id = entry["skin_id"]
+        row = existing.get(skin_id)
+        if row:
+            row.name = entry["name"]
+            row.rarity = entry["rarity"]
+            row.active = entry.get("active", True)
+            row.season = entry.get("season", 0)
+        else:
+            _db.add(Skin(
+                skin_id=skin_id,
+                name=entry["name"],
+                rarity=entry["rarity"],
+                active=entry.get("active", True),
+                season=entry.get("season", 0),
+            ))
     _db.commit()
 
 # ---- RNG & Grades ----
@@ -607,6 +621,27 @@ BRICK_TEMPLATES = {
     "brick_pink_diamond",
     "brick_brushed_metal",
     "brick_laser_gradient",
+    "brick_arcade_crystal_snake",
+    "brick_arcade_snake",
+    "brick_arcade_blackhawk",
+    "brick_arcade_boxer",
+    "brick_arcade_standard",
+    "brick_fate_strawberry",
+    "brick_fate_blueberry",
+    "brick_fate_goldberry",
+    "brick_fate_metal",
+    "brick_fate_brass",
+    "brick_fate_golden",
+    "brick_fate_jade",
+    "brick_fate_whitepeach",
+    "brick_fate_gradient_crimson",
+    "brick_fate_gradient_cerulean",
+    "brick_fate_gradient_ivory",
+    "brick_weather_mecha",
+    "brick_weather_clathrate",
+    "brick_weather_redbolt",
+    "brick_weather_purplebolt",
+    "brick_weather_gradient",
 }
 BRICK_TEMPLATE_LABELS = {
     "brick_normal": "标准模板",
@@ -615,12 +650,49 @@ BRICK_TEMPLATE_LABELS = {
     "brick_pink_diamond": "粉钻模板",
     "brick_brushed_metal": "金属拉丝",
     "brick_laser_gradient": "镭射渐变",
+    "brick_arcade_crystal_snake": "水晶贪吃蛇",
+    "brick_arcade_snake": "贪吃蛇",
+    "brick_arcade_blackhawk": "黑鹰坠落",
+    "brick_arcade_boxer": "拳王",
+    "brick_arcade_standard": "电玩标准",
+    "brick_fate_strawberry": "命运·草莓",
+    "brick_fate_blueberry": "命运·蓝莓",
+    "brick_fate_goldberry": "命运·金莓",
+    "brick_fate_metal": "命运·金属",
+    "brick_fate_brass": "命运·黄铜",
+    "brick_fate_golden": "命运·黄金",
+    "brick_fate_jade": "命运·翡翠绿",
+    "brick_fate_whitepeach": "命运·白桃",
+    "brick_fate_gradient_crimson": "命运·暮光渐变",
+    "brick_fate_gradient_cerulean": "命运·天青渐变",
+    "brick_fate_gradient_ivory": "命运·晨霜渐变",
+    "brick_weather_mecha": "气象·高达",
+    "brick_weather_clathrate": "气象·可燃冰",
+    "brick_weather_redbolt": "气象·红电",
+    "brick_weather_purplebolt": "气象·紫电",
+    "brick_weather_gradient": "气象·流转渐变",
 }
 EXQUISITE_ONLY_TEMPLATES = {
     "brick_white_diamond",
     "brick_yellow_diamond",
     "brick_pink_diamond",
     "brick_brushed_metal",
+    "brick_arcade_crystal_snake",
+    "brick_arcade_snake",
+    "brick_arcade_blackhawk",
+    "brick_arcade_boxer",
+    "brick_fate_strawberry",
+    "brick_fate_blueberry",
+    "brick_fate_goldberry",
+    "brick_fate_metal",
+    "brick_fate_brass",
+    "brick_fate_golden",
+    "brick_fate_jade",
+    "brick_fate_whitepeach",
+    "brick_weather_mecha",
+    "brick_weather_clathrate",
+    "brick_weather_redbolt",
+    "brick_weather_purplebolt",
 }
 DIAMOND_TEMPLATE_KEYS = {
     "brick_white_diamond",
@@ -628,6 +700,1087 @@ DIAMOND_TEMPLATE_KEYS = {
     "brick_pink_diamond",
 }
 SPECIAL_PRICE_TEMPLATES = DIAMOND_TEMPLATE_KEYS | {"brick_brushed_metal"}
+
+
+def _color(hex_code: str, name: str) -> Dict[str, str]:
+    return {"hex": hex_code, "name": name}
+
+
+SEASON_SKIN_POOL: Dict[int, Dict[str, Any]] = {
+    1: {
+        "code": "S1",
+        "name": "S1 棱镜攻势",
+        "order": 1,
+        "description": "透明棱镜枪身回归，全配件都能折射出炫彩光束。",
+        "skins": {
+            "BRICK": [
+                {
+                    "skin_id": "BRK_M4A1_PRISM",
+                    "name": "M4A1突击步枪-棱镜攻势",
+                    "weapon": "M4A1",
+                    "brick_key": "s1_prism",
+                    "highlights": [
+                        "通体透明枪身可见内部结构",
+                        "磨砂质感配合流线型光影",
+                        "多彩随机曳光弹覆盖全配件"
+                    ],
+                },
+            ],
+            "PURPLE": [
+                {
+                    "skin_id": "EPI_M4A1_S1LUCENT",
+                    "name": "M4A1突击步枪-光谱脊",
+                    "weapon": "M4A1",
+                    "theme": "s1_prism",
+                },
+                {
+                    "skin_id": "EPI_MP5_S1NEON",
+                    "name": "MP5冲锋枪-棱映之羽",
+                    "weapon": "MP5",
+                    "theme": "s1_prism",
+                },
+                {
+                    "skin_id": "EPI_M249_S1FRACTAL",
+                    "name": "M249轻机枪-折光矩阵",
+                    "weapon": "M249",
+                    "theme": "s1_prism",
+                },
+            ],
+            "BLUE": [
+                {
+                    "skin_id": "RAR_MPX_S1GLIMMER",
+                    "name": "MPX冲锋枪-幻彩玻璃",
+                    "weapon": "MPX",
+                    "theme": "s1_prism",
+                },
+                {
+                    "skin_id": "RAR_G36C_S1EDGE",
+                    "name": "G36C突击步枪-折光边缘",
+                    "weapon": "G36C",
+                    "theme": "s1_prism",
+                },
+                {
+                    "skin_id": "RAR_SPAS12_S1REFLEX",
+                    "name": "SPAS-12霰弹枪-霓虹碎片",
+                    "weapon": "SPAS-12",
+                    "theme": "s1_prism",
+                },
+                {
+                    "skin_id": "RAR_QBZ95_S1QUARTZ",
+                    "name": "QBZ95突击步枪-水晶镶嵌",
+                    "weapon": "QBZ95",
+                    "theme": "s1_prism",
+                },
+            ],
+            "GREEN": [
+                {
+                    "skin_id": "UNC_FIVESEVEN_S1SHARD",
+                    "name": "FN Five-seveN手枪-棱片",
+                    "weapon": "Five-seveN",
+                    "theme": "s1_prism",
+                },
+                {
+                    "skin_id": "UNC_M9_S1CLEAR",
+                    "name": "M9手枪-透辉",
+                    "weapon": "M9",
+                    "theme": "s1_prism",
+                },
+                {
+                    "skin_id": "UNC_P90_S1FILTER",
+                    "name": "P90冲锋枪-滤光",
+                    "weapon": "P90",
+                    "theme": "s1_prism",
+                },
+                {
+                    "skin_id": "UNC_SCORPION_S1SPECTRAL",
+                    "name": "斯柯皮恩冲锋枪-幽辉",
+                    "weapon": "Scorpion",
+                    "theme": "s1_prism",
+                },
+            ],
+        },
+    },
+    2: {
+        "code": "S2",
+        "name": "S2 美杜莎",
+        "order": 2,
+        "description": "古希腊浮雕与蛇纹盘绕，击中瞬间燃起彩焰。",
+        "skins": {
+            "BRICK": [
+                {
+                    "skin_id": "BRK_VECTOR_MEDUSA",
+                    "name": "Vector冲锋枪-美杜莎",
+                    "weapon": "Vector",
+                    "brick_key": "s2_medusa",
+                    "highlights": [
+                        "蟒纹与浮雕交织的宝石枪身",
+                        "命中目标时环绕彩色火焰",
+                        "极品外观更加厚重立体"
+                    ],
+                },
+            ],
+            "PURPLE": [
+                {
+                    "skin_id": "EPI_AK12_S2GORGON",
+                    "name": "AK-12突击步枪-戈耳工守望",
+                    "weapon": "AK-12",
+                    "theme": "s2_medusa",
+                },
+                {
+                    "skin_id": "EPI_MK14_S2PETRIFY",
+                    "name": "MK14射手步枪-石化仪典",
+                    "weapon": "MK14",
+                    "theme": "s2_medusa",
+                },
+                {
+                    "skin_id": "EPI_UZI_S2SERPENT",
+                    "name": "乌兹冲锋枪-灵蛇纱",
+                    "weapon": "UZI",
+                    "theme": "s2_medusa",
+                },
+            ],
+            "BLUE": [
+                {
+                    "skin_id": "RAR_M110_S2MARBLE",
+                    "name": "M110射手步枪-大理石纹",
+                    "weapon": "M110",
+                    "theme": "s2_medusa",
+                },
+                {
+                    "skin_id": "RAR_VEPR_S2RUNIC",
+                    "name": "Vepr-12霰弹枪-符文镶嵌",
+                    "weapon": "Vepr-12",
+                    "theme": "s2_medusa",
+                },
+                {
+                    "skin_id": "RAR_PSG1_S2RELIEF",
+                    "name": "PSG-1射手步枪-浮雕镜面",
+                    "weapon": "PSG-1",
+                    "theme": "s2_medusa",
+                },
+                {
+                    "skin_id": "RAR_M500_S2VINE",
+                    "name": "M500霰弹枪-蛇藤回响",
+                    "weapon": "M500",
+                    "theme": "s2_medusa",
+                },
+            ],
+            "GREEN": [
+                {
+                    "skin_id": "UNC_MP7_S2BRONZE",
+                    "name": "MP7冲锋枪-青铜护身",
+                    "weapon": "MP7",
+                    "theme": "s2_medusa",
+                },
+                {
+                    "skin_id": "UNC_P226_S2BASILISK",
+                    "name": "P226手枪-蛇眼",
+                    "weapon": "P226",
+                    "theme": "s2_medusa",
+                },
+                {
+                    "skin_id": "UNC_SAIGA_S2PATINA",
+                    "name": "萨伊加霰弹枪-岁月铜斑",
+                    "weapon": "Saiga",
+                    "theme": "s2_medusa",
+                },
+                {
+                    "skin_id": "UNC_TAVOR_S2MOSS",
+                    "name": "Tavor突击步枪-苔痕",
+                    "weapon": "Tavor",
+                    "theme": "s2_medusa",
+                },
+            ],
+        },
+    },
+    3: {
+        "code": "S3",
+        "name": "S3 电玩高手",
+        "order": 3,
+        "description": "RGB 按键与散热风扇遍布枪身，附带专属小游戏。",
+        "skins": {
+            "BRICK": [
+                {
+                    "skin_id": "BRK_SCARH_ARCADE",
+                    "name": "SCAR-H战斗步枪-电玩高手",
+                    "weapon": "SCAR-H",
+                    "brick_key": "s3_arcade",
+                    "highlights": [
+                        "手把按键与风扇细节层叠",
+                        "RGB 灯效随主题跳动",
+                        "极品才能触发多彩特殊模板"
+                    ],
+                    "brick_meta": {
+                        "templates": [
+                            {"key": "brick_arcade_crystal_snake", "weight": 1, "label": "水晶贪吃蛇"},
+                            {"key": "brick_arcade_snake", "weight": 5, "label": "贪吃蛇"},
+                            {"key": "brick_arcade_blackhawk", "weight": 5, "label": "黑鹰坠落"},
+                            {"key": "brick_arcade_boxer", "weight": 5, "label": "拳王"},
+                            {"key": "brick_arcade_standard", "weight": 84, "label": "电玩标准", "fallback": True},
+                        ]
+                    },
+                },
+            ],
+            "PURPLE": [
+                {
+                    "skin_id": "EPI_SCARH_S3JOYSTICK",
+                    "name": "SCAR-H战斗步枪-摇杆前线",
+                    "weapon": "SCAR-H",
+                    "theme": "s3_arcade",
+                },
+                {
+                    "skin_id": "EPI_AK15_S3PIXEL",
+                    "name": "AK-15突击步枪-像素信号",
+                    "weapon": "AK-15",
+                    "theme": "s3_arcade",
+                },
+                {
+                    "skin_id": "EPI_VECTOR_S3STREAM",
+                    "name": "Vector冲锋枪-弹幕直播",
+                    "weapon": "Vector",
+                    "theme": "s3_arcade",
+                },
+            ],
+            "BLUE": [
+                {
+                    "skin_id": "RAR_FAL_S3RGB",
+                    "name": "FAL战斗步枪-RGB光栅",
+                    "weapon": "FAL",
+                    "theme": "s3_arcade",
+                },
+                {
+                    "skin_id": "RAR_UMP45_S3RETRO",
+                    "name": "UMP45冲锋枪-复古街机",
+                    "weapon": "UMP45",
+                    "theme": "s3_arcade",
+                },
+                {
+                    "skin_id": "RAR_M870_S3ARCADE",
+                    "name": "M870霰弹枪-荧幕节拍",
+                    "weapon": "M870",
+                    "theme": "s3_arcade",
+                },
+                {
+                    "skin_id": "RAR_RFB_S3BIT",
+                    "name": "RFB步枪-8bit调制",
+                    "weapon": "RFB",
+                    "theme": "s3_arcade",
+                },
+            ],
+            "GREEN": [
+                {
+                    "skin_id": "UNC_GLOCK_S3CRT",
+                    "name": "Glock手枪-显像管",
+                    "weapon": "Glock",
+                    "theme": "s3_arcade",
+                },
+                {
+                    "skin_id": "UNC_PP19_S3BUTTON",
+                    "name": "PP-19冲锋枪-连发按键",
+                    "weapon": "PP-19",
+                    "theme": "s3_arcade",
+                },
+                {
+                    "skin_id": "UNC_QBZ_S3LED",
+                    "name": "QBZ95-1突击步枪-LED矩阵",
+                    "weapon": "QBZ95-1",
+                    "theme": "s3_arcade",
+                },
+                {
+                    "skin_id": "UNC_M4A1_S3CHIP",
+                    "name": "M4A1突击步枪-芯片焊点",
+                    "weapon": "M4A1",
+                    "theme": "s3_arcade",
+                },
+            ],
+        },
+    },
+    4: {
+        "code": "S4",
+        "name": "S4 命运双生",
+        "order": 4,
+        "description": "命运权杖与扑克牌魔术并行的奢华赛季。",
+        "skins": {
+            "BRICK": [
+                {
+                    "skin_id": "BRK_K416_FATE",
+                    "name": "K416突击步枪-命运",
+                    "weapon": "K416",
+                    "brick_key": "s4_fate",
+                    "highlights": [
+                        "全枪浮雕与玉石光彩",
+                        "命运之神高悬权杖图腾",
+                        "极品模板有概率附加“鬼头”题字"
+                    ],
+                    "brick_meta": {
+                        "templates": [
+                            {"key": "brick_fate_strawberry", "weight": 1},
+                            {"key": "brick_fate_blueberry", "weight": 1},
+                            {"key": "brick_fate_goldberry", "weight": 1},
+                            {"key": "brick_fate_metal", "weight": 1},
+                            {"key": "brick_fate_brass", "weight": 1},
+                            {"key": "brick_fate_golden", "weight": 1},
+                            {"key": "brick_fate_jade", "weight": 1},
+                            {"key": "brick_fate_whitepeach", "weight": 1},
+                            {"key": "brick_fate_gradient_crimson", "weight": 5, "allow_premium": True},
+                            {"key": "brick_fate_gradient_cerulean", "weight": 5, "allow_premium": True},
+                            {"key": "brick_fate_gradient_ivory", "weight": 5, "allow_premium": True},
+                            {"key": "brick_brushed_metal", "weight": 78, "fallback": True},
+                        ]
+                    },
+                },
+                {
+                    "skin_id": "BRK_QBZ951_ACE",
+                    "name": "QBZ95-1突击步枪-王牌之剑",
+                    "weapon": "QBZ95-1",
+                    "brick_key": "s4_ace",
+                    "highlights": [
+                        "扑克魔术主题的浮雕牌面",
+                        "与命运系列相呼应的金属边框",
+                        "极品曳光更显绚烂"
+                    ],
+                },
+            ],
+            "PURPLE": [
+                {
+                    "skin_id": "EPI_K416_S4ORACLE",
+                    "name": "K416突击步枪-神谕纹章",
+                    "weapon": "K416",
+                    "theme": "s4_fate",
+                },
+                {
+                    "skin_id": "EPI_QBZ_S4ARCANA",
+                    "name": "QBZ95-1突击步枪-秘术折叠",
+                    "weapon": "QBZ95-1",
+                    "theme": "s4_fate",
+                },
+                {
+                    "skin_id": "EPI_SIG552_S4DIVINATION",
+                    "name": "SIG552突击步枪-占星轮",
+                    "weapon": "SIG552",
+                    "theme": "s4_fate",
+                },
+            ],
+            "BLUE": [
+                {
+                    "skin_id": "RAR_AN94_S4OPAL",
+                    "name": "AN-94突击步枪-蛋白石",
+                    "weapon": "AN-94",
+                    "theme": "s4_fate",
+                },
+                {
+                    "skin_id": "RAR_SCARL_S4INSIGNIA",
+                    "name": "SCAR-L突击步枪-徽记丝带",
+                    "weapon": "SCAR-L",
+                    "theme": "s4_fate",
+                },
+                {
+                    "skin_id": "RAR_MG36_S4SCEPTER",
+                    "name": "MG36轻机枪-权杖铭刻",
+                    "weapon": "MG36",
+                    "theme": "s4_fate",
+                },
+                {
+                    "skin_id": "RAR_SG553_S4HEIR",
+                    "name": "SG553突击步枪-继承纹",
+                    "weapon": "SG553",
+                    "theme": "s4_fate",
+                },
+            ],
+            "GREEN": [
+                {
+                    "skin_id": "UNC_FAMAS_S4CREST",
+                    "name": "FAMAS突击步枪-家徽",
+                    "weapon": "FAMAS",
+                    "theme": "s4_fate",
+                },
+                {
+                    "skin_id": "UNC_MTAR_S4BRASS",
+                    "name": "MTAR突击步枪-黄铜花纹",
+                    "weapon": "MTAR",
+                    "theme": "s4_fate",
+                },
+                {
+                    "skin_id": "UNC_QBU_S4IVORY",
+                    "name": "QBU射手步枪-象牙饰面",
+                    "weapon": "QBU",
+                    "theme": "s4_fate",
+                },
+                {
+                    "skin_id": "UNC_HK45C_S4PETAL",
+                    "name": "HK45C手枪-花瓣浮雕",
+                    "weapon": "HK45C",
+                    "theme": "s4_fate",
+                },
+            ],
+        },
+    },
+    5: {
+        "code": "S5",
+        "name": "S5 气象感应",
+        "order": 5,
+        "description": "极寒、酸雨、炎热与雷暴随温度应答的动态气象武器。",
+        "skins": {
+            "BRICK": [
+                {
+                    "skin_id": "BRK_TL_ATMOS",
+                    "name": "腾龙突击步枪-气象感应",
+                    "weapon": "腾龙",
+                    "brick_key": "s5_weather",
+                    "highlights": [
+                        "枪身实时切换四种气象主题",
+                        "不同外观对应不同颜色曳光弹",
+                        "稀有模板包含高达、可燃冰、电闪主题"
+                    ],
+                    "brick_meta": {
+                        "weapon": "腾龙",
+                        "modes": [
+                            {"key": "extreme_cold", "label": "极寒", "colors": ["#9dd7ff", "#b7f8ff"], "attachments": "#6bc6ff"},
+                            {"key": "acid_rain", "label": "酸雨", "colors": ["#9adf3f", "#5fbf28"], "attachments": "#3a8b1d"},
+                            {"key": "heat", "label": "炎热", "colors": ["#ff6b3a", "#ffd05e"], "attachments": "#ff934d"},
+                            {"key": "thunder", "label": "雷暴", "colors": ["#5a4bff", "#8f7bff"], "attachments": "#ffe249"},
+                        ]
+                    },
+                },
+                {
+                    "skin_id": "BRK_AUG_ATMOS",
+                    "name": "AUG突击步枪-气象感应",
+                    "weapon": "AUG",
+                    "brick_key": "s5_weather",
+                    "highlights": [
+                        "热流涡旋包覆枪身",
+                        "火焰与闪电特效叠加",
+                        "特定模板点亮独家曳光"
+                    ],
+                    "brick_meta": {
+                        "weapon": "AUG",
+                        "modes": [
+                            {"key": "extreme_cold", "label": "极寒", "colors": ["#8fd3ff", "#cee9ff"], "attachments": "#6ab6ff"},
+                            {"key": "acid_rain", "label": "酸雨", "colors": ["#7fe65d", "#c7ff9a"], "attachments": "#4bb245"},
+                            {"key": "heat", "label": "炎热", "colors": ["#ff7a45", "#ffb347"], "attachments": "#ff5d2e"},
+                            {"key": "thunder", "label": "雷暴", "colors": ["#4f51ff", "#9a8dff"], "attachments": "#f6f961"},
+                        ]
+                    },
+                },
+            ],
+            "PURPLE": [
+                {
+                    "skin_id": "EPI_TL_S5STORM",
+                    "name": "腾龙突击步枪-雷暴测绘",
+                    "weapon": "腾龙",
+                    "theme": "s5_weather",
+                },
+                {
+                    "skin_id": "EPI_AUG_S5PLASMA",
+                    "name": "AUG突击步枪-等离子辐射",
+                    "weapon": "AUG",
+                    "theme": "s5_weather",
+                },
+                {
+                    "skin_id": "EPI_HK50_S5MONSOON",
+                    "name": "HK50突击步枪-季风映像",
+                    "weapon": "HK50",
+                    "theme": "s5_weather",
+                },
+            ],
+            "BLUE": [
+                {
+                    "skin_id": "RAR_ACR_S5BLIZZARD",
+                    "name": "ACR突击步枪-暴风雪",
+                    "weapon": "ACR",
+                    "theme": "s5_weather",
+                },
+                {
+                    "skin_id": "RAR_PDW57_S5ACID",
+                    "name": "PDW57冲锋枪-酸雨监测",
+                    "weapon": "PDW57",
+                    "theme": "s5_weather",
+                },
+                {
+                    "skin_id": "RAR_AK74_S5EMBER",
+                    "name": "AK-74突击步枪-余烬风暴",
+                    "weapon": "AK-74",
+                    "theme": "s5_weather",
+                },
+                {
+                    "skin_id": "RAR_MG5_S5SURGE",
+                    "name": "MG5轻机枪-电离激增",
+                    "weapon": "MG5",
+                    "theme": "s5_weather",
+                },
+            ],
+            "GREEN": [
+                {
+                    "skin_id": "UNC_TYPE81_S5RAIN",
+                    "name": "Type81突击步枪-骤雨",
+                    "weapon": "Type81",
+                    "theme": "s5_weather",
+                },
+                {
+                    "skin_id": "UNC_SCARSC_S5FOG",
+                    "name": "SCAR-SC冲锋枪-晨雾",
+                    "weapon": "SCAR-SC",
+                    "theme": "s5_weather",
+                },
+                {
+                    "skin_id": "UNC_P90_S5SPARK",
+                    "name": "P90冲锋枪-静电",
+                    "weapon": "P90",
+                    "theme": "s5_weather",
+                },
+                {
+                    "skin_id": "UNC_QBS09_S5SLEET",
+                    "name": "QBS-09霰弹枪-霜凌",
+                    "weapon": "QBS-09",
+                    "theme": "s5_weather",
+                },
+            ],
+        },
+    },
+    6: {
+        "code": "S6",
+        "name": "S6 棱镜攻势2",
+        "order": 6,
+        "description": "棱镜攻势再升级，命运系列延续至科幻质感。",
+        "skins": {
+            "BRICK": [
+                {
+                    "skin_id": "BRK_M7_PRISM2",
+                    "name": "M7战斗步枪-棱镜攻势2",
+                    "weapon": "M7",
+                    "brick_key": "s6_prism2",
+                    "highlights": [
+                        "层叠玻璃与能量脉冲",
+                        "模块化棱镜配件",
+                        "延续棱镜系列的全息曳光"
+                    ],
+                },
+            ],
+            "PURPLE": [
+                {
+                    "skin_id": "EPI_AUG_DESTINY",
+                    "name": "AUG突击步枪-天命",
+                    "weapon": "AUG",
+                    "theme": "s6_destiny",
+                },
+                {
+                    "skin_id": "EPI_P90_DESTINY",
+                    "name": "P90冲锋枪-天命",
+                    "weapon": "P90",
+                    "theme": "s6_destiny",
+                },
+                {
+                    "skin_id": "EPI_SR25_DESTINY",
+                    "name": "SR-25射手步枪-天命",
+                    "weapon": "SR-25",
+                    "theme": "s6_destiny",
+                },
+            ],
+            "BLUE": [
+                {
+                    "skin_id": "RAR_PTR32_GRANITE",
+                    "name": "PTR-32突击步枪-花岗岩",
+                    "weapon": "PTR-32",
+                    "theme": "s6_granite",
+                },
+                {
+                    "skin_id": "RAR_ASVAL_HORIZON",
+                    "name": "AS Val突击步枪-地平线",
+                    "weapon": "AS Val",
+                    "theme": "s6_horizon",
+                },
+                {
+                    "skin_id": "RAR_SR3M_GRANITE",
+                    "name": "SR-3M紧凑突击步枪-花岗岩",
+                    "weapon": "SR-3M",
+                    "theme": "s6_granite",
+                },
+                {
+                    "skin_id": "RAR_QCQ171_HORIZON",
+                    "name": "QCQ171冲锋枪-地平线",
+                    "weapon": "QCQ-171",
+                    "theme": "s6_horizon",
+                },
+                {
+                    "skin_id": "RAR_M1014_GRANITE",
+                    "name": "M1014霰弹枪-花岗岩",
+                    "weapon": "M1014",
+                    "theme": "s6_granite",
+                },
+                {
+                    "skin_id": "RAR_M870_HORIZON",
+                    "name": "M870霰弹枪-地平线",
+                    "weapon": "M870",
+                    "theme": "s6_horizon",
+                },
+            ],
+            "GREEN": [
+                {
+                    "skin_id": "UNC_ASVAL_BEAST",
+                    "name": "AS Val突击步枪-猛兽",
+                    "weapon": "AS Val",
+                    "theme": "s6_beast",
+                },
+                {
+                    "skin_id": "UNC_AUG_BEAST",
+                    "name": "AUG突击步枪-猛兽",
+                    "weapon": "AUG",
+                    "theme": "s6_beast",
+                },
+                {
+                    "skin_id": "UNC_M4A1_BEAST",
+                    "name": "M4A1突击步枪-猛兽",
+                    "weapon": "M4A1",
+                    "theme": "s6_beast",
+                },
+                {
+                    "skin_id": "UNC_AK12_OLDIND",
+                    "name": "AK-12突击步枪-旧工业",
+                    "weapon": "AK-12",
+                    "theme": "s6_industry",
+                },
+                {
+                    "skin_id": "UNC_SCARH_OLDIND",
+                    "name": "SCAR-H突击步枪-旧工业",
+                    "weapon": "SCAR-H",
+                    "theme": "s6_industry",
+                },
+                {
+                    "skin_id": "UNC_WARRIORSMG_OLDIND",
+                    "name": "勇士冲锋枪-旧工业",
+                    "weapon": "Warrior",
+                    "theme": "s6_industry",
+                },
+            ],
+        },
+    },
+}
+
+
+SEASON_META: Dict[int, Dict[str, Any]] = {}
+SEASON_SHOWCASE: List[Dict[str, Any]] = []
+SKIN_META: Dict[str, Dict[str, Any]] = {}
+SKIN_DEFINITIONS: List[Dict[str, Any]] = []
+
+for season, info in SEASON_SKIN_POOL.items():
+    code = info.get("code", f"S{season}")
+    name = info.get("name", code)
+    description = info.get("description", "")
+    order = info.get("order", season)
+    SEASON_META[season] = {
+        "season": season,
+        "code": code,
+        "name": name,
+        "description": description,
+        "order": order,
+    }
+    bricks = []
+    rarity_counts: Dict[str, int] = {}
+    for rarity, skins in info.get("skins", {}).items():
+        rarity_counts[rarity] = len(skins)
+        for entry in skins:
+            skin_id = entry["skin_id"]
+            meta = {
+                "skin_id": skin_id,
+                "name": entry["name"],
+                "rarity": rarity,
+                "season": season,
+                "season_code": code,
+                "season_name": name,
+                "theme": entry.get("theme"),
+                "weapon": entry.get("weapon", ""),
+                "brick_key": entry.get("brick_key"),
+                "brick_meta": entry.get("brick_meta", {}),
+                "highlights": entry.get("highlights", []),
+            }
+            SKIN_META[skin_id] = meta
+            SKIN_DEFINITIONS.append({
+                "skin_id": skin_id,
+                "name": entry["name"],
+                "rarity": rarity,
+                "season": season,
+                "active": True,
+            })
+            if rarity == "BRICK":
+                bricks.append({
+                    "skin_id": skin_id,
+                    "name": entry["name"],
+                    "weapon": entry.get("weapon", ""),
+                    "highlights": entry.get("highlights", []),
+                })
+    showcase_entry = {
+        "season": season,
+        "code": code,
+        "name": name,
+        "description": description,
+        "bricks": bricks,
+        "rarity_counts": rarity_counts,
+    }
+    SEASON_SHOWCASE.append(showcase_entry)
+
+SEASON_SHOWCASE.sort(key=lambda x: x.get("season", 0))
+
+
+def season_label(season: Optional[int]) -> str:
+    if season is None:
+        return "未知赛季"
+    info = SEASON_META.get(int(season))
+    if not info:
+        return f"S{season}"
+    code = info.get("code") or f"S{season}"
+    name = info.get("name") or code
+    return f"{code} · {name}" if code not in name else name
+
+
+def _choice(seq: List[Any]) -> Any:
+    if not seq:
+        return None
+    return seq[secrets.randbelow(len(seq))]
+
+
+def resolve_season_for_inventory(inv_obj: Inventory) -> int:
+    val = getattr(inv_obj, "season", None)
+    if val:
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            pass
+    meta = SKIN_META.get(inv_obj.skin_id or "")
+    if meta:
+        return int(meta.get("season", 0))
+    return 0
+
+
+def _build_palette(pairs: List[Tuple[str, str]]) -> List[Dict[str, str]]:
+    return [_color(hex_code, label) for hex_code, label in pairs]
+
+
+def _theme_prism(meta: Dict[str, Any], rarity: str, exquisite: bool) -> Dict[str, Any]:
+    combos = [
+        [
+            _color("#64e1ff", "透蓝棱片"),
+            _color("#ff8df2", "星云粉棱"),
+        ],
+        [
+            _color("#b7fff4", "冰川透光"),
+            _color("#7be0ff", "湖面折射"),
+        ],
+        [
+            _color("#ffe066", "琥珀心"),
+            _color("#5ec6ff", "晨雾蓝"),
+        ],
+    ]
+    body = _choice(combos) or combos[0]
+    attachments = [_color("#ffffff", "棱镜骨架" if exquisite else "磨砂骨架")]
+    effects = ["refraction"]
+    if exquisite:
+        attachments.append(_color("#ffd8ff", "极光接口"))
+        effects.append("prism_trail")
+    return {"body": body, "attachments": attachments, "effects": effects, "template": "", "hidden_template": False}
+
+
+def _theme_medusa(meta: Dict[str, Any], rarity: str, exquisite: bool) -> Dict[str, Any]:
+    body_choices = [
+        _build_palette([( "#4a6c4f", "蛇鳞绿"), ("#d4b483", "浮雕金")]),
+        _build_palette([( "#63523c", "古铜斑"), ("#c5a87f", "柱式石")]),
+    ]
+    body = _choice(body_choices) or body_choices[0]
+    attachments = [_color("#f2d399", "雕花金"), _color("#3d4d3c", "蛇藤束")]
+    if not exquisite:
+        attachments = attachments[:1]
+    effects = ["medusa_glow"]
+    return {"body": body, "attachments": attachments, "effects": effects, "template": "", "hidden_template": False}
+
+
+def _theme_arcade(meta: Dict[str, Any], rarity: str, exquisite: bool) -> Dict[str, Any]:
+    neon_sets = [
+        _build_palette([( "#29d4ff", "霓虹青"), ("#ff5af1", "赛博紫")]),
+        _build_palette([( "#ffcf44", "亮黄像素"), ("#5f5bff", "耀眼蓝")]),
+        _build_palette([( "#ff8a3d", "琥珀按键"), ("#42fff4", "电子薄荷")]),
+    ]
+    body = _choice(neon_sets) or neon_sets[0]
+    attachments = [_color("#1f1f2e", "机壳黑"), _color("#ff4d9e", "灯带")] if exquisite else [_color("#1f1f2e", "机壳黑")]
+    effects = ["arcade_flux"]
+    if exquisite:
+        effects.append("arcade_letters")
+    return {"body": body, "attachments": attachments, "effects": effects, "template": "", "hidden_template": False}
+
+
+def _theme_fate(meta: Dict[str, Any], rarity: str, exquisite: bool) -> Dict[str, Any]:
+    marble_sets = [
+        _build_palette([( "#f5d7a1", "象牙金"), ("#7ad3c1", "翡翠芯")]),
+        _build_palette([( "#f0b8a8", "粉玉"), ("#c8a86c", "权杖金")]),
+    ]
+    body = _choice(marble_sets) or marble_sets[0]
+    attachments = [_color("#d4b98c", "雕刻框"), _color("#fef4d8", "丝绸镶边")] if exquisite else [_color("#d4b98c", "雕刻框")]
+    effects = ["fate_glow"]
+    if exquisite:
+        effects.append("fate_tracer")
+    return {"body": body, "attachments": attachments, "effects": effects, "template": "", "hidden_template": False}
+
+
+def _theme_weather(meta: Dict[str, Any], rarity: str, exquisite: bool) -> Dict[str, Any]:
+    modes = meta.get("modes") or [
+        {"colors": ["#8fd3ff", "#cee9ff"], "attachments": "#6ab6ff", "label": "极寒"},
+        {"colors": ["#80cc3f", "#4c9f2f"], "attachments": "#2f6f1f", "label": "酸雨"},
+        {"colors": ["#ff7b47", "#ffd166"], "attachments": "#ff9448", "label": "炎热"},
+        {"colors": ["#545bff", "#99a3ff"], "attachments": "#ffe26a", "label": "雷暴"},
+    ]
+    mode = _choice(modes) or modes[0]
+    body = [_color(mode["colors"][0], f"{mode.get('label','气象')}基调"), _color(mode["colors"][1], f"{mode.get('label','气象')}晕光")]
+    attachments = [_color(mode.get("attachments", "#ffffff"), f"{mode.get('label','气象')}挂点")]
+    if exquisite:
+        attachments.append(_color("#ffffff", "气象传感"))
+    effects = ["storm_arc"]
+    if mode.get("label") == "雷暴":
+        effects.append("storm_lightning")
+    return {"body": body, "attachments": attachments, "effects": effects, "template": "", "hidden_template": False}
+
+
+def _theme_destiny(meta: Dict[str, Any], rarity: str, exquisite: bool) -> Dict[str, Any]:
+    body = _build_palette([( "#7b5bff", "苍穹紫"), ("#ffd88a", "命运辉光")])
+    attachments = [_color("#f2f2ff", "光效铭刻")]
+    if exquisite:
+        attachments.append(_color("#ffe8aa", "金线纹"))
+    effects = ["destiny_glow"]
+    return {"body": body, "attachments": attachments, "effects": effects, "template": "", "hidden_template": False}
+
+
+def _theme_granite(meta: Dict[str, Any], rarity: str, exquisite: bool) -> Dict[str, Any]:
+    body = _build_palette([( "#6a747d", "岩层灰"), ("#3e454b", "切削纹")])
+    attachments = [_color("#9ca3ad", "石质护甲")]
+    if exquisite:
+        attachments.append(_color("#c4ccd9", "晶体断面"))
+    return {"body": body, "attachments": attachments, "effects": [], "template": "", "hidden_template": False}
+
+
+def _theme_horizon(meta: Dict[str, Any], rarity: str, exquisite: bool) -> Dict[str, Any]:
+    body = _build_palette([( "#ffb347", "暮光橙"), ("#4cc9f0", "天际蓝")])
+    attachments = [_color("#243147", "夜幕轨道")]
+    if exquisite:
+        attachments.append(_color("#ffd8a8", "晨曦镶边"))
+    return {"body": body, "attachments": attachments, "effects": ["horizon_flux"] if exquisite else [], "template": "", "hidden_template": False}
+
+
+def _theme_beast(meta: Dict[str, Any], rarity: str, exquisite: bool) -> Dict[str, Any]:
+    body = _build_palette([( "#a34129", "兽焰"), ("#f29c4b", "獠牙纹")])
+    attachments = [_color("#2a1c16", "骨质握把")]
+    effects = ["beast_breath"] if exquisite else []
+    return {"body": body, "attachments": attachments, "effects": effects, "template": "", "hidden_template": False}
+
+
+def _theme_industry(meta: Dict[str, Any], rarity: str, exquisite: bool) -> Dict[str, Any]:
+    body = _build_palette([( "#6b5b4b", "油迹棕"), ("#b8a68d", "旧厂米黄")])
+    attachments = [_color("#313538", "钢筋骨架")]
+    if exquisite:
+        attachments.append(_color("#c86f3e", "铁锈流"))
+    return {"body": body, "attachments": attachments, "effects": [], "template": "", "hidden_template": False}
+
+
+THEME_BUILDERS: Dict[str, Any] = {
+    "s1_prism": _theme_prism,
+    "s2_medusa": _theme_medusa,
+    "s3_arcade": _theme_arcade,
+    "s4_fate": _theme_fate,
+    "s5_weather": _theme_weather,
+    "s6_destiny": _theme_destiny,
+    "s6_granite": _theme_granite,
+    "s6_horizon": _theme_horizon,
+    "s6_beast": _theme_beast,
+    "s6_industry": _theme_industry,
+}
+
+
+def _brick_s1_prism(meta: Dict[str, Any], exquisite: bool) -> Dict[str, Any]:
+    palettes = [
+        [
+            _color("#5fe0ff", "冷蓝棱柱"),
+            _color("#f88dff", "棱镜霞光"),
+        ],
+        [
+            _color("#ffe680", "琥珀折面"),
+            _color("#92f5ff", "冰川清辉"),
+        ],
+        [
+            _color("#8ff2ff", "海岸透影"),
+            _color("#ff9bd6", "光谱余晖"),
+        ],
+    ]
+    body = _choice(palettes) or palettes[0]
+    attachments = [_color("#ffffff", "透明外骨骼")]
+    if exquisite:
+        attachments.append(_color("#ffe6ff", "晶体核心"))
+    template = "brick_laser_gradient" if exquisite and secrets.randbelow(100) < 60 else "brick_normal"
+    effects = ["prism_flux", "prism_trail"]
+    return {"body": body, "attachments": attachments, "template": template, "effects": effects, "hidden_template": False}
+
+
+def _brick_s2_medusa(meta: Dict[str, Any], exquisite: bool) -> Dict[str, Any]:
+    body = [
+        _color("#3c5b3f", "蛇鳞墨绿"),
+        _color("#caa46d", "陈旧鎏金"),
+    ]
+    attachments = [_color("#ecd6a5", "宝石浮雕"), _color("#4f3a2b", "石质背板")]
+    if not exquisite:
+        attachments = attachments[:1]
+    template = "brick_brushed_metal" if exquisite else "brick_normal"
+    effects = ["medusa_flame"]
+    return {"body": body, "attachments": attachments, "template": template, "effects": effects, "hidden_template": False}
+
+
+def _brick_s3_arcade(meta: Dict[str, Any], exquisite: bool) -> Dict[str, Any]:
+    base_body = _theme_arcade(meta, "BRICK", exquisite)
+    templates = meta.get("brick_meta", {}).get("templates", [])
+    if exquisite:
+        pool = templates
+    else:
+        pool = [t for t in templates if t.get("allow_premium") or t.get("fallback")]
+    if not pool:
+        pool = templates or [{"key": "brick_laser_gradient", "weight": 1, "fallback": True}]
+    total_weight = sum(int(t.get("weight", 1)) for t in pool) or 1
+    roll = secrets.randbelow(total_weight)
+    acc = 0
+    chosen = pool[0]
+    for item in pool:
+        acc += int(item.get("weight", 1))
+        if roll < acc:
+            chosen = item
+            break
+    template = chosen.get("key", "brick_laser_gradient")
+    effects = ["arcade_flux", "arcade_letters"]
+    return {
+        "body": base_body["body"],
+        "attachments": base_body["attachments"],
+        "template": template,
+        "effects": effects,
+        "hidden_template": False,
+    }
+
+
+def _brick_s4_fate(meta: Dict[str, Any], exquisite: bool) -> Dict[str, Any]:
+    body = _theme_fate(meta, "BRICK", exquisite)
+    templates = meta.get("brick_meta", {}).get("templates", [])
+    if exquisite:
+        pool = templates
+    else:
+        pool = [t for t in templates if t.get("allow_premium") or t.get("fallback")]
+    if not pool:
+        pool = templates or [{"key": "brick_brushed_metal", "weight": 1, "fallback": True}]
+    total_weight = sum(int(t.get("weight", 1)) for t in pool) or 1
+    roll = secrets.randbelow(total_weight)
+    acc = 0
+    chosen = pool[0]
+    for item in pool:
+        acc += int(item.get("weight", 1))
+        if roll < acc:
+            chosen = item
+            break
+    template = chosen.get("key", "brick_brushed_metal")
+    effects = ["fate_glow", "fate_tracer"]
+    if exquisite and secrets.randbelow(100) < 25:
+        effects.append("ghost_sigils")
+    return {
+        "body": body["body"],
+        "attachments": body["attachments"],
+        "template": template,
+        "effects": effects,
+        "hidden_template": False,
+    }
+
+
+def _brick_s4_ace(meta: Dict[str, Any], exquisite: bool) -> Dict[str, Any]:
+    palettes = [
+        [
+            _color("#d9d2ff", "牌面星辉"),
+            _color("#ffefd2", "象牙底纹"),
+        ],
+        [
+            _color("#ffe2f0", "淡粉幻象"),
+            _color("#bde3ff", "蓝心折射"),
+        ],
+    ]
+    body = _choice(palettes) or palettes[0]
+    attachments = [_color("#c4a57a", "金属边框"), _color("#2a2a2a", "牌面影盒")]
+    if not exquisite:
+        attachments = attachments[:1]
+    template = "brick_laser_gradient" if exquisite and secrets.randbelow(100) < 50 else "brick_normal"
+    effects = ["card_trick"]
+    if exquisite:
+        effects.append("card_flares")
+    return {"body": body, "attachments": attachments, "template": template, "effects": effects, "hidden_template": False}
+
+
+def _brick_s5_weather(meta: Dict[str, Any], exquisite: bool) -> Dict[str, Any]:
+    modes = meta.get("modes") or []
+    mode = _choice(modes) or {"key": "extreme_cold", "colors": ["#9adfff", "#c4f1ff"], "attachments": "#6ab6ff", "label": "极寒"}
+    label = mode.get("label", "气象")
+    body = [
+        _color(mode.get("colors", ["#9adfff", "#c4f1ff"])[0], f"{label}主体"),
+        _color(mode.get("colors", ["#9adfff", "#c4f1ff"])[1], f"{label}光晕"),
+    ]
+    attachments = [_color(mode.get("attachments", "#ffffff"), f"{label}装甲")]
+    if exquisite:
+        attachments.append(_color("#ffffff", "气象脉冲"))
+    template = "brick_normal"
+    if exquisite:
+        special_roll = secrets.randbelow(10000)
+        if special_roll < 100:
+            template = "brick_weather_mecha"
+        elif special_roll < 200:
+            template = "brick_weather_clathrate"
+        elif special_roll < 300 and mode.get("key") == "thunder":
+            template = "brick_weather_redbolt"
+        elif special_roll < 400 and mode.get("key") == "thunder":
+            template = "brick_weather_purplebolt"
+    if template == "brick_normal":
+        grad_roll = secrets.randbelow(10000)
+        if grad_roll < 500:
+            template = "brick_weather_gradient"
+        elif exquisite and grad_roll < 800:
+            template = "brick_laser_gradient"
+    effects = ["storm_arc"]
+    if mode.get("key") == "thunder":
+        effects.append("storm_lightning")
+    elif mode.get("key") == "extreme_cold":
+        effects.append("storm_frost")
+    elif mode.get("key") == "acid_rain":
+        effects.append("storm_acid")
+    elif mode.get("key") == "heat":
+        effects.append("storm_heat")
+    return {"body": body, "attachments": attachments, "template": template, "effects": effects, "hidden_template": False}
+
+
+def _brick_s6_prism2(meta: Dict[str, Any], exquisite: bool) -> Dict[str, Any]:
+    palettes = [
+        [
+            _color("#66f7ff", "极地能量"),
+            _color("#9a66ff", "相位紫"),
+        ],
+        [
+            _color("#ff9c5a", "晨曦橙"),
+            _color("#5ad6ff", "超导蓝"),
+        ],
+    ]
+    body = _choice(palettes) or palettes[0]
+    attachments = [_color("#ffffff", "晶格骨架"), _color("#ffe3ff", "光谱脉冲")]
+    template = "brick_laser_gradient"
+    if exquisite and secrets.randbelow(100) < 15:
+        template = "brick_white_diamond"
+    effects = ["prism_flux", "phase_shift"]
+    return {"body": body, "attachments": attachments, "template": template, "effects": effects, "hidden_template": False}
+
+
+BRICK_GENERATORS: Dict[str, Any] = {
+    "s1_prism": _brick_s1_prism,
+    "s2_medusa": _brick_s2_medusa,
+    "s3_arcade": _brick_s3_arcade,
+    "s4_fate": _brick_s4_fate,
+    "s4_ace": _brick_s4_ace,
+    "s5_weather": _brick_s5_weather,
+    "s6_prism2": _brick_s6_prism2,
+}
+
+
 
 def _pick_brick_template(exquisite: bool) -> str:
     roll = secrets.randbelow(10000)
@@ -671,21 +1824,56 @@ def _pick_color() -> Dict[str, str]:
     base = secrets.choice(COLOR_PALETTE)
     return {"hex": base["hex"], "name": base["name"]}
 
-def generate_visual_profile(rarity: str, exquisite: bool) -> Dict[str, object]:
-    body_layers = 2 if secrets.randbelow(100) < 55 else 1
-    body = [_pick_color() for _ in range(body_layers)]
-    attachments = [_pick_color()]
+def generate_visual_profile(skin_id: Optional[str], rarity: str, exquisite: bool) -> Dict[str, object]:
+    rarity_key = (rarity or "").upper()
+    meta = SKIN_META.get(skin_id or "")
 
-    rarity = (rarity or "").upper()
+    body: List[Dict[str, str]] = []
+    attachments: List[Dict[str, str]] = []
     template_key = ""
     hidden_template = False
-    if rarity == "BRICK":
-        template_key = _pick_brick_template(bool(exquisite))
-        effects = ["sheen"]
+    effects: List[str] = []
+
+    if rarity_key == "BRICK":
+        base_effects = ["sheen"]
         if exquisite:
-            effects.extend(["bold_tracer", "kill_counter"])
+            base_effects.extend(["bold_tracer", "kill_counter"])
+        generator_key = meta.get("brick_key") if meta else None
+        generator = BRICK_GENERATORS.get(generator_key) if generator_key else None
+        if generator:
+            payload = generator(meta or {}, exquisite) or {}
+            body = payload.get("body", []) or body
+            attachments = payload.get("attachments", []) or attachments
+            template_key = payload.get("template", template_key)
+            hidden_template = bool(payload.get("hidden_template", False))
+            extra_effects = payload.get("effects", []) or []
+            base_effects.extend(extra_effects)
+        else:
+            template_key = _pick_brick_template(bool(exquisite))
+        if not body:
+            body_layers = 2 if secrets.randbelow(100) < 55 else 1
+            body = [_pick_color() for _ in range(body_layers)]
+        if not attachments:
+            attachments = [_pick_color()]
+        if not template_key:
+            template_key = _pick_brick_template(bool(exquisite))
+        effects = list(dict.fromkeys(base_effects))
     else:
-        effects = []
+        theme = meta.get("theme") if meta else None
+        generator = THEME_BUILDERS.get(theme) if theme else None
+        theme_meta = meta.get("brick_meta", {}) if meta else {}
+        if generator:
+            payload = generator(theme_meta or meta or {}, rarity_key, exquisite) or {}
+            body = payload.get("body", []) or body
+            attachments = payload.get("attachments", []) or attachments
+            template_key = payload.get("template", template_key)
+            hidden_template = bool(payload.get("hidden_template", False))
+            effects = payload.get("effects", []) or []
+        if not body:
+            body_layers = 2 if secrets.randbelow(100) < 55 else 1
+            body = [_pick_color() for _ in range(body_layers)]
+        if not attachments:
+            attachments = [_pick_color()]
 
     return {
         "body": body,
@@ -715,7 +1903,7 @@ def ensure_visual(inv: Inventory) -> Dict[str, object]:
 
     if rarity == "BRICK":
         if not body or not attachments or template not in BRICK_TEMPLATES:
-            profile = generate_visual_profile(inv.rarity, bool(inv.exquisite))
+            profile = generate_visual_profile(inv.skin_id, inv.rarity, bool(inv.exquisite))
             body = profile["body"]
             attachments = profile["attachments"]
             template = profile["template"]
@@ -728,7 +1916,7 @@ def ensure_visual(inv: Inventory) -> Dict[str, object]:
             inv.hidden_template = 0
             changed = True
         if not bool(inv.exquisite) and template in EXQUISITE_ONLY_TEMPLATES:
-            profile = generate_visual_profile(inv.rarity, False)
+            profile = generate_visual_profile(inv.skin_id, inv.rarity, False)
             body = profile["body"]
             attachments = profile["attachments"]
             template = profile["template"]
@@ -753,7 +1941,7 @@ def ensure_visual(inv: Inventory) -> Dict[str, object]:
             changed = True
     else:
         if not body or not attachments:
-            profile = generate_visual_profile(inv.rarity, bool(inv.exquisite))
+            profile = generate_visual_profile(inv.skin_id, inv.rarity, bool(inv.exquisite))
             body = profile["body"]
             attachments = profile["attachments"]
             inv.body_colors = json.dumps(body, ensure_ascii=False)
@@ -1556,6 +2744,7 @@ def record_trade(
     unit_price: int,
     total_amount: int,
     net_amount: int = 0,
+    season: Optional[int] = None,
 ) -> None:
     qty = int(quantity or 0)
     if qty <= 0 or not user_id:
@@ -1569,6 +2758,7 @@ def record_trade(
         unit_price=int(unit_price or 0),
         total_amount=int(total_amount or 0),
         net_amount=int(net_amount or 0),
+        season=season,
     )
     db.add(log)
 
@@ -1723,8 +2913,11 @@ class OddsOut(_BM):
     force_brick_next: bool; force_purple_next: bool
     pity_brick: int; pity_purple: int
 
-def pick_skin(db: Session, rarity: str) -> Skin:
-    rows = db.query(Skin).filter_by(rarity=rarity, active=True).all()
+def pick_skin(db: Session, rarity: str, season: Optional[int] = None) -> Skin:
+    q = db.query(Skin).filter_by(rarity=rarity, active=True)
+    if season:
+        q = q.filter(Skin.season == season)
+    rows = q.all()
     if not rows: raise HTTPException(500, f"当前没有可用的 {rarity} 皮肤")
     return secrets.choice(rows)
 
@@ -1950,12 +3143,35 @@ def me(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     if phone.startswith(VIRTUAL_PHONE_PREFIX):
         phone = ""
     cookie_enabled = cookie_factory_enabled(db)
+    brick_counts = (
+        db.query(func.coalesce(Inventory.season, Skin.season, 0).label("season"), func.count())
+        .join(Skin, Skin.skin_id == Inventory.skin_id, isouter=True)
+        .filter(
+            Inventory.user_id == user.id,
+            Inventory.rarity == "BRICK",
+            Inventory.on_market == False,
+        )
+        .group_by("season")
+        .all()
+    )
+    season_bricks = []
+    for season_val, count in brick_counts:
+        season_int = int(season_val or 0)
+        if season_int == 0:
+            season_int = max(SEASON_META.keys())
+        season_bricks.append({
+            "season": season_int,
+            "label": season_label(season_int),
+            "count": int(count or 0),
+        })
+    season_bricks.sort(key=lambda x: x["season"])
     return {
         "username": user.username, "phone": phone,
         "fiat": user.fiat, "coins": user.coins, "keys": user.keys,
         "unopened_bricks": user.unopened_bricks,
         "pity_brick": user.pity_brick, "pity_purple": user.pity_purple,
         "is_admin": bool(getattr(user, "is_admin", False)),
+        "brick_season_counts": season_bricks,
         "features": {
             "cookie_factory": {
                 "enabled": bool(cookie_enabled),
@@ -1986,6 +3202,11 @@ def me_mailbox(
         category = "brick" if str(log.category) == "brick" else "skin"
         action = "sell" if str(log.action) == "sell" else "buy"
         bucket = out[category]
+        season_val = getattr(log, "season", None)
+        if not season_val and category == "skin":
+            meta = SKIN_META.get(log.item_name) or SKIN_META.get(log.item_name.upper()) or None
+            if meta:
+                season_val = meta.get("season")
         entry = {
             "id": log.id,
             "item_name": log.item_name,
@@ -1995,6 +3216,8 @@ def me_mailbox(
             "net_amount": log.net_amount,
             "created_at": log.created_at,
             "action": action,
+            "season": int(season_val) if season_val else None,
+            "season_label": season_label(season_val) if season_val else None,
         }
         bucket[action].append(entry)
     return out
@@ -2406,6 +3629,9 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
         raise HTTPException(400, "当前仅支持单抽或十连")
     if user.unopened_bricks < inp.count: raise HTTPException(400, "未开砖数量不足")
     if user.keys < inp.count: raise HTTPException(400, "钥匙不足")
+    season = inp.season or max(SEASON_META.keys())
+    if season not in SEASON_META:
+        raise HTTPException(400, "指定赛季不存在")
     cfg = db.query(PoolConfig).first()
     user.unopened_bricks -= inp.count
     user.keys -= inp.count
@@ -2440,11 +3666,11 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
         else:
             user.pity_brick += 1; user.pity_purple += 1
 
-        skin = pick_skin(db, rarity)
+        skin = pick_skin(db, rarity, season=season)
         exquisite = (secrets.randbelow(100) < 15) if rarity == "BRICK" else False
         wear_bp = wear_random_bp()
         grade = grade_from_wear_bp(wear_bp)
-        profile = generate_visual_profile(skin.rarity, exquisite)
+        profile = generate_visual_profile(skin.skin_id, skin.rarity, exquisite)
 
         inv = Inventory(
             user_id=user.id, skin_id=skin.skin_id, name=skin.name, rarity=skin.rarity,
@@ -2455,6 +3681,7 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
             template_name=profile["template"],
             effect_tags=json.dumps(profile["effects"], ensure_ascii=False),
             hidden_template=profile["hidden_template"],
+            season=getattr(skin, "season", season),
         )
         if int(user.gift_brick_quota or 0) > 0:
             inv.sell_locked = True
@@ -2472,6 +3699,8 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
             "effects": profile["effects"],
             "sell_locked": bool(inv.sell_locked),
             "lock_reason": inv.lock_reason or "",
+            "season": getattr(skin, "season", season),
+            "season_label": season_label(getattr(skin, "season", season)),
             "visual": {
                 "body": profile["body"],
                 "attachments": profile["attachments"],
@@ -2491,6 +3720,7 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
 @app.get("/inventory")
 def inventory(
     rarity: Optional[RarityT] = None,
+    season: Optional[int] = None,
     show_on_market: bool = False,     # 新增：默认 False => 隐藏在交易行中的物品
     user: User = Depends(user_from_token),
     db: Session = Depends(get_db)
@@ -2504,7 +3734,14 @@ def inventory(
     rows = q.order_by(Inventory.id.desc()).all()
     items = []
     changed = False
+    season_filter = int(season) if season else None
     for x in rows:
+        resolved_season = resolve_season_for_inventory(x)
+        if season_filter and resolved_season != season_filter:
+            continue
+        if resolved_season and resolved_season != getattr(x, "season", 0):
+            x.season = resolved_season
+            changed = True
         vis = ensure_visual(x)
         changed = changed or vis["changed"]
         visual_payload = {
@@ -2531,6 +3768,8 @@ def inventory(
             "visual": visual_payload,
             "sell_locked": bool(getattr(x, "sell_locked", False)),
             "lock_reason": x.lock_reason or "",
+            "season": resolved_season,
+            "season_label": season_label(resolved_season),
         })
     if changed:
         db.commit()
@@ -2540,6 +3779,7 @@ def inventory(
 # —— 背包按颜色分组：默认也隐藏已上架
 @app.get("/inventory/by-color")
 def inventory_by_color(
+    season: Optional[int] = None,
     show_on_market: bool = False,     # 新增参数，默认隐藏已上架
     user: User = Depends(user_from_token),
     db: Session = Depends(get_db)
@@ -2551,7 +3791,14 @@ def inventory_by_color(
 
     grouped = {"BRICK": [], "PURPLE": [], "BLUE": [], "GREEN": []}
     changed = False
+    season_filter = int(season) if season else None
     for x in rows:
+        resolved_season = resolve_season_for_inventory(x)
+        if season_filter and resolved_season != season_filter:
+            continue
+        if resolved_season and resolved_season != getattr(x, "season", 0):
+            x.season = resolved_season
+            changed = True
         vis = ensure_visual(x)
         changed = changed or vis["changed"]
         visual_payload = {
@@ -2578,11 +3825,28 @@ def inventory_by_color(
             "visual": visual_payload,
             "sell_locked": bool(getattr(x, "sell_locked", False)),
             "lock_reason": x.lock_reason or "",
+            "season": resolved_season,
+            "season_label": season_label(resolved_season),
         })
     summary = {r: len(v) for r, v in grouped.items()}
     if changed:
         db.commit()
     return {"summary": summary, "buckets": grouped}
+
+
+@app.get("/seasons")
+def list_seasons():
+    items = []
+    for info in SEASON_SHOWCASE:
+        items.append({
+            "season": info.get("season"),
+            "code": info.get("code"),
+            "name": info.get("name"),
+            "description": info.get("description", ""),
+            "bricks": info.get("bricks", []),
+            "rarity_counts": info.get("rarity_counts", {}),
+        })
+    return {"seasons": items}
 
 # ------------------ Crafting ------------------
 @app.post("/craft/compose")
@@ -2605,14 +3869,30 @@ def craft_compose(inp: ComposeIn,
     if any(r.rarity != inp.from_rarity for r in rows):
         raise HTTPException(400, "所选物品的稀有度不一致，或与合成方向不符")
 
+    def _resolve_inv_season(inv_obj: Inventory) -> int:
+        val = getattr(inv_obj, "season", None)
+        if val:
+            return int(val)
+        meta = SKIN_META.get(inv_obj.skin_id or "")
+        if meta:
+            return int(meta.get("season", 0))
+        return 0
+
     avg_bp = round(sum(r.wear_bp for r in rows) / 20)
+    season_pool: List[int] = []
     for r in rows:
+        season_val = _resolve_inv_season(r)
+        if not season_val:
+            season_val = max(SEASON_META.keys())
+        season_pool.append(season_val)
         db.delete(r)
 
-    skin = pick_skin(db, to_rarity)
+    chosen_season = secrets.choice(season_pool) if season_pool else max(SEASON_META.keys())
+
+    skin = pick_skin(db, to_rarity, season=chosen_season)
     exquisite = (secrets.randbelow(100) < 15) if to_rarity == "BRICK" else False
     grade = grade_from_wear_bp(avg_bp)
-    profile = generate_visual_profile(skin.rarity, exquisite)
+    profile = generate_visual_profile(skin.skin_id, skin.rarity, exquisite)
 
     inv = Inventory(
         user_id=user.id, skin_id=skin.skin_id, name=skin.name, rarity=skin.rarity,
@@ -2623,6 +3903,7 @@ def craft_compose(inp: ComposeIn,
         template_name=profile["template"],
         effect_tags=json.dumps(profile["effects"], ensure_ascii=False),
         hidden_template=profile["hidden_template"],
+        season=getattr(skin, "season", chosen_season),
     )
     db.add(inv); db.flush()
     inv.serial = f"{inv.id:08d}"
@@ -2634,6 +3915,8 @@ def craft_compose(inp: ComposeIn,
         "template": profile["template"],
         "hidden_template": profile["hidden_template"],
         "effects": profile["effects"],
+        "season": getattr(skin, "season", chosen_season),
+        "season_label": season_label(getattr(skin, "season", chosen_season)),
         "visual": {
             "body": profile["body"],
             "attachments": profile["attachments"],
@@ -2652,6 +3935,7 @@ class MarketBrowseParams(BaseModel):
     is_exquisite: Optional[bool] = None  # BRICK 有意义，其它忽略
     grade: Optional[Literal["S","A","B","C"]] = None
     sort: Optional[Literal["wear_asc","wear_desc","price_asc","price_desc","newest","oldest"]] = "newest"
+    season: Optional[int] = None
 
 from sqlalchemy.exc import IntegrityError
 
@@ -2863,6 +4147,10 @@ def market_my(user: User = Depends(user_from_token), db: Session = Depends(get_d
     items = []
     changed = False
     for mi, inv in q.all():
+        resolved_season = resolve_season_for_inventory(inv)
+        if resolved_season and resolved_season != getattr(inv, "season", 0):
+            inv.season = resolved_season
+            changed = True
         vis = ensure_visual(inv)
         changed = changed or vis["changed"]
         visual_payload = {
@@ -2881,6 +4169,8 @@ def market_my(user: User = Depends(user_from_token), db: Session = Depends(get_d
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
             "visual": visual_payload,
+            "season": resolved_season,
+            "season_label": season_label(resolved_season) if resolved_season else None,
         })
     if changed:
         db.commit()
@@ -2904,9 +4194,11 @@ def market_browse(rarity: Optional[RarityT] = None,
                   is_exquisite: Optional[bool] = None,
                   grade: Optional[Literal["S","A","B","C"]] = None,
                   sort: Optional[str] = "newest",
+                  season: Optional[int] = None,
                   db: Session = Depends(get_db)):
-    q = db.query(MarketItem, Inventory, User).join(Inventory, MarketItem.inv_id==Inventory.id)\
+    q = db.query(MarketItem, Inventory, User, Skin).join(Inventory, MarketItem.inv_id==Inventory.id)\
         .join(User, MarketItem.user_id==User.id)\
+        .join(Skin, Skin.skin_id == Inventory.skin_id, isouter=True)\
         .filter(MarketItem.active==True, Inventory.on_market==True)
     if rarity:
         q = q.filter(Inventory.rarity==rarity)
@@ -2930,9 +4222,16 @@ def market_browse(rarity: Optional[RarityT] = None,
     else:  # newest
         q = q.order_by(MarketItem.created_at.desc())
 
-    out: List[MarketBrowseOut] = []
+    items_payload: List[Dict[str, Any]] = []
     changed = False
-    for mi, inv, seller in q.all():
+    season_filter = int(season) if season else None
+    for mi, inv, seller, skin_row in q.all():
+        resolved_season = resolve_season_for_inventory(inv)
+        if season_filter and resolved_season != season_filter:
+            continue
+        if resolved_season and resolved_season != getattr(inv, "season", 0):
+            inv.season = resolved_season
+            changed = True
         vis = ensure_visual(inv)
         changed = changed or vis["changed"]
         visual_payload = {
@@ -2943,17 +4242,21 @@ def market_browse(rarity: Optional[RarityT] = None,
             "effects": vis["effects"],
         }
 
-        out.append(MarketBrowseOut(
+        entry = MarketBrowseOut(
             id=mi.id, inv_id=inv.id, seller=seller.username, price=mi.price,
             name=inv.name, skin_id=inv.skin_id, rarity=inv.rarity,
             exquisite=bool(inv.exquisite), grade=inv.grade,
             wear=round(inv.wear_bp/100, 2), serial=inv.serial, created_at=mi.created_at,
             template=vis["template"], hidden_template=vis["hidden_template"],
             effects=vis["effects"], visual=visual_payload
-        ))
+        )
+        data = entry.dict()
+        data["season"] = resolved_season
+        data["season_label"] = season_label(resolved_season) if resolved_season else None
+        items_payload.append(data)
     if changed:
         db.commit()
-    return {"count": len(out), "items": [o.dict() for o in out]}
+    return {"count": len(items_payload), "items": items_payload}
 
 @app.post("/market/buy/{market_id}")
 def market_buy(market_id: int = Path(..., ge=1),
@@ -2975,6 +4278,7 @@ def market_buy(market_id: int = Path(..., ge=1),
     if gift_spent > 0:
         user.gift_coin_balance -= gift_spent
     seller.coins += mi.price
+    season_val = resolve_season_for_inventory(inv)
     record_trade(
         db,
         seller.id,
@@ -2985,6 +4289,7 @@ def market_buy(market_id: int = Path(..., ge=1),
         mi.price,
         mi.price,
         mi.price,
+        season=season_val,
     )
     record_trade(
         db,
@@ -2996,6 +4301,7 @@ def market_buy(market_id: int = Path(..., ge=1),
         mi.price,
         mi.price,
         0,
+        season=season_val,
     )
 
     inv.user_id = user.id
