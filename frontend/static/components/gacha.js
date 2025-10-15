@@ -7,6 +7,8 @@ const GachaPage = {
   _seasonCatalog: [],
   _seasonMap: {},
   _selectedSeason: null,
+  _targetBySeason: {},
+  _selectedTarget: "",
 
   async render() {
     const [me, od, seasonData] = await Promise.all([
@@ -22,9 +24,11 @@ const GachaPage = {
       this._seasonMap[season.id] = season;
       this._seasonMap[String(season.id).toUpperCase()] = season;
     });
+    if (!this._targetBySeason) this._targetBySeason = {};
     if (!this._selectedSeason) {
       this._selectedSeason = seasonData?.latest || (seasons[0]?.id ?? null);
     }
+    this._selectedTarget = this._targetBySeason?.[this._selectedSeason] || "";
     const odds = od.odds || od;
     const lim = od.limits || { brick_pity_max:75, purple_pity_max:20 };
     const left_brick  = Math.max(0, lim.brick_pity_max  - (odds.pity_brick  + 1));
@@ -36,6 +40,7 @@ const GachaPage = {
         }).join("")
       : `<option value="">最新赛季</option>`;
     const seasonInfo = this._seasonInfoHtml(this._selectedSeason);
+    const targetSelector = this._renderTargetSelector(this._selectedSeason);
 
     return `
     <div class="card"><h2>开砖</h2>
@@ -65,6 +70,7 @@ const GachaPage = {
           <select id="gacha-season">${seasonOptions}</select>
         </div>
         <div id="gacha-season-info" class="gacha-season__info">${seasonInfo}</div>
+        <div class="input-row" id="gacha-target-box">${targetSelector}</div>
       </div>
 
       <div class="draw-actions">
@@ -105,10 +111,15 @@ const GachaPage = {
       seasonSelect.addEventListener("change", () => {
         const value = seasonSelect.value || null;
         this._selectedSeason = value || null;
+        this._selectedTarget = this._targetBySeason?.[this._selectedSeason] || "";
         const infoBox = byId("gacha-season-info");
         if (infoBox) infoBox.innerHTML = this._seasonInfoHtml(this._selectedSeason);
+        const targetBox = byId("gacha-target-box");
+        if (targetBox) targetBox.innerHTML = this._renderTargetSelector(this._selectedSeason);
+        this._bindTargetSelector();
       });
     }
+    this._bindTargetSelector();
   },
 
   // —— 抽完后刷新顶部 & 概率/保底 —— //
@@ -244,6 +255,56 @@ const GachaPage = {
     parts.push(meta);
     return parts.join(" · ");
   },
+  _bindTargetSelector() {
+    const select = byId("gacha-target");
+    if (!select) {
+      if (this._selectedSeason && this._targetBySeason) {
+        this._targetBySeason[this._selectedSeason] = "";
+      }
+      this._selectedTarget = "";
+      return;
+    }
+    select.value = this._selectedTarget || "";
+    select.addEventListener("change", () => {
+      const value = select.value || "";
+      this._selectedTarget = value;
+      if (!this._targetBySeason) this._targetBySeason = {};
+      if (this._selectedSeason) this._targetBySeason[this._selectedSeason] = value;
+    });
+  },
+  _seasonBrickList(seasonId) {
+    if (!seasonId) return [];
+    const key = String(seasonId);
+    let entry = this._seasonMap[key] || this._seasonMap[key.toUpperCase()];
+    if (!entry && Array.isArray(this._seasonCatalog)) {
+      entry = this._seasonCatalog.find(s => String(s.id) === key || String(s.id).toUpperCase() === key.toUpperCase());
+    }
+    return Array.isArray(entry?.bricks) ? entry.bricks : [];
+  },
+  _renderTargetSelector(seasonId) {
+    const bricks = this._seasonBrickList(seasonId);
+    if (!Array.isArray(bricks) || bricks.length < 2) {
+      if (seasonId && this._targetBySeason) this._targetBySeason[seasonId] = "";
+      this._selectedTarget = "";
+      return `<div class="muted small">该赛季仅有一个砖皮，无法定轨。</div>`;
+    }
+    if (!this._targetBySeason) this._targetBySeason = {};
+    const current = this._targetBySeason?.[seasonId] || "";
+    this._selectedTarget = current;
+    const defaultSel = current ? "" : "selected";
+    const options = [`<option value="" ${defaultSel}>随机（平均概率）</option>`]
+      .concat(bricks.map(brick => {
+        const id = brick?.skin_id || "";
+        const name = this._esc(brick?.name || id || "未知砖皮");
+        const selected = current === id ? "selected" : "";
+        return `<option value="${id}" ${selected}>${name}</option>`;
+      }))
+      .join("");
+    return `
+      <label class="input-label" for="gacha-target">定轨砖皮</label>
+      <select id="gacha-target">${options}</select>
+    `;
+  },
   _rowHTML(x) {
     const rc = this._rarityClass(x.rarity);
     const gc = this._gradeClass(x.grade);
@@ -371,7 +432,8 @@ const GachaPage = {
 
     // ② 调用后端
     let data;
-    try { data = await API.open(c, this._selectedSeason || null); }
+    const targetPayload = (this._selectedTarget && this._selectedTarget !== "") ? this._selectedTarget : null;
+    try { data = await API.open(c, this._selectedSeason || null, targetPayload); }
     catch (e) {
       alert(e.message);
       this._setDrawDisabled(false);

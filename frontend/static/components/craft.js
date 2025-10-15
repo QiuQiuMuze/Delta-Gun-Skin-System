@@ -2,6 +2,9 @@
 const CraftPage = {
   _rarity: "GREEN",
   _data: { GREEN:[], BLUE:[], PURPLE:[] },
+  _seasonFilter: "ALL",
+  _seasonLabelMap: null,
+  _seasonOptions: [],
   _selected: new Set(),
   _indexMap: [],            // 当前“页内”序号 → inv_id
   _page: 1,
@@ -18,6 +21,10 @@ const CraftPage = {
           <button class="btn" data-r="GREEN">GREEN → BLUE</button>
           <button class="btn" data-r="BLUE">BLUE → PURPLE</button>
           <button class="btn" data-r="PURPLE">PURPLE → BRICK</button>
+        </div>
+        <div class="input-row">
+          <label class="input-label" for="craft-filter-season">赛季筛选</label>
+          <select id="craft-filter-season"><option value="ALL">全部赛季</option></select>
         </div>
 
         <!-- 顶部：合成摘要 + 合成按钮 + 跳过动画 -->
@@ -54,6 +61,57 @@ const CraftPage = {
     this._data.BLUE  = (grouped.BLUE  || []).map(x=>this._norm(x)).filter(x=>x.rarity==="BLUE");
     this._data.PURPLE= (grouped.PURPLE|| []).map(x=>this._norm(x)).filter(x=>x.rarity==="PURPLE");
 
+    if (!this._seasonLabelMap) {
+      try {
+        const catalog = await API.seasonCatalog().catch(() => ({ seasons: [] }));
+        const map = {};
+        (catalog?.seasons || []).forEach(season => {
+          if (!season?.id) return;
+          map[season.id] = season.name || season.id;
+          map[String(season.id).toUpperCase()] = season.name || season.id;
+        });
+        this._seasonLabelMap = map;
+      } catch (_) {
+        this._seasonLabelMap = {};
+      }
+    }
+
+    const seasonCounter = {};
+    ["GREEN", "BLUE", "PURPLE"].forEach(key => {
+      (this._data[key] || []).forEach(item => {
+        const seasonKey = (item.season || "").toString();
+        if (!seasonKey) return;
+        if (!seasonCounter[seasonKey]) seasonCounter[seasonKey] = { id: seasonKey, count: 0 };
+        seasonCounter[seasonKey].count += 1;
+      });
+    });
+    if (this._seasonFilter !== "ALL" && !seasonCounter[this._seasonFilter]) {
+      this._seasonFilter = "ALL";
+    }
+    this._seasonOptions = Object.values(seasonCounter).map(entry => ({
+      id: entry.id,
+      name: this._seasonLabel(entry.id),
+      count: entry.count,
+    })).sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+    this._updateSeasonFilterOptions();
+    const seasonSelect = byId("craft-filter-season");
+    if (seasonSelect) {
+      seasonSelect.onchange = () => {
+        this._seasonFilter = seasonSelect.value || "ALL";
+        if (this._seasonFilter !== "ALL") {
+          const pool = this._data[this._rarity] || [];
+          this._selected.forEach(invId => {
+            const item = pool.find(it => it.inv_id === invId);
+            if (item && String(item.season || "") !== this._seasonFilter) {
+              this._selected.delete(invId);
+            }
+          });
+        }
+        this._renderListAndPager();
+        this._renderSummary();
+      };
+    }
+
     if (updateOnly) {
       // 仅刷新列表与分页、摘要，保留 craft-stage / craft-result
       this._renderListAndPager();
@@ -72,7 +130,8 @@ const CraftPage = {
                  : (typeof x.wear_bp==="number" ? Number((x.wear_bp/100).toFixed(2)) : NaN);
     const grade  = x.grade ?? x.quality ?? "";
     const serial = x.serial ?? x.sn ?? "";
-    return { inv_id, name, rarity, wear, grade, serial };
+    const season = (x.season ?? "").toString();
+    return { inv_id, name, rarity, wear, grade, serial, season };
   },
 
   _rarityToTarget(r){ return { GREEN:"BLUE", BLUE:"PURPLE", PURPLE:"BRICK" }[r] || ""; },
@@ -168,7 +227,10 @@ const CraftPage = {
 
   _sortedAll() {
     // 全量排序（S>A>B>C，磨损升序）
-    const arr = (this._data[this._rarity] || []).slice();
+    let arr = (this._data[this._rarity] || []).slice();
+    if (this._seasonFilter && this._seasonFilter !== "ALL") {
+      arr = arr.filter(item => String(item.season || "") === this._seasonFilter);
+    }
     const gradeOrder={S:0,A:1,B:2,C:3};
     arr.sort((a,b)=> (gradeOrder[a.grade]??9)-(gradeOrder[b.grade]??9) || ((isNaN(a.wear)?999:a.wear)-(isNaN(b.wear)?999:b.wear)));
     return arr;
@@ -198,6 +260,7 @@ const CraftPage = {
         <td>${start + i + 1}</td>
         <td>${x.inv_id}</td>
         <td class="${rc}">${x.name}</td>
+        <td>${this._seasonLabel(x.season)}</td>
         <td class="${rc}">${x.rarity}</td>
         <td>${isNaN(x.wear)?"-":x.wear.toFixed(2)}</td>
         <td>${x.grade||"-"}</td>
@@ -208,7 +271,7 @@ const CraftPage = {
     listBox.innerHTML = `
       <h3>可选列表（共 ${total} 件，当前第 ${this._page}/${totalPages} 页；每页 ${this._pageSize}）</h3>
       <table class="table">
-        <thead><tr><th>选</th><th>#</th><th>inv_id</th><th>名称</th><th>稀有度</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
+        <thead><tr><th>选</th><th>#</th><th>inv_id</th><th>名称</th><th>赛季</th><th>稀有度</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     `;
@@ -229,6 +292,25 @@ const CraftPage = {
       const n = parseInt(pager.querySelector('input[data-act="page"]').value || "1", 10);
       if (!isNaN(n)) { this._page = Math.min(Math.max(1, n), totalPages); this._renderListAndPager(); }
     };
+  },
+  _updateSeasonFilterOptions() {
+    const select = byId("craft-filter-season");
+    if (!select) return;
+    const esc = (typeof escapeHtml === 'function') ? escapeHtml : (v => String(v ?? ""));
+    const options = ['<option value="ALL">全部赛季</option>'];
+    (this._seasonOptions || []).forEach(opt => {
+      const selected = (this._seasonFilter || "ALL") === opt.id ? 'selected' : '';
+      const label = esc(this._seasonLabel(opt.id));
+      options.push(`<option value="${opt.id}" ${selected}>${label}（${opt.count}）</option>`);
+    });
+    select.innerHTML = options.join("");
+    select.value = this._seasonFilter || "ALL";
+  },
+  _seasonLabel(id) {
+    const key = (id || "").toString();
+    if (!key) return "默认赛季";
+    const map = this._seasonLabelMap || {};
+    return map[key] || map[key.toUpperCase()] || key;
   },
 
   _renderPager(page, totalPages) {

@@ -3,8 +3,12 @@ const ShopPage = {
   _seasonCatalog: [],
   _seasonMap: {},
   _selectedSeason: null,
+  _sellSelectedSeason: "",
   async render() {
-    const catalog = await API.seasonCatalog().catch(() => ({ seasons: [], latest: null }));
+    const [me, catalog] = await Promise.all([
+      API.me(),
+      API.seasonCatalog().catch(() => ({ seasons: [], latest: null })),
+    ]);
     this._seasonCatalog = Array.isArray(catalog?.seasons) ? catalog.seasons : [];
     this._seasonMap = {};
     this._seasonCatalog.forEach(season => {
@@ -15,6 +19,8 @@ const ShopPage = {
     if (!this._selectedSeason) {
       this._selectedSeason = catalog?.latest || (this._seasonCatalog[0]?.id ?? "ALL");
     }
+    const sellMeta = this._sellSeasonMeta(me?.brick_breakdown || [], this._sellSelectedSeason);
+    this._sellSelectedSeason = sellMeta.selectedValue;
     const seasonOptions = ['<option value="ALL">全部赛季</option>']
       .concat(this._seasonCatalog.map(season => {
         const selected = this._selectedSeason === season.id ? 'selected' : '';
@@ -72,6 +78,11 @@ const ShopPage = {
         <div class="shop-box">
           <h3>上架未开砖</h3>
           <div class="muted small">赠送资金购得的砖不可售卖。</div>
+          <div class="input-row">
+            <label class="input-label" for="sell-season">赛季</label>
+            <select id="sell-season">${sellMeta.optionsHtml}</select>
+          </div>
+          <div class="muted small" id="sell-season-summary">${sellMeta.summaryHtml}</div>
           <div class="input-row">
             <input id="sell-count" type="number" min="1" placeholder="数量（≥1）"/>
             <input id="sell-price" type="number" min="40" placeholder="单价（≥40）"/>
@@ -213,12 +224,14 @@ const ShopPage = {
           ? `目标 ${item.price} · 剩余 ${item.remaining}`
           : `${item.price} / 剩余 ${item.remaining}`;
         const seller = item.seller ? `<span class="order-meta">${escapeHtml(item.seller)}</span>` : "";
+        const seasonText = item.season ? this._seasonLabel(item.season) : "";
+        const seasonMeta = seasonText ? `<span class="order-meta">赛季 ${escapeHtml(seasonText)}</span>` : "";
         return `
           <div class="order-row">
             <div>
               <span class="price-tag">${item.price}</span>
               <span>${meta}</span>
-              ${seller}
+              ${seller}${seasonMeta}
             </div>
             ${cancelBtn}
           </div>`;
@@ -312,26 +325,44 @@ const ShopPage = {
         const extra = segmentText ? `成交明细：${segmentText}` : "";
         alert([`购砖成功，花费 ${res?.spent ?? quote?.total_cost ?? 0} 三角币。`, extra].filter(Boolean).join("\n"));
         await Promise.all([loadPrices(), loadBook()]);
+        await refreshSellMeta();
       } catch (e) {
         alert(e.message || "购买失败");
       }
     };
 
+    const refreshSellMeta = async () => {
+      try {
+        const meNow = await API.me();
+        const meta = this._sellSeasonMeta(meNow?.brick_breakdown || [], this._sellSelectedSeason);
+        this._sellSelectedSeason = meta.selectedValue;
+        if (sellSeason) {
+          sellSeason.innerHTML = meta.optionsHtml;
+          sellSeason.value = this._sellSelectedSeason || "";
+        }
+        const summaryBox = byId("sell-season-summary");
+        if (summaryBox) summaryBox.innerHTML = meta.summaryHtml;
+        const brickBalance = byId("brick-balance");
+        if (brickBalance) brickBalance.textContent = meNow.unopened_bricks;
+      } catch (_) { /* 忽略 */ }
+    };
+
     byId("sell-bricks").onclick = async () => {
       const qty = parseInt(sellCount.value, 10) || 0;
       const price = parseInt(sellPrice.value, 10) || 0;
+      const seasonVal = sellSeason ? sellSeason.value : "";
       if (qty <= 0) return alert("数量必须 ≥ 1");
       if (price < 40) return alert("单价必须 ≥ 40");
+      if (!seasonVal) return alert("请选择要上架的赛季");
       try {
-        const res = await API.brickSell(qty, price);
+        const res = await API.brickSell(qty, price, seasonVal);
         alert(`已上架 ${qty} 块砖（#${res.order_id}）。`);
         sellCount.value = "";
         sellPrice.value = "";
         if (API._me) {
           API._me = { ...API._me, unopened_bricks: Math.max(0, (API._me.unopened_bricks || 0) - qty) };
-        } else {
-          await API.me();
         }
+        await refreshSellMeta();
         await loadBook();
       } catch (e) {
         alert(e.message || "上架失败");
@@ -371,17 +402,18 @@ const ShopPage = {
       if (!btn) return;
       const id = parseInt(btn.dataset.id, 10) || 0;
       if (!id) return;
-      try {
-        if (btn.dataset.action === "cancel-sell") {
-          await API.brickCancelSell(id);
-        } else if (btn.dataset.action === "cancel-buy") {
-          await API.brickCancelBuyOrder(id);
+        try {
+          if (btn.dataset.action === "cancel-sell") {
+            await API.brickCancelSell(id);
+          } else if (btn.dataset.action === "cancel-buy") {
+            await API.brickCancelBuyOrder(id);
+          }
+          await Promise.all([loadPrices(), loadBook(), API.me()]);
+          await refreshSellMeta();
+        } catch (e) {
+          alert(e.message || "撤销失败");
         }
-        await Promise.all([loadPrices(), loadBook(), API.me()]);
-      } catch (e) {
-        alert(e.message || "撤销失败");
-      }
-    };
+      };
 
     [sellList, mySellList, buyList, myBuyList].forEach(el => {
       if (el) el.addEventListener("click", handleCancel);
@@ -389,5 +421,43 @@ const ShopPage = {
 
     loadPrices();
     loadBook();
+    refreshSellMeta();
+  },
+  _seasonLabel(id) {
+    const key = (id || "").toString();
+    if (!key) return "";
+    const direct = this._seasonMap[key] || this._seasonMap[key.toUpperCase()];
+    if (direct) return direct.name || direct.id || key;
+    const fallback = (this._seasonCatalog || []).find(s => String(s.id) === key || String(s.id).toUpperCase() === key.toUpperCase());
+    return fallback ? (fallback.name || fallback.id || key) : key;
+  },
+  _sellSeasonMeta(breakdown, currentValue = "") {
+    const list = Array.isArray(breakdown) ? breakdown : [];
+    const entries = list.map(item => {
+      const total = Number(item?.count ?? 0);
+      const locked = Number(item?.gift_locked ?? 0);
+      const sellable = Math.max(0, total - locked);
+      return {
+        season: String(item?.season || ""),
+        name: item?.season_name || item?.season || "未知赛季",
+        total,
+        sellable,
+      };
+    });
+    let selected = currentValue || "";
+    if (selected && !entries.some(e => e.season === selected && e.sellable > 0)) {
+      selected = "";
+    }
+    const available = entries.filter(e => e.sellable > 0);
+    if (!selected && available.length) {
+      selected = available[0].season;
+    }
+    const optionsHtml = available.length
+      ? available.map(e => `<option value="${e.season}" ${selected===e.season?"selected":""}>${escapeHtml(e.name)} · 可售 ${e.sellable}</option>`).join("")
+      : '<option value="">暂无可售赛季</option>';
+    const summaryHtml = entries.length
+      ? entries.map(e => `<span class="order-meta">${escapeHtml(e.name)}：总 ${e.total}（可售 ${e.sellable}）</span>`).join("<br/>")
+      : '<span class="muted">暂无赛季数据</span>';
+    return { optionsHtml, summaryHtml, selectedValue: selected };
   }
 };

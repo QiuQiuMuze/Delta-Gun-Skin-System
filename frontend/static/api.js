@@ -143,9 +143,10 @@ const API = {
     return this._seasonCatalog;
   },
 
-  open: (count, season = null) => {
+  open: (count, season = null, target_brick = null) => {
     const payload = { count };
     if (season) payload.season = season;
+    if (target_brick) payload.target_brick = target_brick;
     return API.json("/gacha/open", "POST", payload);
   },
   inventory: (show_on_market = false) =>
@@ -178,7 +179,11 @@ const API = {
 
   marketDelist: (market_id) => API.json(`/market/delist/${market_id}`, "POST"),
   brickBook: () => API.json("/market/bricks/book"),
-  brickSell: (quantity, price) => API.json("/market/bricks/sell", "POST", { quantity, price }),
+  brickSell: (quantity, price, season = null) => {
+    const payload = { quantity, price };
+    if (season) payload.season = season;
+    return API.json("/market/bricks/sell", "POST", payload);
+  },
   brickCancelSell: (order_id) => API.json(`/market/bricks/cancel/${order_id}`, "POST"),
   brickBuyOrder: (quantity, target_price) => API.json("/market/bricks/buy-order", "POST", { quantity, target_price }),
   brickCancelBuyOrder: (order_id) => API.json(`/market/bricks/buy-order/cancel/${order_id}`, "POST"),

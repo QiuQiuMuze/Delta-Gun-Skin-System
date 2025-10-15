@@ -2,6 +2,7 @@
 const WalletPage = {
   async render() {
     const me = await API.me();
+    const brickDetail = this._renderBrickBreakdown(me.brick_breakdown || [], me.gift_unopened_bricks || 0, me.unopened_bricks || 0);
     return `
     <div class="card">
       <h2>我的钱包</h2>
@@ -17,6 +18,7 @@ const WalletPage = {
         <div class="kv"><div class="k">钥匙</div><div class="v" id="key-balance">${me.keys}</div></div>
         <div class="kv"><div class="k">未开砖</div><div class="v" id="brick-balance">${me.unopened_bricks}</div></div>
       </div>
+      <div class="wallet-brick-detail">${brickDetail}</div>
     </div>
 
     <div class="card">
@@ -106,5 +108,24 @@ const WalletPage = {
         }
       };
     });
+  }
+  ,
+  _renderBrickBreakdown(list, giftTotal, total) {
+    const safeList = Array.isArray(list) ? list : [];
+    const safeGift = typeof giftTotal === "number" ? giftTotal : 0;
+    const safeTotal = typeof total === "number" ? total : 0;
+    if (!safeList.length) {
+      const summary = `<div class="muted small">总计 ${safeTotal} 块 · 赠送锁定 ${safeGift}</div>`;
+      return `${summary}<div class="muted">暂无赛季砖分布。</div>`;
+    }
+    const summary = `<div class="muted small">总计 ${safeTotal} 块 · 赠送锁定 ${safeGift}</div>`;
+    const items = safeList.map(item => {
+      const seasonName = escapeHtml(item?.season_name || item?.season || "未知赛季");
+      const count = item?.count ?? 0;
+      const locked = item?.gift_locked ?? 0;
+      const lockedNote = locked > 0 ? `<span class="muted small">（含赠锁 ${locked}）</span>` : "";
+      return `<li><span class="wallet-brick-label">${seasonName}</span><span class="wallet-brick-count">${count}</span>${lockedNote}</li>`;
+    }).join("");
+    return `${summary}<ul class="wallet-brick-list">${items}</ul>`;
   }
 };

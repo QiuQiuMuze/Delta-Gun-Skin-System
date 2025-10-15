@@ -533,3 +533,11 @@ h3 + .muted.small { margin-top:-6px; }
   .cookie-actions .btn { flex:1 1 100%; }
   .cookie-building { flex-direction:column; align-items:flex-start; }
 }
+
+.wallet-brick-detail { margin-top:12px; }
+.wallet-brick-detail .muted { margin-top:4px; }
+.wallet-brick-list { list-style:none; padding:0; margin:8px 0 0; }
+.wallet-brick-list li { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05); }
+.wallet-brick-list li:last-child { border-bottom:none; }
+.wallet-brick-label { font-weight:500; }
+.wallet-brick-count { font-weight:600; }
