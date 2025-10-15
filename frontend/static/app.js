@@ -38,10 +38,19 @@ const Pages = {
   auth: AuthPage,
   me: {
     async render() {
-      const [d, mailboxRaw] = await Promise.all([
+      const [d, mailboxRaw, seasonCatalog] = await Promise.all([
         API.me(),
         API.mailbox().catch(() => ({ brick: { buy: [], sell: [] }, skin: { buy: [], sell: [] } })),
+        API.seasonCatalog().catch(() => ({ seasons: [] })),
       ]);
+      const seasonMap = {};
+      if (seasonCatalog?.seasons) {
+        seasonCatalog.seasons.forEach(season => {
+          if (!season?.id) return;
+          seasonMap[season.id] = season.name;
+          seasonMap[String(season.id).toUpperCase()] = season.name;
+        });
+      }
       const mail = mailboxRaw || { brick: { buy: [], sell: [] }, skin: { buy: [], sell: [] } };
       const formatTs = (ts) => {
         if (!ts) return "-";
@@ -60,9 +69,13 @@ const Pages = {
           const unit = item.unit_price || 0;
           const net = item.net_amount || 0;
           const time = formatTs(item.created_at);
+          const seasonId = item.season || "";
+          const seasonLabelRaw = seasonMap[seasonId] || seasonMap[String(seasonId).toUpperCase()] || seasonId;
+          const seasonLabel = seasonId ? (seasonLabelRaw || seasonId) : "";
           const meta = mode === "buy"
             ? `花费 <b>${total}</b> 三角币 · 均价 ${unit}`
             : `售出金额 <b>${total}</b> 三角币 · 实得 <b>${net}</b>`;
+          const seasonMeta = seasonLabel ? ` · 赛季 ${escapeHtml(seasonLabel)}` : "";
           return `
             <div class="mail-entry">
               <div class="mail-entry__head">
@@ -71,7 +84,7 @@ const Pages = {
               </div>
               <div class="mail-entry__body">
                 <span class="mail-entry__name">${name}</span>
-                <span class="mail-entry__meta">${meta}</span>
+                <span class="mail-entry__meta">${meta}${seasonMeta}</span>
               </div>
             </div>`;
         }).join("");

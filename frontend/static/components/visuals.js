@@ -366,6 +366,78 @@
     { cx: 406, cy: 114, r: 2.2 }
   ];
 
+  const MODEL_VARIANTS = {
+    assault: { label: "突击步枪", transforms: {} },
+    battle: {
+      label: "战斗步枪",
+      transforms: {
+        stock: "translate(-10,0) scale(1.05,1)",
+        body: "scale(1.02,1) translate(6,-2)",
+        fore: "translate(12,-2)",
+        barrel: "translate(24,-2) scale(1.12,1)",
+        muzzle: "translate(28,-2) scale(1.08,1.05)",
+        scope: "translate(4,-4)"
+      },
+      extras: {
+        barrel: ({ base, darken }) => `<path d="520 118 L616 110 L624 118 L624 158 L520 150 Z" fill="${darken(base.attachmentPrimary, 0.38)}" opacity="0.42"/>`,
+        muzzle: ({ base, lighten }) => `<path d="602 112 L642 112 L642 160 L602 160 Z" fill="${lighten(base.attachmentSecondary, 0.25)}" opacity="0.55"/>`
+      }
+    },
+    vector: {
+      label: "冲锋枪",
+      hide: ["stock", "scope"],
+      transforms: {
+        body: "scale(0.82,0.9) translate(62,24)",
+        fore: "scale(0.78,0.86) translate(96,46)",
+        barrel: "scale(0.62,0.7) translate(218,90)",
+        muzzle: "scale(0.6,0.65) translate(220,94)",
+        grip: "translate(-36,18)",
+        mag: "translate(12,14) scale(0.92,0.9)",
+        rail: "scale(0.85) translate(66,34)",
+        trigger: "translate(-14,8)"
+      },
+      extras: {
+        grip: ({ base, darken }) => `<rect x="338" y="212" width="20" height="44" rx="6" fill="${darken(base.attachmentPrimary, 0.35)}" opacity="0.78"/>`,
+        body: ({ base, lighten }) => `<path d="M226 152 L344 136 L348 160 L232 180 Z" fill="${lighten(base.bodyPrimary, 0.25)}" opacity="0.32"/>`
+      }
+    },
+    bullpup: {
+      label: "无托步枪",
+      transforms: {
+        stock: "translate(22,0)",
+        body: "translate(16,0)",
+        fore: "translate(-34,0)",
+        barrel: "translate(-26,0)",
+        muzzle: "translate(-26,0)",
+        grip: "translate(-70,0)",
+        mag: "translate(-94,0)",
+        trigger: "translate(-22,0)"
+      },
+      extras: {
+        body: ({ base, lighten }) => `<path d="M184 160 L272 126 L308 130 L300 182 L192 206 Z" fill="${lighten(base.bodySecondary, 0.18)}" opacity="0.32"/>`,
+        stock: ({ base, lighten }) => `<path d="M68 188 L160 144 L188 148 L178 204 L104 228 L70 214 Z" fill="${lighten(base.bodyPrimary, 0.2)}" opacity="0.3"/>`
+      }
+    },
+    futuristic: {
+      label: "能量武器",
+      transforms: {
+        stock: "scale(1.08,0.94) translate(-12,-8)",
+        body: "skewX(-4) scale(1.06,0.95) translate(16,-6)",
+        fore: "scale(1.15,0.9) translate(20,-16)",
+        barrel: "scale(1.18,1.05) translate(28,-12)",
+        muzzle: "scale(1.16,1.12) translate(30,-12)",
+        scope: "translate(14,-18) scale(1.12)",
+        rail: "scale(1.05,0.96) translate(6,-8)",
+        trigger: "translate(4,-2)"
+      },
+      extras: {
+        body: ({ lighten }) => `<path d="M240 96 L520 62 L548 80 L336 148 Z" fill="${lighten('#3fa9f5', 0.1)}" opacity="0.18"/>`,
+        effects: () => `<g class="m7-variant-energy"><path d="M420 126 C460 110 500 118 540 102" stroke="rgba(150,230,255,0.55)" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.8"/><path d="M430 150 C470 134 502 142 544 128" stroke="rgba(120,200,255,0.45)" stroke-width="3" fill="none" stroke-dasharray="10 6"/></g>`
+      },
+      classes: ['skin-preview--futuristic']
+    }
+  };
+
   function templatePreset(key, base){
     const k = String(key || "").toLowerCase();
     switch(k){
@@ -752,7 +824,7 @@
     return { defs, overlay };
   }
 
-  function createSvg(info, base, derived){
+  function createSvg(info, base, derived, modelKey){
     const uniq = Math.random().toString(36).slice(2, 9);
     const bodyGradientId = `body-${uniq}`;
     const sheenGradientId = `sheen-${uniq}`;
@@ -901,12 +973,22 @@
     const muzzleCapColor = darken(base.attachmentPrimary, 0.45);
 
     const aria = `${info.templateLabel} · ${info.effectsLabel}${info.hidden ? " · 隐藏模板" : ""}`;
+    const variantKey = String(modelKey || info.model || "").toLowerCase();
+    const variant = MODEL_VARIANTS[variantKey] || MODEL_VARIANTS.assault;
+    const context = { base, derived, lighten, darken };
+    const transformAttr = (name) => {
+      const value = variant.transforms && variant.transforms[name];
+      return value ? ` transform="${value}"` : "";
+    };
+    const hidden = (name) => Array.isArray(variant.hide) && variant.hide.includes(name);
+    const extra = (name) => {
+      const entry = variant.extras && variant.extras[name];
+      if (!entry) return "";
+      return typeof entry === "function" ? entry(context) : entry;
+    };
 
-    return `
-      <svg class="skin-preview__svg" viewBox="0 0 640 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(aria)}">
-        <defs>${defs}</defs>
-        <g class="m7-shadow"><ellipse cx="320" cy="192" rx="228" ry="26" fill="rgba(0,0,0,0.38)"/></g>
-        <g class="m7-stock">
+    const stockGroup = hidden("stock") ? "" : `
+        <g class="m7-stock"${transformAttr("stock")}>
           <path d="${PATHS.stock}" fill="url(#${stockGradientId})" stroke="${stockEdge}" stroke-width="4" stroke-linejoin="round"/>
           <g clip-path="url(#${stockClipId})">
             <path d="${PATHS.stockPanel}" fill="url(#${stockDetailId})" opacity="0.85"/>
@@ -916,8 +998,11 @@
           </g>
           <path d="${PATHS.stockButt}" fill="${stockEdge}" opacity="0.45"/>
           <g class="m7-stock-ribs">${stockRibs}</g>
-        </g>
-        <g class="m7-body">
+          ${extra("stock")}
+        </g>`;
+
+    const bodyGroup = hidden("body") ? "" : `
+        <g class="m7-body"${transformAttr("body")}>
           <path d="${PATHS.body}" fill="url(#${bodyGradientId})" stroke="${derived.bodyShadow}" stroke-width="4" stroke-linejoin="round"/>
           <path d="${PATHS.bodyInset}" fill="url(#${bodyDepthId})" opacity="0.9"/>
           <path d="${PATHS.bodyPanel}" fill="url(#${sheenGradientId})" opacity="0.65"/>
@@ -937,16 +1022,22 @@
           ${bodyGrooves}
           ${bodyLines}
           ${detailDots}
-        </g>
-        <g class="m7-rail">
+          ${extra("body")}
+        </g>`;
+
+    const railGroup = hidden("rail") ? "" : `
+        <g class="m7-rail"${transformAttr("rail")}>
           <path d="${PATHS.railShadow}" fill="${darken(base.attachmentPrimary, 0.55)}" opacity="0.28"/>
           <path d="${PATHS.rail}" fill="url(#${accentGradientId})" stroke="${derived.accentShadow}" stroke-width="3" stroke-linejoin="round"/>
           <path d="${PATHS.railInset}" fill="${derived.accentHighlight}" opacity="0.5"/>
           <path d="${PATHS.railStep}" fill="${darken(base.attachmentPrimary, 0.4)}" opacity="0.25"/>
           <g class="m7-rail-teeth">${railTeeth}</g>
           <g class="m7-rail-grooves">${railGrooves}</g>
-        </g>
-        <g class="m7-scope">
+          ${extra("rail")}
+        </g>`;
+
+    const scopeGroup = hidden("scope") ? "" : `
+        <g class="m7-scope"${transformAttr("scope")}>
           <path d="${PATHS.scopeMount}" fill="${derived.scopeMetal}" stroke="${derived.accentShadow}" stroke-width="3" stroke-linejoin="round"/>
           <path d="${PATHS.scopeBracket}" fill="${darken(base.attachmentPrimary, 0.45)}" opacity="0.55"/>
           <path d="${PATHS.scopeBody}" fill="url(#${accentEdgeId})" stroke="${derived.accentShadow}" stroke-width="3" stroke-linejoin="round"/>
@@ -956,15 +1047,24 @@
           <path d="${PATHS.scopeGlass}" fill="url(#${glassGradientId})" opacity="0.92"/>
           <circle cx="318" cy="64" r="12" fill="url(#${lensShineId})" opacity="0.8"/>
           <g class="m7-scope-lines">${scopeLines}</g>
-        </g>
-        <g class="m7-bolt">
+          ${extra("scope")}
+        </g>`;
+
+    const boltGroup = hidden("body") ? "" : `
+        <g class="m7-bolt"${transformAttr("body")}>
           <path d="${PATHS.bolt}" fill="${derived.accentHighlight}" stroke="${derived.bodyShadow}" stroke-width="3" stroke-linejoin="round" opacity="0.82"/>
           <path d="${PATHS.boltRail}" fill="${darken(base.bodyPrimary, 0.45)}" opacity="0.6"/>
-        </g>
-        <g class="m7-body-detail" clip-path="url(#${bodyClipId})">
+          ${extra("bolt")}
+        </g>`;
+
+    const bodyDetailGroup = hidden("body") ? "" : `
+        <g class="m7-body-detail" clip-path="url(#${bodyClipId})"${transformAttr("body")}>
           <rect x="214" y="112" width="238" height="66" fill="${panelGlow}" opacity="0.16"/>
-        </g>
-        <g class="m7-fore" clip-path="url(#${foreClipId})">
+          ${extra("body_detail")}
+        </g>`;
+
+    const foreGroup = hidden("fore") ? "" : `
+        <g class="m7-fore" clip-path="url(#${foreClipId})"${transformAttr("fore")}>
           <path d="${PATHS.fore}" fill="url(#${accentGradientId})"/>
           <path d="${PATHS.foreChamfer}" fill="url(#${foreGradientId})" opacity="0.6"/>
           <path d="${PATHS.foreRail}" fill="${darken(base.attachmentPrimary, 0.3)}" opacity="0.35"/>
@@ -974,8 +1074,11 @@
           ${forePlates}
           <path d="${PATHS.fore}" fill="none" stroke="${derived.accentShadow}" stroke-width="4"/>
           <g class="m7-fore-lines">${foreLines}</g>
-        </g>
-        <g class="m7-mag">
+          ${extra("fore")}
+        </g>`;
+
+    const magGroup = hidden("mag") ? "" : `
+        <g class="m7-mag"${transformAttr("mag")}>
           <path d="${PATHS.mag}" fill="url(#${accentEdgeId})" stroke="${derived.accentShadow}" stroke-width="4" stroke-linejoin="round"/>
           <g clip-path="url(#${magClipId})">
             <path d="${PATHS.magLight}" fill="url(#${magDetailId})" opacity="0.9"/>
@@ -985,44 +1088,93 @@
           <path d="${PATHS.magLatch}" fill="${darken(base.attachmentPrimary, 0.55)}" opacity="0.82"/>
           ${magLines}
           ${magRivets}
-        </g>
-        <g class="m7-grip">
+          ${extra("mag")}
+        </g>`;
+
+    const gripGroup = hidden("grip") ? "" : `
+        <g class="m7-grip"${transformAttr("grip")}>
           <path d="${PATHS.grip}" fill="url(#${gripGradientId})" stroke="${derived.accentShadow}" stroke-width="4" stroke-linejoin="round"/>
           <g clip-path="url(#${gripClipId})">
             <path d="${PATHS.gripFront}" fill="url(#${gripDetailId})" opacity="0.78"/>
             <path d="${PATHS.gripInset}" fill="${darken(base.attachmentPrimary, 0.5)}" opacity="0.28"/>
           </g>
           <g class="m7-grip-ridges">${gripRidges}</g>
-        </g>
-        <g class="m7-trigger">
+          ${extra("grip")}
+        </g>`;
+
+    const triggerGroup = hidden("trigger") ? "" : `
+        <g class="m7-trigger"${transformAttr("trigger")}>
           <path d="${PATHS.triggerGuard}" fill="${gripShadow}" stroke="${derived.accentShadow}" stroke-width="2.4" stroke-linejoin="round" opacity="0.82"/>
           <path d="${PATHS.trigger}" fill="${derived.accentShadow}" stroke="${derived.accentHighlight}" stroke-width="2" stroke-linejoin="round" opacity="0.9"/>
           <path d="${PATHS.triggerCut}" fill="${darken(base.attachmentPrimary, 0.35)}" opacity="0.42"/>
-        </g>
-        <g class="m7-barrel">
+          ${extra("trigger")}
+        </g>`;
+
+    const barrelGroup = hidden("barrel") ? "" : `
+        <g class="m7-barrel"${transformAttr("barrel")}>
           <path d="${PATHS.barrel}" fill="url(#${accentGradientId})" stroke="${derived.accentShadow}" stroke-width="4" stroke-linejoin="round"/>
           <path d="${PATHS.barrelBottom}" fill="url(#${barrelSteelId})" opacity="0.65"/>
           <path d="${PATHS.barrelTop}" fill="${derived.accentHighlight}" opacity="0.5"/>
           <path d="${PATHS.barrelRidge}" fill="${darken(base.attachmentPrimary, 0.35)}" opacity="0.4"/>
           ${barrelRings}
-        </g>
-        <g class="m7-muzzle">
+          ${extra("barrel")}
+        </g>`;
+
+    const muzzleGroup = hidden("muzzle") ? "" : `
+        <g class="m7-muzzle"${transformAttr("muzzle")}>
           <path d="${PATHS.muzzle}" fill="url(#${accentEdgeId})" stroke="${derived.accentShadow}" stroke-width="4" stroke-linejoin="round"/>
           <path d="${PATHS.muzzleCap}" fill="${muzzleCapColor}" opacity="0.6"/>
           <path d="${PATHS.muzzleCore}" fill="${derived.muzzleCore}" opacity="0.85"/>
           <path d="${PATHS.muzzleVent}" fill="${lighten(base.attachmentSecondary, 0.45)}" opacity="0.38"/>
           ${muzzleLines}
           <path d="${PATHS.muzzle}" fill="url(#${muzzleGradientId})" opacity="0.55"/>
-        </g>
-        <g class="m7-lines">
+          ${extra("muzzle")}
+        </g>`;
+
+    const linesGroup = hidden("body") ? "" : `
+        <g class="m7-lines"${transformAttr("body")}>
           <path d="${PATHS.bodyPanel}" fill="none" stroke="${derived.detailLine}" stroke-width="3" stroke-linejoin="round" opacity="0.6"/>
           <path d="${PATHS.bodyMid}" fill="none" stroke="${derived.detailShadow}" stroke-width="3" stroke-linecap="round" opacity="0.45"/>
           <path d="${PATHS.bodyCut}" fill="none" stroke="${derived.detailShadow}" stroke-width="2.2" stroke-linecap="round" opacity="0.4"/>
-        </g>
-        <g class="m7-screws">${screws}</g>
-        ${template.overlay}
-        <g class="m7-sparks">${sparks}</g>
-        ${effects.overlay}
+          ${extra("lines")}
+        </g>`;
+
+    const screwsGroup = hidden("body") ? "" : `
+        <g class="m7-screws"${transformAttr("body")}>${screws}${extra("screws")}</g>`;
+
+    const templateGroup = template.overlay ? `
+        <g class="m7-template-wrap"${transformAttr("body")}>${template.overlay}</g>` : "";
+
+    const sparksGroup = hidden("body") ? "" : `
+        <g class="m7-sparks"${transformAttr("body")}>${sparks}</g>`;
+
+    const effectsGroup = effects.overlay ? `
+        <g class="m7-effects-wrap"${transformAttr("body")}>${effects.overlay}</g>` : "";
+
+    const variantEffects = extra("effects");
+
+    return `
+      <svg class="skin-preview__svg" viewBox="0 0 640 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(aria)}">
+        <defs>${defs}</defs>
+        <g class="m7-shadow"><ellipse cx="320" cy="192" rx="228" ry="26" fill="rgba(0,0,0,0.38)"/></g>
+        ${stockGroup}
+        ${bodyGroup}
+        ${railGroup}
+        ${scopeGroup}
+        ${boltGroup}
+        ${bodyDetailGroup}
+        ${foreGroup}
+        ${magGroup}
+        ${gripGroup}
+        ${triggerGroup}
+        ${barrelGroup}
+        ${muzzleGroup}
+        ${linesGroup}
+        ${screwsGroup}
+        ${templateGroup}
+        ${sparksGroup}
+        ${effectsGroup}
+        ${variantEffects ? `<g class="m7-variant-extras"${transformAttr("body")}>${variantEffects}</g>` : ""}
       </svg>
     `;
   }
@@ -1033,6 +1185,7 @@
     const attachRaw = ensureArray(v.attachments).map(normalizeColor).filter(Boolean);
     const templateKey = v.template ? String(v.template).toLowerCase() : "";
     const effectsRaw = ensureArray(v.effects).map(e => String(e || "").toLowerCase()).filter(Boolean);
+    const modelKey = v.model ? String(v.model) : "";
 
     return {
       bodyColors: bodyRaw.length ? bodyRaw : [DEFAULT_COLOR],
@@ -1044,6 +1197,7 @@
       effectsLabel: effectsRaw.length ? effectsRaw.map(e => EFFECT_LABELS[e] || e).join("、") : "无特效",
       bodyText: (bodyRaw.length ? bodyRaw : [DEFAULT_COLOR]).map(c => c.name).join(" / "),
       attachmentText: (attachRaw.length ? attachRaw : [DEFAULT_COLOR]).map(c => c.name).join(" / "),
+      model: modelKey,
     };
   }
 
@@ -1069,6 +1223,14 @@
       const cls = EFFECT_CLASS_MAP[e];
       if (cls) classes.push(cls);
     });
+    const modelKey = String(info.model || (visual && visual.model) || (opts && opts.model) || "").toLowerCase();
+    if (modelKey) {
+      classes.push(`skin-preview--${modelKey}`);
+      const variant = MODEL_VARIANTS[modelKey];
+      if (variant && Array.isArray(variant.classes)) {
+        variant.classes.forEach(cls => classes.push(cls));
+      }
+    }
 
     const width = opts.width || (opts.compact ? 220 : 320);
     const height = opts.height || (opts.compact ? 78 : 110);
@@ -1135,7 +1297,7 @@
     const metaText = opts.meta === false ? "" : (opts.meta || formatMeta(visual));
     const meta = metaText ? `<div class="skin-preview__meta">${esc(metaText)}</div>` : "";
 
-    const svg = createSvg(info, base, derived);
+    const svg = createSvg(info, base, derived, modelKey);
 
     return `
       <div class="${classes.join(' ')}" style="${containerStyle}">

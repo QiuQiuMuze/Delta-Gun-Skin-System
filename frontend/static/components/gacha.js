@@ -4,14 +4,38 @@ const GachaPage = {
   _currentResults: null,
   _drawButtons: null,
   _opening: false,
+  _seasonCatalog: [],
+  _seasonMap: {},
+  _selectedSeason: null,
 
   async render() {
-    const me = await API.me();
-    const od = await API.odds();
+    const [me, od, seasonData] = await Promise.all([
+      API.me(),
+      API.odds(),
+      API.seasonCatalog().catch(() => ({ seasons: [], latest: null }))
+    ]);
+    const seasons = Array.isArray(seasonData?.seasons) ? seasonData.seasons : [];
+    this._seasonCatalog = seasons;
+    this._seasonMap = {};
+    seasons.forEach(season => {
+      if (!season?.id) return;
+      this._seasonMap[season.id] = season;
+      this._seasonMap[String(season.id).toUpperCase()] = season;
+    });
+    if (!this._selectedSeason) {
+      this._selectedSeason = seasonData?.latest || (seasons[0]?.id ?? null);
+    }
     const odds = od.odds || od;
     const lim = od.limits || { brick_pity_max:75, purple_pity_max:20 };
     const left_brick  = Math.max(0, lim.brick_pity_max  - (odds.pity_brick  + 1));
     const left_purple = Math.max(0, lim.purple_pity_max - (odds.pity_purple + 1));
+    const seasonOptions = seasons.length
+      ? seasons.map(season => {
+          const selected = season.id === this._selectedSeason ? "selected" : "";
+          return `<option value="${season.id}" ${selected}>${season.name}</option>`;
+        }).join("")
+      : `<option value="">最新赛季</option>`;
+    const seasonInfo = this._seasonInfoHtml(this._selectedSeason);
 
     return `
     <div class="card"><h2>开砖</h2>
@@ -23,7 +47,7 @@ const GachaPage = {
 
       <div class="kv"><div class="k">当前概率</div>
         <div class="v">
-          <span class="hl-orange">砖 <span id="od-brick">${odds.brick}</span>%</span> · 
+          <span class="hl-orange">砖 <span id="od-brick">${odds.brick}</span>%</span> ·
           <span class="hl-purple">紫 <span id="od-purple">${odds.purple}</span>%</span> ·
           <span class="hl-blue">蓝 <span id="od-blue">${odds.blue}</span>%</span> ·
           <span class="hl-green">绿 <span id="od-green">${odds.green}</span>%</span>
@@ -34,6 +58,14 @@ const GachaPage = {
         未出砖：<span id="pity-brick">${odds.pity_brick}</span>（还差 <span id="left-brick">${left_brick}</span> 抽必出）；
         未出紫：<span id="pity-purple">${odds.pity_purple}</span>（还差 <span id="left-purple">${left_purple}</span> 抽保底）
       </div></div>
+
+      <div class="gacha-season card-sub">
+        <div class="input-row">
+          <label class="input-label" for="gacha-season">选择赛季</label>
+          <select id="gacha-season">${seasonOptions}</select>
+        </div>
+        <div id="gacha-season-info" class="gacha-season__info">${seasonInfo}</div>
+      </div>
 
       <div class="draw-actions">
         <div class="draw-panels">
@@ -68,6 +100,15 @@ const GachaPage = {
         }
       });
     });
+    const seasonSelect = byId("gacha-season");
+    if (seasonSelect) {
+      seasonSelect.addEventListener("change", () => {
+        const value = seasonSelect.value || null;
+        this._selectedSeason = value || null;
+        const infoBox = byId("gacha-season-info");
+        if (infoBox) infoBox.innerHTML = this._seasonInfoHtml(this._selectedSeason);
+      });
+    }
   },
 
   // —— 抽完后刷新顶部 & 概率/保底 —— //
@@ -110,8 +151,73 @@ const GachaPage = {
     if (list.some(x=>x.rarity==="BLUE")) return "BLUE";
     return "GREEN";
   },
+  _esc(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  },
+  _seasonLabel(id) {
+    if (!id) {
+      return this._seasonCatalog && this._seasonCatalog.length
+        ? `${this._seasonCatalog[0].name || "最新赛季"}（默认）`
+        : "默认奖池";
+    }
+    const key = String(id || "");
+    const entry = this._seasonMap[key] || this._seasonMap[key.toUpperCase()];
+    return entry?.name || key || "-";
+  },
+  _modelLabel(model) {
+    const key = String(model || "").toLowerCase();
+    const map = {
+      assault: "突击步枪",
+      battle: "战斗步枪",
+      vector: "冲锋枪",
+      bullpup: "无托步枪",
+      futuristic: "能量武器"
+    };
+    if (!key) return "-";
+    return map[key] || model || key;
+  },
+  _seasonInfoHtml(seasonId) {
+    if (!this._seasonCatalog || !this._seasonCatalog.length) {
+      return `<div class="muted small">暂无赛季数据，默认采用最新奖池。</div>`;
+    }
+    const key = seasonId ? String(seasonId) : "";
+    let entry = key ? (this._seasonMap[key] || this._seasonMap[key.toUpperCase()]) : null;
+    if (!entry) {
+      entry = this._seasonCatalog.find(s => s.id === (this._selectedSeason || "")) || this._seasonCatalog[0];
+      if (!entry) {
+        return `<div class="muted small">暂无赛季数据，默认采用最新奖池。</div>`;
+      }
+    }
+    const groups = [
+      { key: "brick", title: "砖皮", list: entry.bricks || [], cls: "hl-orange" },
+      { key: "purple", title: "紫皮", list: entry.purples || [], cls: "hl-purple" },
+      { key: "blue", title: "蓝皮", list: entry.blues || [], cls: "hl-blue" },
+      { key: "green", title: "绿皮", list: entry.greens || [], cls: "hl-green" }
+    ];
+    const tagline = entry.tagline ? `<div class="gacha-season__tagline">主题：${this._esc(entry.tagline)}</div>` : "";
+    const desc = entry.description ? `<div class="gacha-season__desc">${this._esc(entry.description)}</div>` : "";
+    const listHtml = groups.map(group => {
+      const items = (group.list || []).map(item => {
+        const name = this._esc(item?.name || item?.skin_id || "未知皮肤");
+        return `<li class="${group.cls}">${name}</li>`;
+      }).join("");
+      return `<div class="gacha-season__group gacha-season__group--${group.key}">`
+        + `<h4>${group.title}（${group.list?.length || 0}）</h4>`
+        + `<ul>${items || '<li class="muted">暂无</li>'}</ul>`
+        + `</div>`;
+    }).join("");
+    return `
+      <div class="gacha-season__meta">${tagline}${desc}</div>
+      <div class="gacha-season__groups">${listHtml}</div>
+    `;
+  },
   _tableHead() {
-    return `<thead><tr><th>名称</th><th>外观</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>`;
+    return `<thead><tr><th>名称</th><th>赛季</th><th>武器类型</th><th>外观</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>`;
   },
   _renderPreviewCell(x, opts = {}) {
     if (!window.SkinVisuals) return "-";
@@ -130,6 +236,8 @@ const GachaPage = {
       `主体：${info.bodyText}`,
       `配件：${info.attachmentText}`
     ];
+    if (x.season) parts.push(`赛季：${this._seasonLabel(x.season)}`);
+    if (x.model) parts.push(`类型：${this._modelLabel(x.model)}`);
     const meta = SkinVisuals.formatMeta(x.visual || {
       body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects
     });
@@ -145,8 +253,12 @@ const GachaPage = {
       : "-";
     const previewMeta = this._visualMeta(x);
     const preview = this._renderPreviewCell(x, { metaText: previewMeta });
+    const seasonLabel = this._seasonLabel(x.season);
+    const modelLabel = this._modelLabel(x.model);
     return `
       <td class="${rc}">${x.name}</td>
+      <td>${seasonLabel}</td>
+      <td>${modelLabel}</td>
       <td>${preview}</td>
       <td class="${rc}">${x.rarity}</td>
       <td>${exBadge}</td>
@@ -259,7 +371,7 @@ const GachaPage = {
 
     // ② 调用后端
     let data;
-    try { data = await API.open(c); }
+    try { data = await API.open(c, this._selectedSeason || null); }
     catch (e) {
       alert(e.message);
       this._setDrawDisabled(false);
