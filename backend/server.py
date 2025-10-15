@@ -21,6 +21,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 import sqlite3
 
+from season_data import SEASON_DEFINITIONS
+
 # ------------------ Config ------------------
 DB_PATH_FS = os.path.join(os.path.dirname(__file__), "delta_brick.db")
 DB_URL = os.environ.get("DELTA_DB", "sqlite:///./delta_brick.db")
@@ -64,6 +66,10 @@ class Skin(Base):
     name = Column(String, nullable=False)
     rarity = Column(String, nullable=False)  # BRICK/PURPLE/BLUE/GREEN
     active = Column(Boolean, default=True)
+    season = Column(String, default="")
+    weapon = Column(String, default="")
+    model_key = Column(String, default="")
+    meta = Column(Text, default="{}")
 
 class Inventory(Base):
     __tablename__ = "inventory"
@@ -85,6 +91,8 @@ class Inventory(Base):
     hidden_template = Column(Boolean, default=False)
     sell_locked = Column(Boolean, default=False)
     lock_reason = Column(String, default="")
+    season = Column(String, default="")
+    model_key = Column(String, default="")
 
 class SystemSetting(Base):
     __tablename__ = "system_settings"
@@ -200,6 +208,7 @@ class TradeLog(Base):
     total_amount = Column(Integer, nullable=False, default=0)
     net_amount = Column(Integer, nullable=False, default=0)
     created_at = Column(Integer, default=lambda: int(time.time()))
+    season = Column(String, default="")
 
 def _ensure_user_sessionver():
     con = sqlite3.connect(DB_PATH_FS)
@@ -230,8 +239,94 @@ def _ensure_inventory_visual_columns():
         cur.execute("ALTER TABLE inventory ADD COLUMN sell_locked INTEGER NOT NULL DEFAULT 0")
     if "lock_reason" not in cols:
         cur.execute("ALTER TABLE inventory ADD COLUMN lock_reason TEXT DEFAULT ''")
+    if "season" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN season TEXT NOT NULL DEFAULT ''")
+    if "model_key" not in cols:
+        cur.execute("ALTER TABLE inventory ADD COLUMN model_key TEXT NOT NULL DEFAULT ''")
     con.commit()
     con.close()
+
+
+def _ensure_skin_extended_columns():
+    con = sqlite3.connect(DB_PATH_FS)
+    cur = con.cursor()
+    cur.execute("PRAGMA table_info(skins)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "season" not in cols:
+        cur.execute("ALTER TABLE skins ADD COLUMN season TEXT NOT NULL DEFAULT ''")
+    if "weapon" not in cols:
+        cur.execute("ALTER TABLE skins ADD COLUMN weapon TEXT NOT NULL DEFAULT ''")
+    if "model_key" not in cols:
+        cur.execute("ALTER TABLE skins ADD COLUMN model_key TEXT NOT NULL DEFAULT ''")
+    if "meta" not in cols:
+        cur.execute("ALTER TABLE skins ADD COLUMN meta TEXT NOT NULL DEFAULT '{}'" )
+    con.commit()
+    con.close()
+
+
+def _ensure_trade_log_columns():
+    con = sqlite3.connect(DB_PATH_FS)
+    cur = con.cursor()
+    cur.execute("PRAGMA table_info(trade_logs)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "season" not in cols:
+        cur.execute("ALTER TABLE trade_logs ADD COLUMN season TEXT NOT NULL DEFAULT ''")
+    con.commit()
+    con.close()
+
+
+def _season_skin_entries():
+    for season in SEASON_DEFINITIONS:
+        sid = season.get("id", "").upper()
+        for group in ("bricks", "purples", "blues", "greens"):
+            for item in season.get(group, []) or []:
+                yield sid, item
+
+
+def _seed_skins(db: Session):
+    existing = {row.skin_id: row for row in db.query(Skin).all()}
+    for season_id, data in _season_skin_entries():
+        meta_json = json.dumps(data.get("meta", {}), ensure_ascii=False)
+        row = existing.get(data["skin_id"])
+        if row:
+            row.name = data["name"]
+            row.rarity = data["rarity"]
+            row.active = True
+            row.season = season_id
+            row.weapon = data.get("weapon", "")
+            row.model_key = data.get("model_key", "")
+            row.meta = meta_json
+        else:
+            db.add(Skin(
+                skin_id=data["skin_id"],
+                name=data["name"],
+                rarity=data["rarity"],
+                active=True,
+                season=season_id,
+                weapon=data.get("weapon", ""),
+                model_key=data.get("model_key", ""),
+                meta=meta_json,
+            ))
+    db.flush()
+
+
+def sync_inventory_skin_meta(db: Session):
+    skins = {s.skin_id: s for s in db.query(Skin).all()}
+    rows = db.query(Inventory).all()
+    changed = False
+    for inv in rows:
+        skin = skins.get(inv.skin_id)
+        if not skin:
+            continue
+        if (inv.season or "").upper() != (skin.season or "").upper():
+            inv.season = skin.season or ""
+            changed = True
+        model_key = skin.model_key or ""
+        if (inv.model_key or "") != model_key:
+            inv.model_key = model_key
+            changed = True
+    if changed:
+        db.flush()
 
 def _ensure_user_gift_columns():
     con = sqlite3.connect(DB_PATH_FS)
@@ -266,6 +361,8 @@ def _ensure_cookie_profile_columns():
 Base.metadata.create_all(engine)
 _ensure_user_sessionver()
 _ensure_inventory_visual_columns()
+_ensure_skin_extended_columns()
+_ensure_trade_log_columns()
 _ensure_user_gift_columns()
 _ensure_cookie_profile_columns()
 
@@ -304,6 +401,7 @@ class WalletOp(BaseModel):
 
 class CountIn(BaseModel):
     count: int = 1
+    season: Optional[str] = None
 
 class BrickSellIn(BaseModel):
     quantity: int
@@ -371,6 +469,8 @@ class MarketBrowseOut(BaseModel):
     hidden_template: bool
     effects: List[str]
     visual: Dict[str, Any]
+    season: str = ""
+    model: str = ""
 
 # ------------------ App & Utils ------------------
 app = FastAPI(title="三角洲砖皮模拟器 (SQLite+JWT+手机验证码+合成+交易行)")
@@ -535,35 +635,34 @@ with SessionLocal() as _db:
         init_price = round(random.uniform(60, 120), 2)
         _db.add(BrickMarketState(price=init_price, sentiment=0.0, last_update=int(time.time())))
         cfg.brick_price = max(40, min(150, int(round(init_price))))
-    if _db.query(Skin).count() == 0:
-        skins = []
-        skins.append(Skin(skin_id="BRK_M7_PRISM2", name="M7战斗步枪-棱镜攻势2", rarity="BRICK"))
-        skins += [
-            Skin(skin_id="EPI_AUG_DESTINY",  name="AUG突击步枪-天命", rarity="PURPLE"),
-            Skin(skin_id="EPI_P90_DESTINY",  name="P90冲锋枪-天命",   rarity="PURPLE"),
-            Skin(skin_id="EPI_SR25_DESTINY", name="SR-25射手步枪-天命", rarity="PURPLE"),
-        ]
-        skins += [
-            Skin(skin_id="RAR_PTR32_GRANITE", name="PTR-32突击步枪-花岗岩", rarity="BLUE"),
-            Skin(skin_id="RAR_ASVAL_HORIZON", name="AS Val突击步枪-地平线", rarity="BLUE"),
-            Skin(skin_id="RAR_SR3M_GRANITE",  name="SR-3M紧凑突击步枪-花岗岩", rarity="BLUE"),
-            Skin(skin_id="RAR_QCQ171_HORIZON",name="QCQ171冲锋枪-地平线", rarity="BLUE"),
-            Skin(skin_id="RAR_M1014_GRANITE", name="M1014散弹枪-花岗岩", rarity="BLUE"),
-            Skin(skin_id="RAR_M870_HORIZON",  name="M870散弹枪-地平线", rarity="BLUE"),
-        ]
-        skins += [
-            Skin(skin_id="UNC_ASVAL_BEAST",   name="AS Val突击步枪-猛兽", rarity="GREEN"),
-            Skin(skin_id="UNC_AUG_BEAST",     name="AUG突击步枪-猛兽",  rarity="GREEN"),
-            Skin(skin_id="UNC_M4A1_BEAST",    name="M4A1突击步枪-猛兽", rarity="GREEN"),
-            Skin(skin_id="UNC_AK12_OLDIND",   name="AK-12突击步枪-旧工业", rarity="GREEN"),
-            Skin(skin_id="UNC_SCARH_OLDIND",  name="SCAR-H突击步枪-旧工业", rarity="GREEN"),
-            Skin(skin_id="UNC_WARRIORSMG_OLDIND", name="勇士冲锋枪-旧工业", rarity="GREEN"),
-        ]
-        for s in skins:
-            _db.add(s)
+    _seed_skins(_db)
+    sync_inventory_skin_meta(_db)
     _db.commit()
 
 # ---- RNG & Grades ----
+SEASON_LOOKUP = {s.get("id", "").upper(): s for s in SEASON_DEFINITIONS}
+SEASON_IDS = [sid for sid in SEASON_LOOKUP.keys() if sid]
+LATEST_SEASON = SEASON_IDS[-1] if SEASON_IDS else ""
+
+
+def _normalize_season(season: Optional[str]) -> Optional[str]:
+    if not season:
+        return None
+    key = str(season).strip().upper()
+    if not key:
+        return None
+    if key in SEASON_LOOKUP:
+        return key
+    return None
+
+
+def require_season(season: Optional[str]) -> str:
+    key = _normalize_season(season)
+    if not key:
+        raise HTTPException(400, "赛季无效")
+    return key
+
+
 def grade_from_wear_bp(wear_bp: int) -> str:
     # 0–0.40 S, 0.40–1.22 A, 1.22–2.50 B, 2.50–5.00 C  （wear_bp = 0..500）
     if wear_bp < 40:   return "S"
@@ -607,6 +706,31 @@ BRICK_TEMPLATES = {
     "brick_pink_diamond",
     "brick_brushed_metal",
     "brick_laser_gradient",
+    "brick_prism_spectrum",
+    "brick_medusa_relic",
+    "brick_arcade_crystal",
+    "brick_arcade_serpent",
+    "brick_arcade_blackhawk",
+    "brick_arcade_champion",
+    "brick_arcade_default",
+    "brick_fate_strawberry",
+    "brick_fate_blueberry",
+    "brick_fate_goldenberry",
+    "brick_fate_metal",
+    "brick_fate_brass",
+    "brick_fate_gold",
+    "brick_fate_jade",
+    "brick_fate_whitepeach",
+    "brick_fate_gradient",
+    "brick_fate_default",
+    "brick_blade_royal",
+    "brick_weather_gundam",
+    "brick_weather_clathrate",
+    "brick_weather_redbolt",
+    "brick_weather_purplebolt",
+    "brick_weather_gradient",
+    "brick_weather_default",
+    "brick_prism2_flux",
 }
 BRICK_TEMPLATE_LABELS = {
     "brick_normal": "标准模板",
@@ -615,54 +739,175 @@ BRICK_TEMPLATE_LABELS = {
     "brick_pink_diamond": "粉钻模板",
     "brick_brushed_metal": "金属拉丝",
     "brick_laser_gradient": "镭射渐变",
+    "brick_prism_spectrum": "棱镜光谱",
+    "brick_medusa_relic": "蛇神遗痕",
+    "brick_arcade_crystal": "水晶贪吃蛇",
+    "brick_arcade_serpent": "贪吃蛇",
+    "brick_arcade_blackhawk": "黑鹰坠落",
+    "brick_arcade_champion": "拳王",
+    "brick_arcade_default": "电玩标准",
+    "brick_fate_strawberry": "草莓金",
+    "brick_fate_blueberry": "蓝莓玉",
+    "brick_fate_goldenberry": "金莓",
+    "brick_fate_metal": "命运金属",
+    "brick_fate_brass": "黄铜浮雕",
+    "brick_fate_gold": "黄金流光",
+    "brick_fate_jade": "翡翠绿",
+    "brick_fate_whitepeach": "白桃",
+    "brick_fate_gradient": "命运渐变",
+    "brick_fate_default": "命运经典",
+    "brick_blade_royal": "王牌镶嵌",
+    "brick_weather_gundam": "高达气象",
+    "brick_weather_clathrate": "可燃冰",
+    "brick_weather_redbolt": "红电",
+    "brick_weather_purplebolt": "紫电",
+    "brick_weather_gradient": "气象渐变",
+    "brick_weather_default": "气象标准",
+    "brick_prism2_flux": "棱镜攻势2",
 }
 EXQUISITE_ONLY_TEMPLATES = {
     "brick_white_diamond",
     "brick_yellow_diamond",
     "brick_pink_diamond",
     "brick_brushed_metal",
+    "brick_arcade_crystal",
+    "brick_arcade_serpent",
+    "brick_arcade_blackhawk",
+    "brick_arcade_champion",
+    "brick_fate_strawberry",
+    "brick_fate_blueberry",
+    "brick_fate_goldenberry",
+    "brick_fate_metal",
+    "brick_fate_brass",
+    "brick_fate_gold",
+    "brick_fate_jade",
+    "brick_fate_whitepeach",
+    "brick_weather_gundam",
+    "brick_weather_clathrate",
+    "brick_weather_redbolt",
+    "brick_weather_purplebolt",
 }
 DIAMOND_TEMPLATE_KEYS = {
     "brick_white_diamond",
     "brick_yellow_diamond",
     "brick_pink_diamond",
 }
-SPECIAL_PRICE_TEMPLATES = DIAMOND_TEMPLATE_KEYS | {"brick_brushed_metal"}
+SPECIAL_PRICE_TEMPLATES = DIAMOND_TEMPLATE_KEYS | {
+    "brick_brushed_metal",
+    "brick_prism_spectrum",
+    "brick_medusa_relic",
+    "brick_arcade_crystal",
+    "brick_arcade_serpent",
+    "brick_arcade_blackhawk",
+    "brick_arcade_champion",
+    "brick_fate_strawberry",
+    "brick_fate_blueberry",
+    "brick_fate_goldenberry",
+    "brick_fate_metal",
+    "brick_fate_brass",
+    "brick_fate_gold",
+    "brick_fate_jade",
+    "brick_fate_whitepeach",
+    "brick_weather_gundam",
+    "brick_weather_clathrate",
+    "brick_weather_redbolt",
+    "brick_weather_purplebolt",
+    "brick_prism2_flux",
+}
 
-def _pick_brick_template(exquisite: bool) -> str:
+COLOR_NAME_MAP = {c["hex"].lower(): c["name"] for c in COLOR_PALETTE}
+
+
+def _normalize_hex(value: Any) -> str:
+    if value is None:
+        return ""
+    s = str(value).strip()
+    if not s:
+        return ""
+    if not s.startswith("#"):
+        s = "#" + s
+    if len(s) not in (4, 7):
+        return ""
+    try:
+        int(s[1:], 16)
+    except ValueError:
+        return ""
+    return s.lower()
+
+
+def _color_entry(value: Any) -> Optional[Dict[str, str]]:
+    if isinstance(value, dict):
+        hex_raw = value.get("hex") or value.get("color") or value.get("value")
+        name = value.get("name") or value.get("label")
+    else:
+        hex_raw = value
+        name = None
+    hex_val = _normalize_hex(hex_raw)
+    if not hex_val:
+        return None
+    if not name:
+        name = COLOR_NAME_MAP.get(hex_val, hex_val)
+    return {"hex": hex_val, "name": name}
+
+
+def _resolve_palette(options: Any) -> List[Dict[str, str]]:
+    if not options:
+        return []
+    if isinstance(options, list):
+        choice = secrets.choice(options)
+    else:
+        choice = options
+    if isinstance(choice, list):
+        colors = []
+        for item in choice:
+            entry = _color_entry(item)
+            if entry:
+                colors.append(entry)
+        return colors
+    entry = _color_entry(choice)
+    return [entry] if entry else []
+
+
+def _unique_list(items: List[str]) -> List[str]:
+    seen = set()
+    out: List[str] = []
+    for item in items:
+        if not item:
+            continue
+        key = str(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
+
+
+def skin_meta_dict(skin: Optional[Skin]) -> Dict[str, Any]:
+    if not skin:
+        return {}
+    raw = getattr(skin, "meta", None)
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        return {}
+    return {}
+
+
+def default_brick_template(exquisite: bool) -> str:
     roll = secrets.randbelow(10000)
     if exquisite:
         if roll < 100:
-            # 1%：白钻/黄钻/粉钻，平均分配
             trio = ["brick_white_diamond", "brick_yellow_diamond", "brick_pink_diamond"]
             return trio[secrets.randbelow(len(trio))]
         if roll < 600:
-            # 接下来的 5%
             return "brick_brushed_metal"
         if roll < 1600:
-            # 再 10%
             return "brick_laser_gradient"
         return "brick_normal"
-    # 优品：仅保留“标准/镭射渐变”模板
-    if roll < 1000:
-        return "brick_laser_gradient"
-    return "brick_normal"
-
-def _pick_brick_template(exquisite: bool) -> str:
-    roll = secrets.randbelow(10000)
-    if exquisite:
-        if roll < 100:
-            # 1%：白钻/黄钻/粉钻，平均分配
-            trio = ["brick_white_diamond", "brick_yellow_diamond", "brick_pink_diamond"]
-            return trio[secrets.randbelow(len(trio))]
-        if roll < 600:
-            # 接下来的 5%
-            return "brick_brushed_metal"
-        if roll < 1600:
-            # 再 10%
-            return "brick_laser_gradient"
-        return "brick_normal"
-    # 优品：仅保留“标准/镭射渐变”模板
     if roll < 1000:
         return "brick_laser_gradient"
     return "brick_normal"
@@ -671,21 +916,83 @@ def _pick_color() -> Dict[str, str]:
     base = secrets.choice(COLOR_PALETTE)
     return {"hex": base["hex"], "name": base["name"]}
 
-def generate_visual_profile(rarity: str, exquisite: bool) -> Dict[str, object]:
-    body_layers = 2 if secrets.randbelow(100) < 55 else 1
-    body = [_pick_color() for _ in range(body_layers)]
-    attachments = [_pick_color()]
-
+def generate_visual_profile(
+    rarity: str,
+    exquisite: bool,
+    *,
+    model_key: str = "",
+    skin: Optional[Skin] = None,
+) -> Dict[str, object]:
     rarity = (rarity or "").upper()
+    meta = skin_meta_dict(skin)
+    model = model_key or (skin.model_key if skin else "") or "assault"
+
+    body = _resolve_palette(meta.get("body_colors"))
+    if not body:
+        layers = 2 if secrets.randbelow(100) < 55 else 1
+        body = [_pick_color() for _ in range(layers)]
+
+    attachments = _resolve_palette(meta.get("attachment_colors"))
+    if not attachments:
+        attachments = [_pick_color()]
+
     template_key = ""
     hidden_template = False
+    effects: List[str] = []
+
     if rarity == "BRICK":
-        template_key = _pick_brick_template(bool(exquisite))
-        effects = ["sheen"]
+        rule = None
+        template_rules = meta.get("template_rules")
+        if template_rules:
+            pool: List[Tuple[Dict[str, Any], int]] = []
+            for rule_entry in template_rules:
+                allow_exq = rule_entry.get("allow_exquisite", True)
+                allow_prem = rule_entry.get("allow_premium", True)
+                if exquisite and not allow_exq:
+                    continue
+                if not exquisite and not allow_prem:
+                    continue
+                weight = int(rule_entry.get("weight", 1) or 0)
+                if weight <= 0:
+                    continue
+                pool.append((rule_entry, weight))
+            if pool:
+                total = sum(weight for _, weight in pool)
+                pick = secrets.randbelow(total)
+                cursor = 0
+                for rule_entry, weight in pool:
+                    cursor += weight
+                    if pick < cursor:
+                        rule = rule_entry
+                        break
+        if rule:
+            template_key = str(rule.get("key") or "")
+            hidden_template = bool(rule.get("hidden", False))
+            chosen_body = _resolve_palette(rule.get("body"))
+            if chosen_body:
+                body = chosen_body
+            chosen_att = _resolve_palette(rule.get("attachments"))
+            if chosen_att:
+                attachments = chosen_att
+            effects.extend(rule.get("effects", []))
+        else:
+            template_key = default_brick_template(bool(exquisite))
+        effects.append("sheen")
+        extra = meta.get("extra_effects", {})
         if exquisite:
             effects.extend(["bold_tracer", "kill_counter"])
+            effects.extend(extra.get("exquisite", []))
+        else:
+            effects.extend(extra.get("premium", []))
     else:
-        effects = []
+        eff_conf = meta.get("effects")
+        if isinstance(eff_conf, dict):
+            key = "exquisite" if exquisite else "premium"
+            effects.extend(eff_conf.get(key, []))
+        elif isinstance(eff_conf, list):
+            effects.extend(eff_conf)
+
+    effects = _unique_list(effects)
 
     return {
         "body": body,
@@ -693,7 +1000,40 @@ def generate_visual_profile(rarity: str, exquisite: bool) -> Dict[str, object]:
         "template": template_key,
         "hidden_template": hidden_template,
         "effects": effects,
+        "model": model,
     }
+
+
+@app.get("/seasons/catalog")
+def seasons_catalog():
+    seasons_payload = []
+    for season in SEASON_DEFINITIONS:
+        season_id = season.get("id", "")
+        entry = {
+            "id": season_id,
+            "name": season.get("name", season_id),
+            "tagline": season.get("tagline", ""),
+            "description": season.get("description", ""),
+        }
+        for group in ("bricks", "purples", "blues", "greens"):
+            skins_payload = []
+            for skin in season.get(group, []) or []:
+                meta = skin.get("meta", {}) or {}
+                skins_payload.append({
+                    "skin_id": skin.get("skin_id", ""),
+                    "name": skin.get("name", ""),
+                    "weapon": skin.get("weapon", ""),
+                    "rarity": skin.get("rarity", ""),
+                    "model": skin.get("model_key", ""),
+                    "description": meta.get("description", ""),
+                    "tracer": meta.get("tracer", ""),
+                    "templates": meta.get("template_rules", []),
+                    "effects": meta.get("extra_effects") or meta.get("effects", {}),
+                })
+            entry[group] = skins_payload
+        seasons_payload.append(entry)
+    return {"seasons": seasons_payload, "latest": LATEST_SEASON}
+
 
 def _load_json_field(raw: str, default):
     if not raw:
@@ -703,7 +1043,7 @@ def _load_json_field(raw: str, default):
     except Exception:
         return default
 
-def ensure_visual(inv: Inventory) -> Dict[str, object]:
+def ensure_visual(inv: Inventory, skin: Optional[Skin] = None) -> Dict[str, object]:
     body = _load_json_field(inv.body_colors, [])
     attachments = _load_json_field(inv.attachment_colors, [])
     effects = _load_json_field(inv.effect_tags, [])
@@ -712,10 +1052,13 @@ def ensure_visual(inv: Inventory) -> Dict[str, object]:
     changed = False
 
     rarity = (inv.rarity or "").upper()
+    model_key = inv.model_key or ""
+    if not model_key and skin:
+        model_key = skin.model_key or ""
 
     if rarity == "BRICK":
         if not body or not attachments or template not in BRICK_TEMPLATES:
-            profile = generate_visual_profile(inv.rarity, bool(inv.exquisite))
+            profile = generate_visual_profile(inv.rarity, bool(inv.exquisite), model_key=model_key, skin=skin)
             body = profile["body"]
             attachments = profile["attachments"]
             template = profile["template"]
@@ -726,9 +1069,11 @@ def ensure_visual(inv: Inventory) -> Dict[str, object]:
             inv.template_name = template
             inv.effect_tags = json.dumps(effects, ensure_ascii=False)
             inv.hidden_template = 0
+            inv.model_key = profile.get("model", model_key)
+            model_key = inv.model_key
             changed = True
         if not bool(inv.exquisite) and template in EXQUISITE_ONLY_TEMPLATES:
-            profile = generate_visual_profile(inv.rarity, False)
+            profile = generate_visual_profile(inv.rarity, False, model_key=model_key, skin=skin)
             body = profile["body"]
             attachments = profile["attachments"]
             template = profile["template"]
@@ -739,6 +1084,8 @@ def ensure_visual(inv: Inventory) -> Dict[str, object]:
             inv.template_name = template
             inv.effect_tags = json.dumps(effects, ensure_ascii=False)
             inv.hidden_template = 0
+            inv.model_key = profile.get("model", model_key)
+            model_key = inv.model_key
             changed = True
         desired_effects = ["sheen"]
         if bool(inv.exquisite):
@@ -753,11 +1100,13 @@ def ensure_visual(inv: Inventory) -> Dict[str, object]:
             changed = True
     else:
         if not body or not attachments:
-            profile = generate_visual_profile(inv.rarity, bool(inv.exquisite))
+            profile = generate_visual_profile(inv.rarity, bool(inv.exquisite), model_key=model_key, skin=skin)
             body = profile["body"]
             attachments = profile["attachments"]
             inv.body_colors = json.dumps(body, ensure_ascii=False)
             inv.attachment_colors = json.dumps(attachments, ensure_ascii=False)
+            inv.model_key = profile.get("model", model_key)
+            model_key = inv.model_key
             changed = True
         if template:
             template = ""
@@ -771,6 +1120,10 @@ def ensure_visual(inv: Inventory) -> Dict[str, object]:
             inv.hidden_template = 0
             hidden_template = False
             changed = True
+        if skin and (inv.model_key or "") != (skin.model_key or ""):
+            inv.model_key = skin.model_key or ""
+            model_key = inv.model_key
+            changed = True
 
     return {
         "body": body,
@@ -778,6 +1131,7 @@ def ensure_visual(inv: Inventory) -> Dict[str, object]:
         "template": template,
         "hidden_template": hidden_template,
         "effects": effects,
+        "model": model_key,
         "changed": changed,
     }
 
@@ -1556,6 +1910,7 @@ def record_trade(
     unit_price: int,
     total_amount: int,
     net_amount: int = 0,
+    season: str = "",
 ) -> None:
     qty = int(quantity or 0)
     if qty <= 0 or not user_id:
@@ -1569,6 +1924,7 @@ def record_trade(
         unit_price=int(unit_price or 0),
         total_amount=int(total_amount or 0),
         net_amount=int(net_amount or 0),
+        season=season or "",
     )
     db.add(log)
 
@@ -1723,8 +2079,14 @@ class OddsOut(_BM):
     force_brick_next: bool; force_purple_next: bool
     pity_brick: int; pity_purple: int
 
-def pick_skin(db: Session, rarity: str) -> Skin:
-    rows = db.query(Skin).filter_by(rarity=rarity, active=True).all()
+def pick_skin(db: Session, rarity: str, season: Optional[str] = None) -> Skin:
+    q = db.query(Skin).filter_by(rarity=rarity, active=True)
+    season_key = _normalize_season(season)
+    if season_key:
+        q = q.filter(func.upper(Skin.season) == season_key)
+    rows = q.all()
+    if not rows:
+        rows = db.query(Skin).filter_by(rarity=rarity, active=True).all()
     if not rows: raise HTTPException(500, f"当前没有可用的 {rarity} 皮肤")
     return secrets.choice(rows)
 
@@ -1995,6 +2357,7 @@ def me_mailbox(
             "net_amount": log.net_amount,
             "created_at": log.created_at,
             "action": action,
+            "season": log.season or "",
         }
         bucket[action].append(entry)
     return out
@@ -2407,6 +2770,7 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
     if user.unopened_bricks < inp.count: raise HTTPException(400, "未开砖数量不足")
     if user.keys < inp.count: raise HTTPException(400, "钥匙不足")
     cfg = db.query(PoolConfig).first()
+    season_key = _normalize_season(inp.season) or LATEST_SEASON
     user.unopened_bricks -= inp.count
     user.keys -= inp.count
     locked_consumed = min(int(user.gift_unopened_bricks or 0), inp.count)
@@ -2440,11 +2804,11 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
         else:
             user.pity_brick += 1; user.pity_purple += 1
 
-        skin = pick_skin(db, rarity)
+        skin = pick_skin(db, rarity, season=season_key)
         exquisite = (secrets.randbelow(100) < 15) if rarity == "BRICK" else False
         wear_bp = wear_random_bp()
         grade = grade_from_wear_bp(wear_bp)
-        profile = generate_visual_profile(skin.rarity, exquisite)
+        profile = generate_visual_profile(skin.rarity, exquisite, model_key=skin.model_key, skin=skin)
 
         inv = Inventory(
             user_id=user.id, skin_id=skin.skin_id, name=skin.name, rarity=skin.rarity,
@@ -2455,6 +2819,8 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
             template_name=profile["template"],
             effect_tags=json.dumps(profile["effects"], ensure_ascii=False),
             hidden_template=profile["hidden_template"],
+            season=skin.season or season_key,
+            model_key=profile.get("model", skin.model_key or ""),
         )
         if int(user.gift_brick_quota or 0) > 0:
             inv.sell_locked = True
@@ -2470,6 +2836,8 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
             "template": profile["template"],
             "hidden_template": profile["hidden_template"],
             "effects": profile["effects"],
+            "season": skin.season or season_key,
+            "model": profile.get("model", skin.model_key or ""),
             "sell_locked": bool(inv.sell_locked),
             "lock_reason": inv.lock_reason or "",
             "visual": {
@@ -2478,6 +2846,7 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
                 "template": profile["template"],
                 "hidden_template": profile["hidden_template"],
                 "effects": profile["effects"],
+                "model": profile.get("model", skin.model_key or ""),
             },
         })
 
@@ -2502,10 +2871,15 @@ def inventory(
         q = q.filter(Inventory.on_market == False)
 
     rows = q.order_by(Inventory.id.desc()).all()
+    skin_ids = {r.skin_id for r in rows if r.skin_id}
+    skin_map = {}
+    if skin_ids:
+        for s in db.query(Skin).filter(Skin.skin_id.in_(skin_ids)).all():
+            skin_map[s.skin_id] = s
     items = []
     changed = False
     for x in rows:
-        vis = ensure_visual(x)
+        vis = ensure_visual(x, skin_map.get(x.skin_id))
         changed = changed or vis["changed"]
         visual_payload = {
             "body": vis["body"],
@@ -2513,6 +2887,7 @@ def inventory(
             "template": vis["template"],
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
+            "model": vis.get("model", ""),
         }
 
         items.append({
@@ -2528,6 +2903,8 @@ def inventory(
             "template": vis["template"],
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
+            "model": vis.get("model", ""),
+            "season": x.season or (skin_map.get(x.skin_id).season if skin_map.get(x.skin_id) else ""),
             "visual": visual_payload,
             "sell_locked": bool(getattr(x, "sell_locked", False)),
             "lock_reason": x.lock_reason or "",
@@ -2550,9 +2927,14 @@ def inventory_by_color(
     rows = q.all()
 
     grouped = {"BRICK": [], "PURPLE": [], "BLUE": [], "GREEN": []}
+    skin_ids = {r.skin_id for r in rows if r.skin_id}
+    skin_map = {}
+    if skin_ids:
+        for s in db.query(Skin).filter(Skin.skin_id.in_(skin_ids)).all():
+            skin_map[s.skin_id] = s
     changed = False
     for x in rows:
-        vis = ensure_visual(x)
+        vis = ensure_visual(x, skin_map.get(x.skin_id))
         changed = changed or vis["changed"]
         visual_payload = {
             "body": vis["body"],
@@ -2560,6 +2942,7 @@ def inventory_by_color(
             "template": vis["template"],
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
+            "model": vis.get("model", ""),
         }
 
         grouped[x.rarity].append({
@@ -2575,6 +2958,8 @@ def inventory_by_color(
             "template": vis["template"],
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
+            "model": vis.get("model", ""),
+            "season": x.season or (skin_map.get(x.skin_id).season if skin_map.get(x.skin_id) else ""),
             "visual": visual_payload,
             "sell_locked": bool(getattr(x, "sell_locked", False)),
             "lock_reason": x.lock_reason or "",
@@ -2606,13 +2991,39 @@ def craft_compose(inp: ComposeIn,
         raise HTTPException(400, "所选物品的稀有度不一致，或与合成方向不符")
 
     avg_bp = round(sum(r.wear_bp for r in rows) / 20)
+    skin_ids = {r.skin_id for r in rows if r.skin_id}
+    skin_map = {}
+    if skin_ids:
+        for s in db.query(Skin).filter(Skin.skin_id.in_(skin_ids)).all():
+            skin_map[s.skin_id] = s
+    season_counter: Dict[str, int] = {}
     for r in rows:
+        season_id = _normalize_season(r.season)
+        if not season_id:
+            skin_ref = skin_map.get(r.skin_id)
+            if skin_ref:
+                season_id = _normalize_season(skin_ref.season)
+        if season_id:
+            season_counter[season_id] = season_counter.get(season_id, 0) + 1
         db.delete(r)
 
-    skin = pick_skin(db, to_rarity)
+    if season_counter:
+        total = sum(season_counter.values())
+        roll = secrets.randbelow(total)
+        cursor = 0
+        target_season = LATEST_SEASON or next(iter(season_counter.keys()))
+        for sid, count in season_counter.items():
+            cursor += count
+            if roll < cursor:
+                target_season = sid
+                break
+    else:
+        target_season = LATEST_SEASON
+
+    skin = pick_skin(db, to_rarity, season=target_season)
     exquisite = (secrets.randbelow(100) < 15) if to_rarity == "BRICK" else False
     grade = grade_from_wear_bp(avg_bp)
-    profile = generate_visual_profile(skin.rarity, exquisite)
+    profile = generate_visual_profile(skin.rarity, exquisite, model_key=skin.model_key, skin=skin)
 
     inv = Inventory(
         user_id=user.id, skin_id=skin.skin_id, name=skin.name, rarity=skin.rarity,
@@ -2623,6 +3034,8 @@ def craft_compose(inp: ComposeIn,
         template_name=profile["template"],
         effect_tags=json.dumps(profile["effects"], ensure_ascii=False),
         hidden_template=profile["hidden_template"],
+        season=skin.season or target_season,
+        model_key=profile.get("model", skin.model_key or ""),
     )
     db.add(inv); db.flush()
     inv.serial = f"{inv.id:08d}"
@@ -2634,12 +3047,15 @@ def craft_compose(inp: ComposeIn,
         "template": profile["template"],
         "hidden_template": profile["hidden_template"],
         "effects": profile["effects"],
+        "season": skin.season or target_season,
+        "model": profile.get("model", skin.model_key or ""),
         "visual": {
             "body": profile["body"],
             "attachments": profile["attachments"],
             "template": profile["template"],
             "hidden_template": profile["hidden_template"],
             "effects": profile["effects"],
+            "model": profile.get("model", skin.model_key or ""),
         },
     }}
 
@@ -2652,6 +3068,7 @@ class MarketBrowseParams(BaseModel):
     is_exquisite: Optional[bool] = None  # BRICK 有意义，其它忽略
     grade: Optional[Literal["S","A","B","C"]] = None
     sort: Optional[Literal["wear_asc","wear_desc","price_asc","price_desc","newest","oldest"]] = "newest"
+    season: Optional[str] = None
 
 from sqlalchemy.exc import IntegrityError
 
@@ -2860,10 +3277,16 @@ def market_list(inp: MarketListIn, user: User = Depends(user_from_token), db: Se
 def market_my(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     q = db.query(MarketItem, Inventory).join(Inventory, MarketItem.inv_id==Inventory.id)\
         .filter(MarketItem.active==True, MarketItem.user_id==user.id, Inventory.on_market==True)
+    rows = q.all()
+    skin_ids = {inv.skin_id for _, inv in rows if inv.skin_id}
+    skin_map = {}
+    if skin_ids:
+        for s in db.query(Skin).filter(Skin.skin_id.in_(skin_ids)).all():
+            skin_map[s.skin_id] = s
     items = []
     changed = False
-    for mi, inv in q.all():
-        vis = ensure_visual(inv)
+    for mi, inv in rows:
+        vis = ensure_visual(inv, skin_map.get(inv.skin_id))
         changed = changed or vis["changed"]
         visual_payload = {
             "body": vis["body"],
@@ -2871,6 +3294,7 @@ def market_my(user: User = Depends(user_from_token), db: Session = Depends(get_d
             "template": vis["template"],
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
+            "model": vis.get("model", ""),
         }
 
         items.append({
@@ -2880,6 +3304,8 @@ def market_my(user: User = Depends(user_from_token), db: Session = Depends(get_d
             "template": vis["template"],
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
+            "model": vis.get("model", ""),
+            "season": inv.season or (skin_map.get(inv.skin_id).season if skin_map.get(inv.skin_id) else ""),
             "visual": visual_payload,
         })
     if changed:
@@ -2904,6 +3330,7 @@ def market_browse(rarity: Optional[RarityT] = None,
                   is_exquisite: Optional[bool] = None,
                   grade: Optional[Literal["S","A","B","C"]] = None,
                   sort: Optional[str] = "newest",
+                  season: Optional[str] = None,
                   db: Session = Depends(get_db)):
     q = db.query(MarketItem, Inventory, User).join(Inventory, MarketItem.inv_id==Inventory.id)\
         .join(User, MarketItem.user_id==User.id)\
@@ -2916,6 +3343,9 @@ def market_browse(rarity: Optional[RarityT] = None,
         q = q.filter(Inventory.exquisite==is_exquisite)
     if grade:
         q = q.filter(Inventory.grade==grade)
+    season_key = _normalize_season(season)
+    if season_key:
+        q = q.filter(func.upper(Inventory.season) == season_key)
 
     if sort == "wear_asc":
         q = q.order_by(Inventory.wear_bp.asc())
@@ -2930,10 +3360,16 @@ def market_browse(rarity: Optional[RarityT] = None,
     else:  # newest
         q = q.order_by(MarketItem.created_at.desc())
 
+    rows = q.all()
+    skin_ids = {inv.skin_id for _, inv, _ in rows if inv.skin_id}
+    skin_map = {}
+    if skin_ids:
+        for s in db.query(Skin).filter(Skin.skin_id.in_(skin_ids)).all():
+            skin_map[s.skin_id] = s
     out: List[MarketBrowseOut] = []
     changed = False
-    for mi, inv, seller in q.all():
-        vis = ensure_visual(inv)
+    for mi, inv, seller in rows:
+        vis = ensure_visual(inv, skin_map.get(inv.skin_id))
         changed = changed or vis["changed"]
         visual_payload = {
             "body": vis["body"],
@@ -2941,6 +3377,7 @@ def market_browse(rarity: Optional[RarityT] = None,
             "template": vis["template"],
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
+            "model": vis.get("model", ""),
         }
 
         out.append(MarketBrowseOut(
@@ -2949,7 +3386,9 @@ def market_browse(rarity: Optional[RarityT] = None,
             exquisite=bool(inv.exquisite), grade=inv.grade,
             wear=round(inv.wear_bp/100, 2), serial=inv.serial, created_at=mi.created_at,
             template=vis["template"], hidden_template=vis["hidden_template"],
-            effects=vis["effects"], visual=visual_payload
+            effects=vis["effects"], visual=visual_payload,
+            season=inv.season or (skin_map.get(inv.skin_id).season if skin_map.get(inv.skin_id) else ""),
+            model=vis.get("model", ""),
         ))
     if changed:
         db.commit()
@@ -2985,6 +3424,7 @@ def market_buy(market_id: int = Path(..., ge=1),
         mi.price,
         mi.price,
         mi.price,
+        season=inv.season or "",
     )
     record_trade(
         db,
@@ -2996,6 +3436,7 @@ def market_buy(market_id: int = Path(..., ge=1),
         mi.price,
         mi.price,
         0,
+        season=inv.season or "",
     )
 
     inv.user_id = user.id

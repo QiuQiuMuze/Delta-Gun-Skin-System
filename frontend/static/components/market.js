@@ -76,7 +76,9 @@
     const hidden_template = x.hidden_template ?? x.visual?.hidden_template ?? false;
     const effects = x.effects ?? x.visual?.effects ?? [];
     const visual = x.visual || { body: [], attachments: [], template, hidden_template, effects };
-    return { inv_id, name, rarity, wear, grade, serial, exquisite, on_market, template, hidden_template, effects, visual };
+    const season = x.season || "";
+    const model = x.model || visual.model || "";
+    return { inv_id, name, rarity, wear, grade, serial, exquisite, on_market, template, hidden_template, effects, visual, season, model };
   }
 
   function btn(label, active, attrs){
@@ -87,7 +89,33 @@
     _tab: "browse", // browse | sell | mine
 
     // 浏览筛选（英文保留）
-    _filters: { rarity:"ALL", skin_id:"", exquisite:"ANY", grade:"ANY", order:"price_asc" },
+    _filters: { rarity:"ALL", skin_id:"", exquisite:"ANY", grade:"ANY", order:"price_asc", season:"ALL" },
+    _seasonCatalog: [],
+    _seasonMap: {},
+
+    _seasonLabel: function(id){
+      if (!id) return "默认奖池";
+      var key = String(id);
+      var entry = this._seasonMap[key] || this._seasonMap[key.toUpperCase()];
+      if (entry && entry.name) return entry.name;
+      var fallback = (this._seasonCatalog || []).find(function(season){
+        return String(season.id) === key || String(season.id).toUpperCase() === key.toUpperCase();
+      });
+      return (fallback && fallback.name) || key;
+    },
+
+    _modelLabel: function(model){
+      var key = String(model || "").toLowerCase();
+      var map = {
+        assault: "突击步枪",
+        battle: "战斗步枪",
+        vector: "冲锋枪",
+        bullpup: "无托步枪",
+        futuristic: "能量武器"
+      };
+      if (!key) return "-";
+      return map[key] || model || key;
+    },
 
     // 上架筛选（中文 UI）
     _sellView: { rarity:"BRICK", exqMode:"ANY", sortWear:"asc" },
@@ -97,8 +125,23 @@
     _sellSelected: null,
     _me: {},
 
-    render: function () {
+    async render() {
       var self = this;
+      const catalog = await API.seasonCatalog().catch(() => ({ seasons: [], latest: null }));
+      self._seasonCatalog = Array.isArray(catalog?.seasons) ? catalog.seasons : [];
+      self._seasonMap = {};
+      self._seasonCatalog.forEach(season => {
+        if (!season?.id) return;
+        self._seasonMap[season.id] = season;
+        self._seasonMap[String(season.id).toUpperCase()] = season;
+      });
+      const seasonOptions = ['<option value="ALL">赛季(全部)</option>']
+        .concat(self._seasonCatalog.map(season => {
+          const selected = self._filters.season === season.id ? 'selected' : '';
+          return `<option value="${season.id}" ${selected}>${season.name}</option>`;
+        }))
+        .join("");
+
       setTimeout(function(){
         API.me().then(u => { self._me = u || {}; }).catch(()=>{});
         self._loadInventory();
@@ -108,7 +151,7 @@
 
       return ''+
       '<div class="card">'+
-        '<h2>交易行</h2>'+
+        '<h2>交易行</h2>'+ 
         '<div class="input-row">'+
           '<button class="btn '+(this._tab==='browse'?'active':'')+'" data-tab="browse">浏览 / 购买</button>'+
           '<button class="btn '+(this._tab==='sell'?'active':'')+'" data-tab="sell">上架</button>'+
@@ -127,6 +170,7 @@
             '<option value="BLUE">BLUE</option>'+
             '<option value="GREEN">GREEN</option>'+
           '</select>'+
+          '<select id="f-season">'+ seasonOptions +'</select>'+
           '<input id="f-skin" placeholder="skin_id (可选)">'+
           '<select id="f-exq">'+
             '<option value="ANY">是否极品(任意)</option>'+
@@ -188,6 +232,8 @@
 
       // 浏览筛选
       $id('f-rarity').value=this._filters.rarity;
+      var seasonSelect = $id('f-season');
+      if (seasonSelect) seasonSelect.value = this._filters.season;
       $id('f-skin').value=this._filters.skin_id;
       $id('f-exq').value=this._filters.exquisite;
       $id('f-grade').value=this._filters.grade;
@@ -195,6 +241,7 @@
       $id('f-apply').onclick=()=>{
         this._filters={
           rarity:$id('f-rarity').value,
+          season: seasonSelect ? seasonSelect.value : this._filters.season,
           skin_id:($id('f-skin').value||"").trim(),
           exquisite:$id('f-exq').value,
           grade:$id('f-grade').value,
@@ -311,10 +358,14 @@
         const rc = rarityClass(it.rarity);
         const ex = (it.rarity==="BRICK") ? (it.exquisite?'<span class="badge badge-exq">极品</span>':'<span class="badge badge-prem">优品</span>') : '-';
         const checked = (this._sellSelected && String(this._sellSelected)===String(it.inv_id)) ? 'checked' : '';
+        const seasonLabel = this._seasonLabel(it.season);
+        const modelLabel = this._modelLabel(it.model);
         rows += '<tr>'+
           '<td><input type="radio" name="sellPick" data-inv="'+it.inv_id+'" '+checked+'></td>'+
           '<td>'+esc(it.inv_id)+'</td>'+
           '<td class="'+rc+'">'+esc(it.name)+'</td>'+
+          '<td>'+esc(seasonLabel)+'</td>'+
+          '<td>'+esc(modelLabel)+'</td>'+
           '<td class="'+rc+'">'+esc(it.rarity)+'</td>'+
           '<td>'+ex+'</td>'+
           '<td>'+(isNaN(it.wear)?'-':it.wear)+'</td>'+
@@ -325,7 +376,7 @@
       host.innerHTML =
         '<div class="muted">已选：'+(this._sellSelected?esc(this._sellSelected):'无')+'</div>'+
         '<table class="table">'+
-        '<thead><tr><th>选</th><th>inv_id</th><th>名称</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>'+
+        '<thead><tr><th>选</th><th>inv_id</th><th>名称</th><th>赛季</th><th>类型</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>'+
         '<tbody>'+rows+'</tbody></table>';
 
       host.querySelectorAll('[data-inv]').forEach(el=>{
@@ -358,6 +409,7 @@
 
     // ===== 浏览 / 购买 =====
     _loadBrowse: function () {
+      var self=this;
       var f=this._filters, qs={
         sort: {price_asc:"price_asc",price_desc:"price_desc",wear_asc:"wear_asc",wear_desc:"wear_desc",newest:"newest",oldest:"oldest"}[f.order] || "newest"
       };
@@ -366,6 +418,7 @@
       if (f.exquisite==="EXQ") qs.is_exquisite = "true";
       if (f.exquisite==="PREM") qs.is_exquisite = "false";
       if (f.grade!=="ANY") qs.grade = f.grade;
+      if (f.season && f.season !== "ALL") qs.season = f.season;
 
       API.marketBrowse(qs)
         .then(data=>{
@@ -385,7 +438,9 @@
               template: x.template ?? x.visual?.template,
               hidden_template: x.hidden_template ?? x.visual?.hidden_template ?? false,
               effects: x.effects ?? x.visual?.effects ?? [],
-              visual: x.visual || { body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects }
+              visual: x.visual || { body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects },
+              season: x.season || x.season_id || "",
+              model: x.model || x.visual?.model || ""
             };
           });
 
@@ -394,9 +449,13 @@
             var x=items[i], rc=rarityClass(x.rarity);
             var ex=(x.rarity==="BRICK") ? (x.exquisite?'<span class="badge badge-exq">极品</span>':'<span class="badge badge-prem">优品</span>') : '-';
             var preview = previewCell(x);
+            var seasonLabel = self._seasonLabel(x.season);
+            var modelLabel = self._modelLabel(x.model);
             rows += '<tr>'+
               '<td>'+esc(x.seller||"玩家")+'</td>'+
               '<td class="'+rc+'">'+esc(x.name)+'</td>'+
+              '<td>'+esc(seasonLabel)+'</td>'+
+              '<td>'+esc(modelLabel)+'</td>'+
               '<td>'+preview+'</td>'+
               '<td class="'+rc+'">'+esc(x.rarity)+'</td>'+
               '<td>'+ex+'</td>'+
@@ -409,7 +468,7 @@
           }
           $id('mk-browse-list').innerHTML =
             '<table class="table">'+
-            '<thead><tr><th>上架玩家</th><th>名称</th><th>外观</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th><th>价格</th><th>操作</th></tr></thead>'+
+            '<thead><tr><th>上架玩家</th><th>名称</th><th>赛季</th><th>类型</th><th>外观</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th><th>价格</th><th>操作</th></tr></thead>'+
             '<tbody>'+rows+'</tbody></table>';
 
           $id('mk-browse-list').querySelectorAll('[data-buy]').forEach((btn)=>{
@@ -429,6 +488,7 @@
 
     // ===== 我的挂单 =====
     _loadMine: function(){
+      var self=this;
       API.marketMine()
         .then(data=>{
           var rows='';
@@ -445,15 +505,21 @@
               template: x.template ?? x.visual?.template,
               hidden_template: x.hidden_template ?? x.visual?.hidden_template ?? false,
               effects: x.effects ?? x.visual?.effects ?? [],
-              visual: x.visual || { body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects }
+              visual: x.visual || { body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects },
+              season: x.season || x.season_id || "",
+              model: x.model || x.visual?.model || ""
             };
           });
           for (var i=0;i<list.length;i++){
             var x=list[i], rc=rarityClass(x.rarity);
             var ex=(x.rarity==="BRICK")?(x.exquisite?'<span class="badge badge-exq">极品</span>':'<span class="badge badge-prem">优品</span>'):'-';
             var preview = previewCell(x);
+            var seasonLabel = self._seasonLabel ? self._seasonLabel(x.season) : (x.season || "默认奖池");
+            var modelLabel = self._modelLabel ? self._modelLabel(x.model) : (x.model || "-");
             rows+='<tr>'+
               '<td class="'+rc+'">'+esc(x.name)+'</td>'+
+              '<td>'+esc(seasonLabel)+'</td>'+
+              '<td>'+esc(modelLabel)+'</td>'+
               '<td>'+preview+'</td>'+
               '<td class="'+rc+'">'+esc(x.rarity)+'</td>'+
               '<td>'+ex+'</td>'+
@@ -465,7 +531,7 @@
             '</tr>';
           }
           $id('mk-mine-list').innerHTML =
-            '<table class="table"><thead><tr><th>名称</th><th>外观</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th><th>价格</th><th>操作</th></tr></thead>'+
+            '<table class="table"><thead><tr><th>名称</th><th>赛季</th><th>类型</th><th>外观</th><th>稀有度</th><th>极品/优品</th><th>磨损</th><th>品质</th><th>编号</th><th>价格</th><th>操作</th></tr></thead>'+
             '<tbody>'+rows+'</tbody></table>';
 
           $id('mk-mine-list').querySelectorAll('[data-off]').forEach((btn)=>{
