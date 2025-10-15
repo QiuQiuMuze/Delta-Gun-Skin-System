@@ -129,10 +129,15 @@ const API = {
   // ---- Shop / Gacha / Inventory / Craft ----
   shopPrices: () => API.json("/shop/prices"),
   buyKeys: (count) => API.json("/shop/buy-keys", "POST", { count }),
-  buyBricks: (count) => API.json("/shop/buy-bricks", "POST", { count }),
-  brickQuote: (count) => {
+  buyBricks: (count, season = null) => {
+    const payload = { count };
+    if (season) payload.season = season;
+    return API.json("/shop/buy-bricks", "POST", payload);
+  },
+  brickQuote: (count, season = null) => {
     const usp = new URLSearchParams();
     usp.append("count", count);
+    if (season) usp.append("season", season);
     return API.json(`/shop/brick-quote?${usp.toString()}`);
   },
   odds: () => API.json("/odds"),
@@ -143,9 +148,10 @@ const API = {
     return this._seasonCatalog;
   },
 
-  open: (count, season = null) => {
+  open: (count, season = null, targetSkinId = null) => {
     const payload = { count };
     if (season) payload.season = season;
+    if (targetSkinId) payload.target_skin_id = targetSkinId;
     return API.json("/gacha/open", "POST", payload);
   },
   inventory: (show_on_market = false) =>
@@ -178,7 +184,11 @@ const API = {
 
   marketDelist: (market_id) => API.json(`/market/delist/${market_id}`, "POST"),
   brickBook: () => API.json("/market/bricks/book"),
-  brickSell: (quantity, price) => API.json("/market/bricks/sell", "POST", { quantity, price }),
+  brickSell: (quantity, price, season) => {
+    const payload = { quantity, price };
+    if (season) payload.season = season;
+    return API.json("/market/bricks/sell", "POST", payload);
+  },
   brickCancelSell: (order_id) => API.json(`/market/bricks/cancel/${order_id}`, "POST"),
   brickBuyOrder: (quantity, target_price) => API.json("/market/bricks/buy-order", "POST", { quantity, target_price }),
   brickCancelBuyOrder: (order_id) => API.json(`/market/bricks/buy-order/cancel/${order_id}`, "POST"),

@@ -16,7 +16,7 @@ import time, os, secrets, jwt, re, json, random, math
 from passlib.context import CryptContext
 from sqlalchemy import (
     create_engine, Column, Integer, String, Boolean, Float,
-    ForeignKey, Text, func
+    ForeignKey, Text, func, UniqueConstraint
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 import sqlite3
@@ -149,6 +149,7 @@ class BrickSellOrder(Base):
     source = Column(String, default="player")  # player / official
     priority = Column(Integer, default=0)
     created_at = Column(Integer, default=lambda: int(time.time()))
+    season = Column(String, default="")
 
 class BrickBuyOrder(Base):
     __tablename__ = "brick_buy_orders"
@@ -209,6 +210,16 @@ class TradeLog(Base):
     net_amount = Column(Integer, nullable=False, default=0)
     created_at = Column(Integer, default=lambda: int(time.time()))
     season = Column(String, default="")
+
+
+class UserBrickBalance(Base):
+    __tablename__ = "user_brick_balances"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    season = Column(String, nullable=False, default="")
+    quantity = Column(Integer, nullable=False, default=0)
+    gift_locked = Column(Integer, nullable=False, default=0)
+    __table_args__ = (UniqueConstraint("user_id", "season", name="uq_user_season"),)
 
 def _ensure_user_sessionver():
     con = sqlite3.connect(DB_PATH_FS)
@@ -271,6 +282,17 @@ def _ensure_trade_log_columns():
     cols = {row[1] for row in cur.fetchall()}
     if "season" not in cols:
         cur.execute("ALTER TABLE trade_logs ADD COLUMN season TEXT NOT NULL DEFAULT ''")
+    con.commit()
+    con.close()
+
+
+def _ensure_brick_sell_columns():
+    con = sqlite3.connect(DB_PATH_FS)
+    cur = con.cursor()
+    cur.execute("PRAGMA table_info(brick_sell_orders)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "season" not in cols:
+        cur.execute("ALTER TABLE brick_sell_orders ADD COLUMN season TEXT NOT NULL DEFAULT ''")
     con.commit()
     con.close()
 
@@ -363,6 +385,7 @@ _ensure_user_sessionver()
 _ensure_inventory_visual_columns()
 _ensure_skin_extended_columns()
 _ensure_trade_log_columns()
+_ensure_brick_sell_columns()
 _ensure_user_gift_columns()
 _ensure_cookie_profile_columns()
 
@@ -402,14 +425,17 @@ class WalletOp(BaseModel):
 class CountIn(BaseModel):
     count: int = 1
     season: Optional[str] = None
+    target_skin_id: Optional[str] = None
 
 class BrickSellIn(BaseModel):
     quantity: int
     price: int
+    season: Optional[str] = None
 
 class BrickBuyOrderIn(BaseModel):
     quantity: int
     target_price: int
+    season: Optional[str] = None
 
 
 class CookieActIn(BaseModel):
@@ -654,6 +680,172 @@ def _normalize_season(season: Optional[str]) -> Optional[str]:
     if key in SEASON_LOOKUP:
         return key
     return None
+
+
+BRICK_SEASON_FALLBACK = "UNASSIGNED"
+
+
+def _brick_season_key(season: Optional[str]) -> str:
+    key = _normalize_season(season)
+    if key:
+        return key
+    return BRICK_SEASON_FALLBACK
+
+
+def _season_display_name(season: str) -> str:
+    if not season or season == BRICK_SEASON_FALLBACK:
+        return "未标记赛季"
+    entry = SEASON_LOOKUP.get(season.upper())
+    return entry.get("name", season) if entry else season
+
+
+def _ensure_brick_balance_row(db: Session, user_id: int, season_key: str) -> UserBrickBalance:
+    row = db.query(UserBrickBalance).filter_by(user_id=user_id, season=season_key).first()
+    if row:
+        return row
+    existing = db.query(UserBrickBalance).filter_by(user_id=user_id).count()
+    if existing == 0:
+        user = db.query(User).filter_by(id=user_id).first()
+        if user:
+            fallback_row = UserBrickBalance(
+                user_id=user_id,
+                season=BRICK_SEASON_FALLBACK,
+                quantity=int(user.unopened_bricks or 0),
+                gift_locked=int(user.gift_unopened_bricks or 0),
+            )
+            db.add(fallback_row)
+            db.flush()
+            if season_key == BRICK_SEASON_FALLBACK:
+                return fallback_row
+    row = UserBrickBalance(user_id=user_id, season=season_key, quantity=0, gift_locked=0)
+    db.add(row)
+    db.flush()
+    return row
+
+
+def grant_user_bricks(
+    db: Session,
+    user: User,
+    season: Optional[str],
+    quantity: int,
+    gift_locked: int = 0,
+    lock_quota: bool = False,
+) -> None:
+    qty = int(quantity or 0)
+    if qty <= 0:
+        return
+    key = _brick_season_key(season)
+    row = _ensure_brick_balance_row(db, user.id, key)
+    row.quantity = int(row.quantity or 0) + qty
+    user.unopened_bricks = int(user.unopened_bricks or 0) + qty
+    if gift_locked > 0:
+        row.gift_locked = int(row.gift_locked or 0) + int(gift_locked)
+        user.gift_unopened_bricks = int(user.gift_unopened_bricks or 0) + int(gift_locked)
+        if lock_quota:
+            user.gift_brick_quota = int(user.gift_brick_quota or 0) + int(gift_locked)
+
+
+def consume_user_bricks(
+    db: Session,
+    user: User,
+    season: Optional[str],
+    quantity: int,
+    allow_gift: bool = True,
+) -> int:
+    qty = int(quantity or 0)
+    if qty <= 0:
+        return 0
+    key = _brick_season_key(season)
+    row = _ensure_brick_balance_row(db, user.id, key)
+    total = int(row.quantity or 0)
+    if total < qty:
+        raise HTTPException(400, "该赛季未开砖数量不足")
+    gift_used = 0
+    if allow_gift:
+        gift_used = min(int(row.gift_locked or 0), qty)
+    else:
+        unlocked = total - int(row.gift_locked or 0)
+        if unlocked < qty:
+            raise HTTPException(400, "赠送砖不可出售")
+    row.quantity = max(0, total - qty)
+    user.unopened_bricks = max(0, int(user.unopened_bricks or 0) - qty)
+    if allow_gift and gift_used > 0:
+        row.gift_locked = max(0, int(row.gift_locked or 0) - gift_used)
+        user.gift_unopened_bricks = max(0, int(user.gift_unopened_bricks or 0) - gift_used)
+    return gift_used
+
+
+def reserve_user_bricks(db: Session, user: User, season: Optional[str], quantity: int) -> None:
+    qty = int(quantity or 0)
+    if qty <= 0:
+        return
+    key = _brick_season_key(season)
+    row = _ensure_brick_balance_row(db, user.id, key)
+    total = int(row.quantity or 0)
+    unlocked = total - int(row.gift_locked or 0)
+    if unlocked < qty:
+        raise HTTPException(400, "该赛季可售砖不足")
+    row.quantity = max(0, total - qty)
+    user.unopened_bricks = max(0, int(user.unopened_bricks or 0) - qty)
+
+
+def release_reserved_bricks(db: Session, user: User, season: Optional[str], quantity: int) -> None:
+    qty = int(quantity or 0)
+    if qty <= 0:
+        return
+    key = _brick_season_key(season)
+    row = _ensure_brick_balance_row(db, user.id, key)
+    row.quantity = int(row.quantity or 0) + qty
+    user.unopened_bricks = int(user.unopened_bricks or 0) + qty
+
+
+def get_user_brick_balances(db: Session, user_id: int) -> Dict[str, Dict[str, int]]:
+    rows = db.query(UserBrickBalance).filter_by(user_id=user_id).all()
+    data: Dict[str, Dict[str, int]] = {}
+    for row in rows:
+        key = row.season or BRICK_SEASON_FALLBACK
+        data[key] = {
+            "quantity": int(row.quantity or 0),
+            "gift_locked": int(row.gift_locked or 0),
+        }
+    return data
+
+
+def brick_balance_detail(db: Session, user_id: int) -> List[Dict[str, Any]]:
+    balances = get_user_brick_balances(db, user_id)
+    detail: List[Dict[str, Any]] = []
+    ordered = list(SEASON_IDS)
+    if BRICK_SEASON_FALLBACK in balances:
+        ordered.append(BRICK_SEASON_FALLBACK)
+    else:
+        ordered.append(BRICK_SEASON_FALLBACK)
+    seen = set()
+    for season in ordered:
+        if season in seen:
+            continue
+        seen.add(season)
+        info = balances.get(season)
+        if not info:
+            continue
+        detail.append({
+            "season": "" if season == BRICK_SEASON_FALLBACK else season,
+            "season_key": season,
+            "name": _season_display_name(season),
+            "count": info["quantity"],
+            "gift_locked": info["gift_locked"],
+        })
+    # Include any extra seasons not in SEASON_IDS
+    for season, info in balances.items():
+        if season in seen:
+            continue
+        detail.append({
+            "season": "" if season == BRICK_SEASON_FALLBACK else season,
+            "season_key": season,
+            "name": _season_display_name(season),
+            "count": info["quantity"],
+            "gift_locked": info["gift_locked"],
+        })
+    return detail
 
 
 def require_season(season: Optional[str]) -> str:
@@ -1855,27 +2047,53 @@ def brick_price_snapshot(db: Session, cfg: PoolConfig) -> Dict[str, float]:
     unit = _sync_cfg_price(cfg, state)
     return {"unit": unit, "raw": round(state.price, 2)}
 
+def _season_brick_price(base_price: int, season: Optional[str]) -> int:
+    key = _normalize_season(season)
+    if not key:
+        return max(40, min(150, base_price))
+    latest_idx = len(SEASON_IDS) - 1
+    try:
+        idx = SEASON_IDS.index(key)
+    except ValueError:
+        idx = latest_idx
+    step = latest_idx - idx
+    price = base_price - step * 5
+    if key == "S5":
+        price = base_price + 6
+    price = max(40, min(150, price))
+    return price
+
+
 def official_sell_layers(cfg: PoolConfig, state: BrickMarketState) -> List[Dict[str, Any]]:
     base_price = _sync_cfg_price(cfg, state)
     seed_val = int((state.last_update or int(time.time())) / 600) or 1
     rng = random.Random(seed_val)
     target_total = rng.randint(3000, 5000)
-    tiers = [-4, -2, 0, 2, 4, 6]
-    weights = [1.0, 1.35, 1.8, 1.4, 1.05, 0.8]
-    weight_sum = sum(weights)
+    seasons = list(SEASON_IDS) or [BRICK_SEASON_FALLBACK]
     layers: List[Dict[str, Any]] = []
-    allocated = 0
-    for idx, (delta, weight) in enumerate(zip(tiers, weights)):
-        price = max(40, min(150, base_price + delta))
-        qty = int(round(target_total * (weight / weight_sum)))
-        if idx == len(tiers) - 1:
-            qty = max(0, target_total - allocated)
-        allocated += qty
-        layers.append({"price": price, "quantity": max(0, qty), "priority": idx})
-    if allocated < target_total:
-        layers[-1]["quantity"] += (target_total - allocated)
-    layers = [layer for layer in layers if layer.get("quantity", 0) > 0]
-    layers.sort(key=lambda x: (x["price"], x["priority"]))
+    remaining = target_total
+    rng.shuffle(seasons)
+    for idx, season in enumerate(seasons):
+        portion = max(0, target_total // len(seasons))
+        jitter = rng.randint(-80, 120)
+        qty = max(0, portion + jitter)
+        if idx == len(seasons) - 1:
+            qty = max(0, remaining)
+        else:
+            qty = min(qty, remaining)
+        remaining -= qty
+        if qty <= 0:
+            continue
+        price = _season_brick_price(base_price, season if season != BRICK_SEASON_FALLBACK else None)
+        layers.append({
+            "price": price,
+            "quantity": qty,
+            "priority": idx,
+            "season": season,
+        })
+    if remaining > 0 and layers:
+        layers[-1]["quantity"] += remaining
+    layers.sort(key=lambda x: (x["price"], x.get("priority", 0)))
     return layers
 
 def build_brick_histogram(layers: List[Dict[str, Any]], player_orders: List[BrickSellOrder], bucket_size: int = 10) -> List[Dict[str, Any]]:
@@ -1934,11 +2152,13 @@ def brick_purchase_plan(
     count: int,
     max_price: Optional[int] = None,
     exclude_user_id: Optional[int] = None,
+    season: Optional[str] = None,
 ) -> tuple[List[Dict[str, Any]], int]:
     remaining = int(count or 0)
     if remaining <= 0:
         return [], 0
     plan: List[Dict[str, Any]] = []
+    season_key = _normalize_season(season)
     player_orders = db.query(BrickSellOrder).filter(
         BrickSellOrder.active == True,
         BrickSellOrder.source == "player",
@@ -1947,12 +2167,21 @@ def brick_purchase_plan(
     for order in player_orders:
         if exclude_user_id is not None and order.user_id == exclude_user_id:
             continue
+        order_season = _brick_season_key(order.season)
+        if season_key and _brick_season_key(season_key) != order_season:
+            continue
         if max_price is not None and order.price > max_price:
             break
         take = min(remaining, order.remaining)
         if take <= 0:
             continue
-        plan.append({"type": "player", "order": order, "price": int(order.price), "quantity": take})
+        plan.append({
+            "type": "player",
+            "order": order,
+            "price": int(order.price),
+            "quantity": take,
+            "season": order_season,
+        })
         remaining -= take
         if remaining <= 0:
             break
@@ -1961,12 +2190,22 @@ def brick_purchase_plan(
         layers = official_sell_layers(cfg, state)
         for layer in layers:
             price = int(layer["price"])
+            layer_season = layer.get("season") or BRICK_SEASON_FALLBACK
+            if season_key and _brick_season_key(season_key) != layer_season:
+                continue
             if max_price is not None and price > max_price:
                 continue
             take = min(remaining, int(layer.get("quantity", 0)))
             if take <= 0:
                 continue
-            plan.append({"type": "official", "order": None, "price": price, "quantity": take, "priority": layer.get("priority", 0)})
+            plan.append({
+                "type": "official",
+                "order": None,
+                "price": price,
+                "quantity": take,
+                "priority": layer.get("priority", 0),
+                "season": layer_season,
+            })
             remaining -= take
             if remaining <= 0:
                 break
@@ -1999,20 +2238,21 @@ def process_brick_buy_orders(db: Session, cfg: PoolConfig) -> List[Dict[str, Any
         gift_locked_before = int(order.gift_coin_locked or 0)
         gift_coin_spent = min(gift_locked_before, total_cost)
         gift_remaining = gift_coin_spent
-        gift_bricks = 0
+        season_stats: Dict[str, Dict[str, int]] = {}
         for item in plan:
-            price = item["price"]
-            if price <= 0:
+            price = int(item["price"])
+            qty = int(item["quantity"])
+            if qty <= 0:
                 continue
-            take = min(item["quantity"], gift_remaining // price)
-            if take <= 0:
-                continue
-            gift_bricks += take
-            gift_remaining -= take * price
-        buyer.unopened_bricks += total_qty
-        if gift_bricks > 0:
-            buyer.gift_unopened_bricks += gift_bricks
-            buyer.gift_brick_quota += gift_bricks
+            season_key = item.get("season") or BRICK_SEASON_FALLBACK
+            stats = season_stats.setdefault(season_key, {"qty": 0, "cost": 0, "gift": 0})
+            stats["qty"] += qty
+            stats["cost"] += price * qty
+            if price > 0 and gift_remaining > 0:
+                take = min(qty, gift_remaining // price)
+                if take > 0:
+                    stats["gift"] += take
+                    gift_remaining -= take * price
         for item in plan:
             if item["type"] == "player" and item.get("order"):
                 sell_order: BrickSellOrder = item["order"]
@@ -2034,10 +2274,25 @@ def process_brick_buy_orders(db: Session, cfg: PoolConfig) -> List[Dict[str, Any
                         item["price"],
                         gross,
                         net,
+                        season=sell_order.season or "",
                     )
                 sell_order.remaining -= item["quantity"]
                 if sell_order.remaining <= 0:
                     sell_order.active = False
+        for season_key, stats in season_stats.items():
+            qty = stats.get("qty", 0)
+            if qty <= 0:
+                continue
+            gift_take = stats.get("gift", 0)
+            season_param = None if season_key == BRICK_SEASON_FALLBACK else season_key
+            grant_user_bricks(
+                db,
+                buyer,
+                season_param,
+                qty,
+                gift_locked=gift_take,
+                lock_quota=gift_take > 0,
+            )
         order.remaining = 0
         order.active = False
         locked_before = order.locked_coins
@@ -2051,18 +2306,23 @@ def process_brick_buy_orders(db: Session, cfg: PoolConfig) -> List[Dict[str, Any
             buyer.gift_coin_balance += gift_refund
         order.locked_coins = 0
         order.gift_coin_locked = 0
-        if total_qty > 0 and total_cost > 0:
-            avg_price = total_cost // total_qty if total_qty else total_cost
+        for season_key, stats in season_stats.items():
+            qty = stats.get("qty", 0)
+            cost = stats.get("cost", 0)
+            if qty <= 0 or cost <= 0:
+                continue
+            avg_price = cost // qty if qty else cost
             record_trade(
                 db,
                 buyer.id,
                 "brick",
                 "buy",
                 "未开砖",
-                total_qty,
+                qty,
                 avg_price,
-                total_cost,
+                cost,
                 0,
+                season="" if season_key == BRICK_SEASON_FALLBACK else season_key,
             )
         events.append({
             "order_id": order.id,
@@ -2079,12 +2339,21 @@ class OddsOut(_BM):
     force_brick_next: bool; force_purple_next: bool
     pity_brick: int; pity_purple: int
 
-def pick_skin(db: Session, rarity: str, season: Optional[str] = None) -> Skin:
+def pick_skin(db: Session, rarity: str, season: Optional[str] = None, preferred_skin_id: Optional[str] = None) -> Skin:
     q = db.query(Skin).filter_by(rarity=rarity, active=True)
     season_key = _normalize_season(season)
     if season_key:
         q = q.filter(func.upper(Skin.season) == season_key)
     rows = q.all()
+    if preferred_skin_id:
+        for row in rows:
+            if str(row.skin_id) == str(preferred_skin_id):
+                return row
+        pref = db.query(Skin).filter_by(skin_id=preferred_skin_id, active=True).first()
+        if pref and pref.rarity == rarity:
+            pref_season = _normalize_season(pref.season)
+            if not season_key or pref_season == season_key:
+                return pref
     if not rows:
         rows = db.query(Skin).filter_by(rarity=rarity, active=True).all()
     if not rows: raise HTTPException(500, f"当前没有可用的 {rarity} 皮肤")
@@ -2312,10 +2581,12 @@ def me(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     if phone.startswith(VIRTUAL_PHONE_PREFIX):
         phone = ""
     cookie_enabled = cookie_factory_enabled(db)
+    brick_detail = brick_balance_detail(db, user.id)
     return {
         "username": user.username, "phone": phone,
         "fiat": user.fiat, "coins": user.coins, "keys": user.keys,
         "unopened_bricks": user.unopened_bricks,
+        "unopened_bricks_detail": brick_detail,
         "pity_brick": user.pity_brick, "pity_purple": user.pity_purple,
         "is_admin": bool(getattr(user, "is_admin", False)),
         "features": {
@@ -2493,7 +2764,15 @@ def cookie_factory_act(inp: CookieActIn, user: User = Depends(user_from_token), 
         new_claimed = claimed + claimable
         profile.claimed_bricks_this_week = int(new_claimed)
         profile.weekly_bricks_awarded = int(new_claimed)
-        user.unopened_bricks += claimable
+        available_seasons = SEASON_IDS[:6] if len(SEASON_IDS) >= 6 else (SEASON_IDS or [])
+        if not available_seasons:
+            available_seasons = [LATEST_SEASON or BRICK_SEASON_FALLBACK]
+        allocation: Dict[str, int] = {}
+        for _ in range(int(claimable)):
+            sid = random.choice(available_seasons) if available_seasons else BRICK_SEASON_FALLBACK
+            allocation[sid] = allocation.get(sid, 0) + 1
+        for sid, qty in allocation.items():
+            grant_user_bricks(db, user, sid, qty)
         profile.total_bricks_earned += claimable
         result = {
             "claimed": int(claimable),
@@ -2635,7 +2914,7 @@ def buy_keys(inp: CountIn, user: User = Depends(user_from_token), db: Session = 
 def buy_bricks(inp: CountIn, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     if inp.count <= 0: raise HTTPException(400, "数量必须大于 0")
     cfg = db.query(PoolConfig).first()
-    plan, leftover = brick_purchase_plan(db, cfg, inp.count, exclude_user_id=user.id)
+    plan, leftover = brick_purchase_plan(db, cfg, inp.count, exclude_user_id=user.id, season=inp.season)
     total_qty = sum(item["quantity"] for item in plan)
     if total_qty < inp.count:
         raise HTTPException(400, "当前可购砖数量不足")
@@ -2647,20 +2926,21 @@ def buy_bricks(inp: CountIn, user: User = Depends(user_from_token), db: Session 
     if gift_spent > 0:
         user.gift_coin_balance -= gift_spent
     gift_remaining = gift_spent
-    gift_locked = 0
+    season_stats: Dict[str, Dict[str, int]] = {}
     for item in plan:
-        price = item["price"]
-        if price <= 0:
+        price = int(item["price"])
+        qty = int(item["quantity"])
+        if qty <= 0:
             continue
-        take = min(item["quantity"], gift_remaining // price)
-        if take <= 0:
-            continue
-        gift_locked += take
-        gift_remaining -= take * price
-    user.unopened_bricks += total_qty
-    if gift_locked > 0:
-        user.gift_unopened_bricks += gift_locked
-        user.gift_brick_quota += gift_locked
+        season_key = item.get("season") or BRICK_SEASON_FALLBACK
+        stats = season_stats.setdefault(season_key, {"qty": 0, "cost": 0, "gift": 0})
+        stats["qty"] += qty
+        stats["cost"] += price * qty
+        if price > 0 and gift_remaining > 0:
+            take = min(qty, gift_remaining // price)
+            if take > 0:
+                stats["gift"] += take
+                gift_remaining -= take * price
     for item in plan:
         if item["type"] == "player" and item.get("order"):
             sell_order: BrickSellOrder = item["order"]
@@ -2681,22 +2961,42 @@ def buy_bricks(inp: CountIn, user: User = Depends(user_from_token), db: Session 
                     item["price"],
                     gross,
                     net,
+                    season=sell_order.season or "",
                 )
             sell_order.remaining -= item["quantity"]
             if sell_order.remaining <= 0:
                 sell_order.active = False
-    if total_qty > 0 and total_cost > 0:
-        avg_price = total_cost // total_qty if total_qty else total_cost
+    for season_key, stats in season_stats.items():
+        qty = stats.get("qty", 0)
+        if qty <= 0:
+            continue
+        gift_take = stats.get("gift", 0)
+        season_param = None if season_key == BRICK_SEASON_FALLBACK else season_key
+        grant_user_bricks(
+            db,
+            user,
+            season_param,
+            qty,
+            gift_locked=gift_take,
+            lock_quota=gift_take > 0,
+        )
+    for season_key, stats in season_stats.items():
+        qty = stats.get("qty", 0)
+        cost = stats.get("cost", 0)
+        if qty <= 0 or cost <= 0:
+            continue
+        avg_price = cost // qty if qty else cost
         record_trade(
             db,
             user.id,
             "brick",
             "buy",
             "未开砖",
-            total_qty,
+            qty,
             avg_price,
-            total_cost,
+            cost,
             0,
+            season="" if season_key == BRICK_SEASON_FALLBACK else season_key,
         )
     db.commit()
     process_brick_buy_orders(db, cfg)
@@ -2714,6 +3014,7 @@ def buy_bricks(inp: CountIn, user: User = Depends(user_from_token), db: Session 
                 "source": item["type"],
                 "price": item["price"],
                 "quantity": item["quantity"],
+                "season": item.get("season") or "",
             }
             for item in plan
         ]
@@ -2730,14 +3031,28 @@ def shop_prices(user: User = Depends(user_from_token), db: Session = Depends(get
         "brick_price_raw": snapshot["raw"],
         "key_price": cfg.key_price
     }
+    season_prices = []
+    for sid in SEASON_IDS:
+        season_prices.append({
+            "season": sid,
+            "name": _season_display_name(sid),
+            "price": _season_brick_price(snapshot["unit"], sid),
+        })
+    if season_prices:
+        resp["season_prices"] = season_prices
     if fills:
         resp["buy_orders_filled"] = fills
     return resp
 
 @app.get("/shop/brick-quote")
-def shop_brick_quote(count: int = Query(..., ge=1), user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+def shop_brick_quote(
+    count: int = Query(..., ge=1),
+    season: Optional[str] = Query(None),
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db)
+):
     cfg = db.query(PoolConfig).first()
-    plan, leftover = brick_purchase_plan(db, cfg, count, exclude_user_id=user.id)
+    plan, leftover = brick_purchase_plan(db, cfg, count, exclude_user_id=user.id, season=season)
     total_qty = sum(item["quantity"] for item in plan)
     total_cost = sum(item["price"] * item["quantity"] for item in plan)
     return {
@@ -2746,7 +3061,13 @@ def shop_brick_quote(count: int = Query(..., ge=1), user: User = Depends(user_fr
         "missing": max(0, count - total_qty),
         "total_cost": total_cost,
         "segments": [
-            {"source": item["type"], "price": item["price"], "quantity": item["quantity"]}
+            {
+                "source": item["type"],
+                "price": item["price"],
+                "quantity": item["quantity"],
+                "season": item.get("season") or "",
+                "season_name": _season_display_name(item.get("season") or BRICK_SEASON_FALLBACK),
+            }
             for item in plan
         ],
         "current_price": cfg.brick_price,
@@ -2771,14 +3092,12 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
     if user.keys < inp.count: raise HTTPException(400, "钥匙不足")
     cfg = db.query(PoolConfig).first()
     season_key = _normalize_season(inp.season) or LATEST_SEASON
-    user.unopened_bricks -= inp.count
+    consume_user_bricks(db, user, season_key, inp.count, allow_gift=True)
     user.keys -= inp.count
-    locked_consumed = min(int(user.gift_unopened_bricks or 0), inp.count)
-    if locked_consumed > 0:
-        user.gift_unopened_bricks = max(0, int(user.gift_unopened_bricks or 0) - locked_consumed)
     mark_cookie_delta_activity(db, user.id)
 
     results = []
+    target_skin = (inp.target_skin_id or "").strip()
 
     for _ in range(inp.count):
         od = compute_odds(user, cfg)
@@ -2804,7 +3123,8 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
         else:
             user.pity_brick += 1; user.pity_purple += 1
 
-        skin = pick_skin(db, rarity, season=season_key)
+        preferred = target_skin if rarity == "BRICK" and target_skin else None
+        skin = pick_skin(db, rarity, season=season_key, preferred_skin_id=preferred)
         exquisite = (secrets.randbelow(100) < 15) if rarity == "BRICK" else False
         wear_bp = wear_random_bp()
         grade = grade_from_wear_bp(wear_bp)
@@ -3091,6 +3411,8 @@ def brick_order_book(user: User = Depends(user_from_token), db: Session = Depend
             "seller": seller.username if seller else "玩家",
             "mine": order.user_id == user.id,
             "created_at": order.created_at,
+            "season": order.season or "",
+            "season_name": _season_display_name(_brick_season_key(order.season)),
         }
         if entry["mine"]:
             my_sell.append(entry)
@@ -3115,6 +3437,8 @@ def brick_order_book(user: User = Depends(user_from_token), db: Session = Depend
         if getattr(user, "is_admin", False):
             player_buy_view.append(entry)
     histogram = build_brick_histogram(layers, [row[0] for row in player_rows])
+    for layer in layers:
+        layer["season_name"] = _season_display_name(layer.get("season") or BRICK_SEASON_FALLBACK)
     return {
         "official_price": cfg.brick_price,
         "official_layers": layers,
@@ -3137,6 +3461,10 @@ def brick_sell(inp: BrickSellIn, user: User = Depends(user_from_token), db: Sess
     sellable = int(user.unopened_bricks or 0) - int(user.gift_unopened_bricks or 0)
     if sellable < qty:
         raise HTTPException(400, "可售砖数量不足，赠送砖不可出售")
+    season_key = _normalize_season(inp.season)
+    if not season_key:
+        raise HTTPException(400, "请选择要出售的赛季")
+    reserve_user_bricks(db, user, season_key, qty)
     order = BrickSellOrder(
         user_id=user.id,
         price=price,
@@ -3144,8 +3472,8 @@ def brick_sell(inp: BrickSellIn, user: User = Depends(user_from_token), db: Sess
         remaining=qty,
         source="player",
         active=True,
+        season=season_key,
     )
-    user.unopened_bricks -= qty
     db.add(order)
     db.commit()
     cfg = db.query(PoolConfig).first()
@@ -3162,7 +3490,7 @@ def brick_sell_cancel(order_id: int = Path(..., ge=1), user: User = Depends(user
     order = db.query(BrickSellOrder).filter_by(id=order_id, user_id=user.id, active=True).first()
     if not order:
         raise HTTPException(404, "挂单不存在或已成交/取消")
-    user.unopened_bricks += order.remaining
+    release_reserved_bricks(db, user, order.season or None, order.remaining)
     order.active = False
     order.remaining = 0
     db.commit()
