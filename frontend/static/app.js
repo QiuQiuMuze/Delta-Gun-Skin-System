@@ -137,6 +137,7 @@ const Pages = {
   wallet: WalletPage,
   shop: ShopPage,
   gacha: GachaPage,
+  cookie: CookieFactoryPage,
   inventory: InventoryPage,
   craft: CraftPage,
   market: MarketPage,
