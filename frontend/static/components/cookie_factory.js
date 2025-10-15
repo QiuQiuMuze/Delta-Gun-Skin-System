@@ -66,9 +66,14 @@ const CookieFactoryPage = {
     }
     return "新鲜出炉的饼干飘香四溢，点击和投资都能带来好运气。";
   },
-  challengeMessage(profile) {
-    const clicks = Number(profile?.manual_clicks || 0);
-    return `再点 ${this.formatInt(120)} 下大饼干（已累计 ${this.formatInt(clicks)} 下），即可解锁额外活跃积分。`;
+  challengeMessage(profile, challenge) {
+    const target = Number(challenge?.target || 120);
+    const today = Number(challenge?.today ?? profile?.manual_clicks ?? 0);
+    const remaining = Math.max(0, target - today);
+    if (challenge?.completed) {
+      return `今日挑战完成！已累计点击 ${this.formatInt(today)} 下，额外活跃积分正在路上。`;
+    }
+    return `今日挑战：已点击 ${this.formatInt(today)} / ${this.formatInt(target)} 下，还差 ${this.formatInt(remaining)} 下就能拿到奖励。`;
   },
   vibeMessage(profile) {
     const cps = Number(profile?.effective_cps || profile?.cps || 0);
@@ -83,10 +88,10 @@ const CookieFactoryPage = {
     }
     return "轰鸣的时光机让饼干像瀑布一样涌出，别忘了顺手收糖块。";
   },
-  funCards(profile) {
+  funCards(profile, challenge) {
     const cards = [
       { icon: "🥠", title: "幸运签", text: this.fortuneMessage(profile) },
-      { icon: "🎯", title: "今日挑战", text: this.challengeMessage(profile) },
+      { icon: "🎯", title: "今日挑战", text: this.challengeMessage(profile, challenge) },
       { icon: "🎵", title: "工厂节奏", text: this.vibeMessage(profile) },
     ];
     const extra = this.randomFunFact();
@@ -186,7 +191,7 @@ const CookieFactoryPage = {
     if (streakEl) streakEl.textContent = `🔥 连击 ${fmtInt(weekly.streak_bonus || 0)}`;
     const funWrap = document.getElementById("cookie-fun");
     if (funWrap) {
-      funWrap.innerHTML = this.funCards(profile);
+      funWrap.innerHTML = this.funCards(profile, this._data?.challenge);
     }
   },
   clearError() {
@@ -261,6 +266,8 @@ const CookieFactoryPage = {
     const loginResult = this._data.login_result;
     const bankedCookies = Number(profile.cookies || 0);
     const totalCookies = Number(profile.total_cookies || 0);
+    const sugarLumps = Number(profile.sugar_lumps || 0);
+    const challenge = this._data.challenge || {};
     const fmt = (num) => this.formatNumber(num);
     const fmtInt = (num) => this.formatInt(num);
     const buildingMap = {};
@@ -268,44 +275,45 @@ const CookieFactoryPage = {
     const miniMap = {};
     miniGames.forEach(item => { miniMap[item.key] = item; });
 
-    const notice = (() => {
-      if (actionResult) {
-        if (actionResult.building) {
-          const building = buildingMap[actionResult.building];
-          const name = building ? building.name : actionResult.building;
-          return `🏗️ 成功建造 ${escapeHtml(name)}，累计 ${fmtInt(actionResult.count)} 座`;
-        }
-        if (actionResult.bonus != null) {
-          return `✨ 黄金饼干爆发，额外产出 ${fmt(actionResult.bonus)} 饼干`;
-        }
-        if (actionResult.leveled) {
-          const mini = miniMap[actionResult.mini];
-          const name = mini ? mini.name : actionResult.mini;
-          return `🎮 ${escapeHtml(name)} 等级提升至 ${fmtInt(actionResult.level)} 级！`;
-        }
-        if (actionResult.points_gained) {
-          return `🌟 升天成功，获得 ${fmtInt(actionResult.points_gained)} 声望点`;
-        }
-        if (actionResult.sugar_lumps != null) {
-          return `🍭 收获糖块，总数 ${fmtInt(actionResult.sugar_lumps)}`;
-        }
-        if (actionResult.gained != null) {
-          return `🍪 手动点击收获 ${fmt(actionResult.gained)} 饼干`;
-        }
-      }
-      if (loginResult && loginResult.added) {
-        return `📬 今日签到成功，获得 ${fmtInt(loginResult.daily_reward)} 砖收益额度`;
-      }
-      return "";
-    })();
-
     const notices = [];
     if (this._lastError) {
       notices.push(`<div class="cookie-alert cookie-alert--error">⚠️ ${escapeHtml(this._lastError)}</div>`);
     }
-    if (notice) {
-      notices.push(`<div class="cookie-alert cookie-alert--info">${notice}</div>`);
+    const infoMessages = [];
+    if (actionResult) {
+      if (actionResult.building) {
+        const building = buildingMap[actionResult.building];
+        const name = building ? building.name : actionResult.building;
+        infoMessages.push(`🏗️ 成功建造 ${escapeHtml(name)}，累计 ${fmtInt(actionResult.count)} 座`);
+      } else if (actionResult.bonus != null) {
+        infoMessages.push(`✨ 黄金饼干爆发，额外产出 ${fmt(actionResult.bonus)} 饼干`);
+      } else if (actionResult.leveled) {
+        const mini = miniMap[actionResult.mini];
+        const name = mini ? mini.name : actionResult.mini;
+        infoMessages.push(`🎮 ${escapeHtml(name)} 等级提升至 ${fmtInt(actionResult.level)} 级！`);
+      } else if (actionResult.points_gained) {
+        infoMessages.push(`🌟 升天成功，获得 ${fmtInt(actionResult.points_gained)} 声望点`);
+      } else if (actionResult.sugar_lumps != null && actionResult.mini == null) {
+        infoMessages.push(`🍭 收获糖块，总数 ${fmtInt(actionResult.sugar_lumps)}`);
+      } else if (actionResult.gained != null) {
+        infoMessages.push(`🍪 手动点击收获 ${fmt(actionResult.gained)} 饼干`);
+      }
+      if (actionResult.challenge_completed) {
+        infoMessages.push(`🎯 今日挑战完成！奖励已锁定，继续点击可冲更高产量。`);
+      } else if (actionResult.challenge_today != null) {
+        const remaining = Math.max(0, Number(challenge.target || 120) - Number(actionResult.challenge_today || 0));
+        infoMessages.push(`🎯 今日挑战进度 ${fmtInt(actionResult.challenge_today)} / ${fmtInt(challenge.target || 120)}，还差 ${fmtInt(remaining)} 下。`);
+      }
+      if (actionResult.sugar_lumps != null && actionResult.mini) {
+        infoMessages.push(`🍭 剩余糖块 ${fmtInt(actionResult.sugar_lumps)}，合理安排小游戏升级。`);
+      }
     }
+    if (loginResult && loginResult.message) {
+      infoMessages.push(`📬 ${escapeHtml(loginResult.message)}${loginResult.daily_reward ? `，奖励额度 +${fmtInt(loginResult.daily_reward)}` : ""}`);
+    }
+    infoMessages.forEach(msg => {
+      notices.push(`<div class="cookie-alert cookie-alert--info">${msg}</div>`);
+    });
     const noticeStack = notices.length ? `<div class="cookie-notice-stack">${notices.join("")}</div>` : "";
 
     const renderBuildings = () => {
@@ -317,6 +325,7 @@ const CookieFactoryPage = {
         const shortage = Math.max(0, item.next_cost - bankedCookies);
         const cardTitle = item.desc || `投入 ${fmtInt(item.next_cost)} 饼干即可增加 ${item.base_cps} / 秒产量`;
         const buttonTitle = canAfford ? "立即建造，提升自动产能" : `还需 ${fmt(shortage)} 饼干才能购入`;
+        const buttonClass = `btn btn-mini${canAfford ? "" : " is-disabled"}`;
         return `
           <div class="cookie-building" title="${escapeHtml(cardTitle)}">
             <div class="cookie-building__icon">${escapeHtml(item.icon || "🏠")}</div>
@@ -325,7 +334,7 @@ const CookieFactoryPage = {
               <div class="cookie-building__desc">${escapeHtml(item.desc || "")}</div>
               <div class="cookie-building__meta" title="基础产能 ${item.base_cps} / 秒">基础 ${item.base_cps} / 秒 · 下一级花费 ${fmtInt(item.next_cost)} 🍪</div>
             </div>
-            <button class="btn btn-mini" data-build="${item.key}" ${canAfford ? "" : "disabled"} title="${escapeHtml(buttonTitle)}">购入</button>
+            <button class="${buttonClass}" data-build="${item.key}" data-can="${canAfford ? "1" : "0"}" data-cost="${item.next_cost}" aria-disabled="${canAfford ? "false" : "true"}" title="${escapeHtml(buttonTitle)}">购入</button>
           </div>`;
       }).join("");
     };
@@ -336,19 +345,25 @@ const CookieFactoryPage = {
         const progress = Number(item.progress || 0);
         const threshold = Math.max(1, Number(item.threshold || 1));
         const pct = Math.min(100, Math.round(progress / threshold * 100));
-        const progressTip = `推进 ${fmtInt(progress)} / ${fmtInt(threshold)} 次即可升级`; 
+        const progressTip = `推进 ${fmtInt(progress)} / ${fmtInt(threshold)} 次即可升级`;
+        const sugarCost = Number(item.sugar_cost || 0);
+        const hasSugar = sugarCost <= 0 || sugarLumps >= sugarCost;
+        const sugarHint = sugarCost > 0 ? `（每次消耗 ${sugarCost} 🍭，当前剩余 ${fmtInt(sugarLumps)}）` : "";
+        const miniTitle = item.desc ? `${item.desc}${sugarHint}` : `${progressTip}${sugarHint}`;
+        const buttonClass = `btn btn-mini${hasSugar ? "" : " is-disabled"}`;
+        const buttonTitle = hasSugar ? `投入${sugarCost > 0 ? ` ${sugarCost} 颗糖块` : ""}推进小游戏进度` : `至少需要 ${fmtInt(sugarCost)} 颗糖块（当前 ${fmtInt(sugarLumps)}）`;
         return `
-          <div class="cookie-mini" title="${escapeHtml(item.desc || progressTip)}">
+          <div class="cookie-mini" title="${escapeHtml(miniTitle)}">
             <div class="cookie-mini__icon">${escapeHtml(item.icon || "🎯")}</div>
             <div class="cookie-mini__body">
               <div class="cookie-mini__head">${escapeHtml(item.name)} · 等级 ${fmtInt(item.level || 0)}</div>
-              <div class="cookie-mini__desc">${escapeHtml(item.desc || "推进小游戏可获得活跃积分和产量加成。")}</div>
+              <div class="cookie-mini__desc">${escapeHtml((item.desc || "推进小游戏可获得活跃积分和产量加成。") + sugarHint)}</div>
               <div class="cookie-mini__progress">
                 <div class="progress-bar" title="${escapeHtml(progressTip)}"><div class="progress-bar__fill" style="width:${pct}%"></div></div>
                 <div class="cookie-mini__progress-label">${escapeHtml(progressTip)}</div>
               </div>
             </div>
-            <button class="btn btn-mini" data-mini="${item.key}" title="${escapeHtml("推动小游戏进度并赚取活跃积分")}">开展</button>
+            <button class="${buttonClass}" data-mini="${item.key}" data-sugar="${sugarCost}" aria-disabled="${hasSugar ? "false" : "true"}" title="${escapeHtml(buttonTitle)}">开展</button>
           </div>`;
       }).join("");
     };
@@ -384,13 +399,18 @@ const CookieFactoryPage = {
         </div>
       </div>`;
 
-    const goldenTitle = golden.available ? "黄金饼干出现啦！点击触发爆发收益。" : `黄金饼干尚需 ${Math.max(1, Math.ceil((golden.ready_in || 0) / 60))} 分钟冷却。`;
-    const sugarTitle = sugar.available ? "收获一块糖块，用于升级或小游戏。" : `糖块成熟还需 ${Math.max(1, Math.ceil((sugar.ready_in || 0) / 3600))} 小时。`;
-    const loginTitle = weekly.daily_login_claimed ? "今日签到奖励已领取" : "每日首次进入饼干工厂可获得 2 块砖的兑换额度。";
-    const prestigeTitle = totalCookies < 1_000_000 ? "至少需要 100 万枚饼干才能升天" : "升天可获得声望点并重置工厂，下一轮产量更高。";
+    const goldenCooldown = Math.max(0, Math.ceil((golden.ready_in || 0) / 60));
+    const sugarCooldown = Math.max(0, Math.ceil((sugar.ready_in || 0) / 3600));
+    const goldenTitle = golden.available ? "黄金饼干出现啦！点击触发爆发收益。" : `黄金饼干正在酝酿，还需约 ${goldenCooldown} 分钟。`;
+    const sugarTitle = sugar.available ? "收获一块糖块，用于升级建筑或小游戏。" : `糖块尚未成熟，大约 ${sugarCooldown} 小时后再来收获。`;
+    const loginTitle = weekly.daily_login_claimed ? `今日签到奖励已领取，连续 ${fmtInt(weekly.login_streak || 0)} 天` : "每日首次进入饼干工厂可获得 2 块砖兑换额度。";
+    const prestigeTitle = totalCookies < 1_000_000 ? "需要至少 100 万枚饼干才能升天，继续冲产量吧。" : "升天可获得声望点并重置工厂，下一轮产量更高。";
+    const goldenClass = `btn${golden.available ? "" : " is-disabled"}`;
+    const loginClass = weekly.daily_login_claimed ? "btn ghost" : "btn";
+    const sugarClass = `btn${sugar.available ? "" : " is-disabled"}`;
 
-    const hintBar = `<div class="cookie-hint">💡 小贴士：点击大饼干获取即时产量，建造自动化建筑能让饼干源源不断。黄金饼干和小游戏可提供突发加成！</div>`;
-    const funSection = `<div class="cookie-fun" id="cookie-fun">${this.funCards(profile)}</div>`;
+    const hintBar = `<div class="cookie-hint">💡 小贴士：点击大饼干获取即时产量，合理消耗糖块开展小游戏，黄金饼干冷却结束后别忘了触发爆发！</div>`;
+    const funSection = `<div class="cookie-fun" id="cookie-fun">${this.funCards(profile, challenge)}</div>`;
 
     return `
       ${noticeStack}
@@ -404,16 +424,16 @@ const CookieFactoryPage = {
         <div class="cookie-stats">
           <div class="stat-chip" title="基础每秒产量 / 套用加成后的有效产量">⚙️ 每秒 ${fmt(profile.cps)} / 有效 ${fmt(profile.effective_cps)}</div>
           <div class="stat-chip" title="升天次数越多，重置后产量越快">🌟 声望 ${fmtInt(profile.prestige || 0)} · 点数 ${fmtInt(profile.prestige_points || 0)}</div>
-          <div class="stat-chip" title="糖块可用于建筑升级或小游戏">🍭 糖块 ${fmtInt(profile.sugar_lumps || 0)}</div>
-          <div class="stat-chip" title="三角洲联动加成">📈 加成 ×${profile.bonus_multiplier?.toFixed(2) || "1.00"}</div>
+          <div class="stat-chip" title="糖块用于升级建筑和开展小游戏，留意冷却时间">🍭 糖块 ${fmtInt(profile.sugar_lumps || 0)}</div>
+          <div class="stat-chip" title="三角洲联动加成，每周消费砖可提高该倍数">📈 加成 ×${profile.bonus_multiplier?.toFixed(2) || "1.00"}</div>
         </div>
       </div>
       ${funSection}
       <div class="cookie-actions">
-        <button class="btn" id="cookie-golden" ${golden.available ? "" : "disabled"} title="${escapeHtml(goldenTitle)}">✨ 黄金饼干${golden.ready_in > 0 ? `（${Math.ceil(golden.ready_in / 60)} 分钟后）` : ""}</button>
-        <button class="btn" id="cookie-login" ${weekly.daily_login_claimed ? "disabled" : ""} title="${escapeHtml(loginTitle)}">📬 每日签到</button>
-        <button class="btn" id="cookie-sugar" ${sugar.available ? "" : "disabled"} title="${escapeHtml(sugarTitle)}">🍭 收获糖块${sugar.ready_in > 0 ? `（${Math.ceil(sugar.ready_in / 3600)} 小时后）` : ""}</button>
-        <button class="btn" id="cookie-prestige" ${totalCookies < 1_000_000 ? "disabled" : ""} title="${escapeHtml(prestigeTitle)}">🌟 升天重置</button>
+        <button class="${goldenClass}" id="cookie-golden" aria-disabled="${golden.available ? "false" : "true"}" title="${escapeHtml(goldenTitle)}">✨ 黄金饼干${golden.ready_in > 0 ? `（${Math.ceil(golden.ready_in / 60)} 分钟后）` : ""}</button>
+        <button class="${loginClass}" id="cookie-login" aria-disabled="false" title="${escapeHtml(loginTitle)}">📬 每日签到</button>
+        <button class="${sugarClass}" id="cookie-sugar" aria-disabled="${sugar.available ? "false" : "true"}" title="${escapeHtml(sugarTitle)}">🍭 收获糖块${sugar.ready_in > 0 ? `（${Math.ceil(sugar.ready_in / 3600)} 小时后）` : ""}</button>
+        <button class="btn${totalCookies < 1_000_000 ? " is-disabled" : ""}" id="cookie-prestige" ${totalCookies < 1_000_000 ? "disabled" : ""} title="${escapeHtml(prestigeTitle)}">🌟 升天重置</button>
       </div>
       <div class="cookie-section">
         <h3>🏭 建筑</h3>
@@ -438,7 +458,14 @@ const CookieFactoryPage = {
     }
     const goldenBtn = document.getElementById("cookie-golden");
     if (goldenBtn) {
-      goldenBtn.onclick = () => this.handleAction({ type: "golden" });
+      goldenBtn.onclick = () => {
+        if (!this._data?.golden?.available) {
+          const mins = Math.max(1, Math.ceil((this._data?.golden?.ready_in || 0) / 60));
+          this.showError(`黄金饼干还在酝酿，大约 ${mins} 分钟后再来试试。`);
+          return;
+        }
+        this.handleAction({ type: "golden" });
+      };
     }
     const loginBtn = document.getElementById("cookie-login");
     if (loginBtn) {
@@ -446,7 +473,14 @@ const CookieFactoryPage = {
     }
     const sugarBtn = document.getElementById("cookie-sugar");
     if (sugarBtn) {
-      sugarBtn.onclick = () => this.handleAction({ type: "sugar" });
+      sugarBtn.onclick = () => {
+        if (!this._data?.sugar?.available) {
+          const hours = Math.max(1, Math.ceil((this._data?.sugar?.ready_in || 0) / 3600));
+          this.showError(`糖块尚未成熟，还需约 ${hours} 小时。`);
+          return;
+        }
+        this.handleAction({ type: "sugar" });
+      };
     }
     const prestigeBtn = document.getElementById("cookie-prestige");
     if (prestigeBtn) {
@@ -455,12 +489,28 @@ const CookieFactoryPage = {
     root.querySelectorAll('[data-build]').forEach(btn => {
       btn.addEventListener('click', () => {
         const key = btn.getAttribute('data-build');
+        if (!key) return;
+        const can = btn.getAttribute('data-can') === '1';
+        const cost = Number(btn.getAttribute('data-cost') || '0');
+        const banked = Number(this._data?.profile?.cookies || 0);
+        if (!can && banked < cost) {
+          const shortage = Math.max(0, cost - banked);
+          this.showError(`饼干不足，还差 ${this.formatNumber(shortage)} 枚才能购入该建筑。`);
+          return;
+        }
         this.handleAction({ type: 'buy_building', building: key });
       });
     });
     root.querySelectorAll('[data-mini]').forEach(btn => {
       btn.addEventListener('click', () => {
         const key = btn.getAttribute('data-mini');
+        if (!key) return;
+        const sugarCost = Number(btn.getAttribute('data-sugar') || '0');
+        const sugarHave = Number(this._data?.profile?.sugar_lumps || 0);
+        if (sugarCost > 0 && sugarHave < sugarCost) {
+          this.showError(`糖块不足，需要 ${sugarCost} 颗糖块才能开展该小游戏。`);
+          return;
+        }
         this.handleAction({ type: 'mini', mini: key });
       });
     });

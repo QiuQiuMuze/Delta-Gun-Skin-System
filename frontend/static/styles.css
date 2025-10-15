@@ -13,6 +13,8 @@ main#page { padding:16px; max-width:1100px; margin:0 auto; }
 .input-row input, .input-row select { background:#0b0d12; border:1px solid #273041; color:#e6e9ef; padding:8px; border-radius:8px; min-width:180px; }
 .btn { background:#1b2433; border:1px solid #2a3951; color:#dce6f8; padding:8px 12px; border-radius:8px; cursor:pointer; }
 .btn:hover { background:#23324a; }
+.btn.is-disabled { opacity:0.55; cursor:not-allowed; }
+.btn.is-disabled:hover { background:#1b2433; }
 .btn.ghost { background:rgba(17,22,32,0.4); border:1px solid rgba(88,124,178,0.4); color:#9ecbff; }
 .btn.ghost:hover { background:rgba(27,38,54,0.7); }
 .choice-group { display:inline-flex; border:1px solid #273041; border-radius:10px; overflow:hidden; }

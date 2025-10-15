@@ -171,6 +171,7 @@ class CookieFactoryProfile(Base):
     login_days = Column(Text, default="{}")
     login_streak = Column(Integer, default=0)
     last_login_day = Column(String, default="")
+    challenge_clicks = Column(Text, default="{}")
     week_start_ts = Column(Integer, default=0)
     last_active_ts = Column(Integer, default=0)
     golden_ready_ts = Column(Integer, default=0)
@@ -247,10 +248,21 @@ def _ensure_user_gift_columns():
     con.commit()
     con.close()
 
+def _ensure_cookie_profile_columns():
+    con = sqlite3.connect(DB_PATH_FS)
+    cur = con.cursor()
+    cur.execute("PRAGMA table_info(cookie_factory_profiles)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "challenge_clicks" not in cols:
+        cur.execute("ALTER TABLE cookie_factory_profiles ADD COLUMN challenge_clicks TEXT DEFAULT '{}'")
+    con.commit()
+    con.close()
+
 Base.metadata.create_all(engine)
 _ensure_user_sessionver()
 _ensure_inventory_visual_columns()
 _ensure_user_gift_columns()
+_ensure_cookie_profile_columns()
 
 # ------------------ Pydantic ------------------
 RarityT = Literal["BRICK", "PURPLE", "BLUE", "GREEN"]
@@ -770,6 +782,7 @@ COOKIE_WEEKLY_CAP = 100
 COOKIE_DELTA_BONUS = 0.05
 COOKIE_DELTA_BONUS_CAP = 1.25
 COOKIE_SUGAR_COOLDOWN = 6 * 3600
+COOKIE_DAILY_CHALLENGE_TARGET = 120
 
 COOKIE_BUILDINGS = [
     {
@@ -835,7 +848,8 @@ COOKIE_MINI_GAMES = {
         "points": 6,
         "threshold": 4,
         "cps_bonus": 0.01,
-        "desc": "种植奇妙植物，偶尔触发灵感加成。",
+        "sugar_cost": 1,
+        "desc": "种植奇妙植物，消耗 1 颗糖块培育，偶尔触发灵感加成。",
     },
     "temple": {
         "name": "神殿",
@@ -843,7 +857,8 @@ COOKIE_MINI_GAMES = {
         "points": 5,
         "threshold": 5,
         "cps_bonus": 0.008,
-        "desc": "在神殿供奉饼干，祈求产量祝福。",
+        "sugar_cost": 1,
+        "desc": "在神殿供奉饼干，需要 1 颗糖块祈福，祈求产量祝福。",
     },
     "market": {
         "name": "证券市场",
@@ -851,7 +866,8 @@ COOKIE_MINI_GAMES = {
         "points": 4,
         "threshold": 6,
         "cps_bonus": 0.012,
-        "desc": "做一笔甜蜜交易，提升收益效率。",
+        "sugar_cost": 2,
+        "desc": "做一笔甜蜜交易，投入 2 颗糖块换取收益效率。",
     },
 }
 
@@ -1056,11 +1072,22 @@ def cookie_register_login(profile: CookieFactoryProfile, now: int) -> Dict[str, 
         days[day] = {"ts": cookie_day_start(now)}
         days = cookie_trim_map(days, keep=21)
         profile.login_days = _json_dump(days)
+    streak = int(profile.login_streak or 0)
+    if changed:
+        message = f"今日签到成功，连续登录 {streak} 天"
+    else:
+        if already:
+            message = f"今日已签到，当前连续 {streak} 天"
+        else:
+            message = "今日签到状态未变"
+    if penalty_triggered:
+        message += "（因断档触发效率下调）"
     return {
         "added": changed,
         "already": already,
-        "streak": int(profile.login_streak or 0),
+        "streak": streak,
         "penalty_triggered": penalty_triggered,
+        "message": message,
     }
 
 
@@ -1085,6 +1112,27 @@ def cookie_active_bricks(active_points: Dict[str, int]) -> int:
 
 def cookie_login_bricks(login_days: Dict[str, Any]) -> int:
     return len(login_days.keys()) * 2
+
+
+def cookie_challenge_map(profile: CookieFactoryProfile) -> Dict[str, int]:
+    return {k: int(v or 0) for k, v in _json_object(getattr(profile, "challenge_clicks", "{}"), {}).items()}
+
+
+def cookie_challenge_today(profile: CookieFactoryProfile, now: int) -> int:
+    day = cookie_day_key(now)
+    data = cookie_challenge_map(profile)
+    return int(data.get(day, 0) or 0)
+
+
+def cookie_challenge_increment(profile: CookieFactoryProfile, now: int, amount: int) -> int:
+    if amount <= 0:
+        return cookie_challenge_today(profile, now)
+    day = cookie_day_key(now)
+    data = cookie_challenge_map(profile)
+    data[day] = int(data.get(day, 0) or 0) + int(amount)
+    data = cookie_trim_map(data, keep=21)
+    profile.challenge_clicks = _json_dump(data)
+    return int(data.get(day, 0) or 0)
 
 
 def ensure_cookie_profile(db: Session, user: User, now: Optional[int] = None) -> CookieFactoryProfile:
@@ -1251,6 +1299,7 @@ def cookie_status_payload(
             "progress": int(node.get("progress", 0)),
             "threshold": int(cfg.get("threshold", 1)),
             "desc": cfg["desc"],
+            "sugar_cost": int(cfg.get("sugar_cost", 0)),
         })
     active_breakdown = [
         {"day": day, "points": int(val)} for day, val in sorted(active_points.items())
@@ -1258,8 +1307,13 @@ def cookie_status_payload(
     login_list = [
         {"day": day, "ts": info.get("ts", 0)} for day, info in sorted(login_days.items())
     ]
+    challenge_map = cookie_challenge_map(profile)
+    challenge_list = [
+        {"day": day, "clicks": int(val)} for day, val in sorted(challenge_map.items())
+    ]
     sugar_ready_in = max(0, (int(profile.last_sugar_ts or 0) + COOKIE_SUGAR_COOLDOWN) - now)
     golden_ready_in = max(0, int(profile.golden_ready_ts or 0) - now)
+    today_challenge = int(challenge_map.get(today, 0) or 0)
     return {
         "enabled": bool(feature_enabled),
         "now": now,
@@ -1295,6 +1349,13 @@ def cookie_status_payload(
             "login_days": login_list,
             "daily_login_claimed": daily_claimed,
             "login_streak": int(profile.login_streak or 0),
+        },
+        "challenge": {
+            "target": COOKIE_DAILY_CHALLENGE_TARGET,
+            "today": today_challenge,
+            "remaining": max(0, COOKIE_DAILY_CHALLENGE_TARGET - today_challenge),
+            "completed": today_challenge >= COOKIE_DAILY_CHALLENGE_TARGET,
+            "history": challenge_list,
         },
         "golden": {
             "available": golden_ready_in <= 0,
@@ -1932,7 +1993,13 @@ def cookie_factory_act(inp: CookieActIn, user: User = Depends(user_from_token), 
         cookie_add(profile, gained)
         profile.manual_clicks = int(profile.manual_clicks or 0) + amount
         cookie_add_active_points(profile, now, max(1, amount // 5))
-        result = {"gained": round(gained, 2), "clicks": amount}
+        today_clicks = cookie_challenge_increment(profile, now, amount)
+        result = {
+            "gained": round(gained, 2),
+            "clicks": amount,
+            "challenge_today": today_clicks,
+            "challenge_completed": today_clicks >= COOKIE_DAILY_CHALLENGE_TARGET,
+        }
     elif action == "buy_building":
         key = (inp.building or "").strip()
         if not key or key not in {cfg["key"] for cfg in COOKIE_BUILDINGS}:
@@ -1960,6 +2027,11 @@ def cookie_factory_act(inp: CookieActIn, user: User = Depends(user_from_token), 
             raise HTTPException(400, "未知小游戏")
         state = cookie_mini_games_state(profile)
         node = state.get(mini_key, {"level": 0, "progress": 0})
+        sugar_cost = int(COOKIE_MINI_GAMES[mini_key].get("sugar_cost", 0))
+        if sugar_cost > 0:
+            if int(profile.sugar_lumps or 0) < sugar_cost:
+                raise HTTPException(400, f"糖块不足，需要 {sugar_cost} 颗糖块才能开展 {COOKIE_MINI_GAMES[mini_key]['name']}")
+            profile.sugar_lumps = int(profile.sugar_lumps or 0) - sugar_cost
         node["progress"] = int(node.get("progress", 0)) + 1
         threshold = int(COOKIE_MINI_GAMES[mini_key].get("threshold", 1))
         leveled = False
@@ -1973,7 +2045,12 @@ def cookie_factory_act(inp: CookieActIn, user: User = Depends(user_from_token), 
         if leveled:
             current = float(profile.pending_bonus_multiplier or 1.0)
             profile.pending_bonus_multiplier = min(COOKIE_DELTA_BONUS_CAP, current + 0.01)
-        result = {"mini": mini_key, "level": int(node.get("level", 0)), "leveled": leveled}
+        result = {
+            "mini": mini_key,
+            "level": int(node.get("level", 0)),
+            "leveled": leveled,
+            "sugar_lumps": int(profile.sugar_lumps or 0),
+        }
     elif action == "prestige":
         requirement = 1_000_000
         if float(profile.total_cookies or 0.0) < requirement:
