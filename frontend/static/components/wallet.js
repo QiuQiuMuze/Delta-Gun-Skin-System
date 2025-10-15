@@ -56,7 +56,6 @@ const WalletPage = {
           </div>
         `).join("")}
       </div>
-      <div class="muted">只能按以上固定档位兑换。</div>
     </div>
     `;
   },

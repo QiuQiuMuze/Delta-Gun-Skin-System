@@ -34,7 +34,7 @@ const Notifier = {
 window.Notifier = Notifier;
 
 const Pages = {
-  home: { render: () => `<div class="card"><h2>欢迎</h2><p>这是三角洲砖皮模拟器的网站版，我终于给他弄出来啦，快夸我~</p></div>`, bind: ()=>{} },
+  home: { render: () => `<div class="card"><h2>欢迎</h2><p>这是三角洲砖皮模拟器的网站版。</p></div>`, bind: ()=>{} },
   auth: AuthPage,
   me: {
     async render() {

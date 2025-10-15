@@ -33,7 +33,7 @@ const ShopPage = {
         </div>
         <div class="shop-box">
           <h3>快速购砖</h3>
-          <div class="muted small">优先匹配玩家挂单，剩余由官方供给。</div>
+          <div class="muted small">优先匹配玩家挂单。</div>
           <div class="input-row">
             <input id="brick-count" type="number" min="1" placeholder="数量（≥1）"/>
             <button class="btn" id="buy-bricks">购买</button>

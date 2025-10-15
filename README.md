@@ -30,3 +30,34 @@ bash run.sh
 ```
 > 注意：首次运行会拉取依赖，可能需要联网环境。
 
+"""# 1️⃣ 查看当前提交历史（本地）
+git log --oneline
+
+# 2️⃣ 获取远程最新版本（不合并）
+git fetch origin
+
+# 3️⃣ 强制用远程 main 分支覆盖本地
+git reset --hard main
+
+# 4️⃣ （可选）回档到指定历史提交（把 <commit_id> 换成 git log 里的一行）
+git reset --hard <commit_id>
+
+# 5️⃣ 强制推送到远程，覆盖 GitHub 上的内容
+git push origin main --force
+
+# 1) 抓取远端所有更新并清理已删除的远端分支引用
+git fetch --all --prune
+
+# 2) 看看本地分支与远端的对应关系（带上游、落后/领先情况）
+git branch -vv
+
+# 3) 对比本地与远端（会看到 origin/Chinese-language 指向 e48ab11 之类的新提交）
+git log --oneline --decorate --graph -n 20 --all
+
+# 确保在 Chinese-language 分支
+git switch main
+
+# 注意：这会丢弃本地未提交改动，请先 commit 或 stash
+git reset --hard origin/main
+
+"""
