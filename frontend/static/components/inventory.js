@@ -103,7 +103,10 @@ const InventoryPage = {
       body: [], attachments: [], template, hidden_template, effects
     };
 
-    return { inv_id, name, rarity, wear, grade, serial, exquisite, template, hidden_template, effects, visual };
+    const locked = !!(x.sell_locked);
+    const lock_reason = x.lock_reason || "";
+
+    return { inv_id, name, rarity, wear, grade, serial, exquisite, template, hidden_template, effects, visual, locked, lock_reason };
   },
 
   _renderGroups(g) {
@@ -119,9 +122,10 @@ const InventoryPage = {
           ? (x.exquisite ? `<span class="badge badge-exq">极品</span>` : `<span class="badge badge-prem">优品</span>`)
           : "-";
         const btn = `<button class="btn btn-mini" data-preview="${x.inv_id}">查看</button>`;
+        const lockInfo = x.locked ? `<span class="badge badge-lock" title="${escapeHtml(x.lock_reason || "暂不可交易")}">锁定</span>` : "";
         return `<tr>
           <td>${x.inv_id}</td>
-          <td class="${rc}">${x.name}</td>
+          <td class="${rc}">${x.name}${lockInfo}</td>
           <td class="${rc}">${x.rarity}</td>
           <td>${ex}</td>
           <td>${x.wear}</td>
