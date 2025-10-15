@@ -5,6 +5,7 @@ const CookieFactoryPage = {
   _tickState: null,
   _lastError: null,
   _errorTimer: null,
+  _guideKey: "click",
   funFacts: [
     { icon: "🥠", title: "幸运签", text: "今天的烤炉特别顺手，别忘了摸摸黄金饼干。" },
     { icon: "🚀", title: "增产计划", text: "科技加持！升级工厂可以显著提升每秒产量。" },
@@ -159,7 +160,9 @@ const CookieFactoryPage = {
     const weekly = this._data.weekly || {};
     weekly.base_bricks = this.calculateBaseBricks(profile.cookies_this_week);
     weekly.projected_bricks = this.calculateProjectedBricks(weekly);
-    weekly.cap_remaining = Math.max(0, (Number(weekly.cap || 0) || 0) - weekly.projected_bricks);
+    const claimed = Number(weekly.claimed_bricks || 0);
+    weekly.cap_remaining = Math.max(0, (Number(weekly.cap || 0) || 0) - (weekly.projected_bricks || 0));
+    weekly.claimable_bricks = Math.max(0, (weekly.projected_bricks || 0) - Math.max(0, claimed));
     this.updateTickerUI();
   },
   updateTickerUI() {
@@ -189,6 +192,26 @@ const CookieFactoryPage = {
     if (loginEl) loginEl.textContent = `📬 签到 ${fmtInt(weekly.login_bricks || 0)}`;
     const streakEl = document.getElementById("cookie-weekly-streak");
     if (streakEl) streakEl.textContent = `🔥 连击 ${fmtInt(weekly.streak_bonus || 0)}`;
+    const claimedEl = document.getElementById("cookie-weekly-claimed");
+    if (claimedEl) claimedEl.textContent = `📦 已领取 ${fmtInt(weekly.claimed_bricks || 0)} 块`;
+    const claimableHint = document.getElementById("cookie-weekly-claimable");
+    if (claimableHint) {
+      if (Number(weekly.claimable_bricks || 0) > 0) {
+        claimableHint.textContent = `可领取 ${fmtInt(weekly.claimable_bricks)} 块，立即转入背包。`;
+      } else {
+        claimableHint.textContent = `暂无可领取砖，继续点击、建造或签到来累积奖励。`;
+      }
+    }
+    const claimBtn = document.getElementById("cookie-claim");
+    if (claimBtn) {
+      const claimable = Math.max(0, Number(weekly.claimable_bricks || 0));
+      claimBtn.setAttribute("data-claimable", String(claimable));
+      claimBtn.setAttribute("aria-disabled", claimable > 0 ? "false" : "true");
+      claimBtn.innerHTML = claimable > 0
+        ? `📦 领取 ${fmtInt(claimable)} 块砖`
+        : "📦 暂无可领取";
+      claimBtn.classList.toggle("is-disabled", claimable <= 0);
+    }
     const funWrap = document.getElementById("cookie-fun");
     if (funWrap) {
       funWrap.innerHTML = this.funCards(profile, this._data?.challenge);
@@ -274,6 +297,17 @@ const CookieFactoryPage = {
     buildings.forEach(item => { buildingMap[item.key] = item; });
     const miniMap = {};
     miniGames.forEach(item => { miniMap[item.key] = item; });
+    const claimable = Math.max(0, Number(weekly.claimable_bricks || 0));
+    const claimed = Math.max(0, Number(weekly.claimed_bricks || 0));
+    const capRemaining = Math.max(0, Number(weekly.cap_remaining || 0));
+    const claimBtnDisabled = claimable <= 0;
+    const claimBtnClass = `btn btn-claim${claimBtnDisabled ? " is-disabled" : ""}`;
+    const claimBtnTitle = claimBtnDisabled
+      ? "暂无可领取砖，继续产出或活跃即可累积奖励。"
+      : `领取后将立即把 ${fmtInt(claimable)} 块砖放入背包。`;
+    const claimableText = claimable > 0
+      ? `可领取 ${fmtInt(claimable)} 块，立即转入背包。`
+      : "暂无可领取砖，继续点击、建造或签到来累积奖励。";
 
     const notices = [];
     if (this._lastError) {
@@ -281,7 +315,9 @@ const CookieFactoryPage = {
     }
     const infoMessages = [];
     if (actionResult) {
-      if (actionResult.building) {
+      if (actionResult.claimed != null) {
+        infoMessages.push(`📦 成功领取 ${fmtInt(actionResult.claimed)} 块砖，背包未开砖共 ${fmtInt(actionResult.inventory_total || 0)} 块`);
+      } else if (actionResult.building) {
         const building = buildingMap[actionResult.building];
         const name = building ? building.name : actionResult.building;
         infoMessages.push(`🏗️ 成功建造 ${escapeHtml(name)}，累计 ${fmtInt(actionResult.count)} 座`);
@@ -349,7 +385,11 @@ const CookieFactoryPage = {
         const sugarCost = Number(item.sugar_cost || 0);
         const hasSugar = sugarCost <= 0 || sugarLumps >= sugarCost;
         const sugarHint = sugarCost > 0 ? `（每次消耗 ${sugarCost} 🍭，当前剩余 ${fmtInt(sugarLumps)}）` : "";
-        const miniTitle = item.desc ? `${item.desc}${sugarHint}` : `${progressTip}${sugarHint}`;
+        const points = Number(item.points || 0);
+        const cpPercentRaw = Number(item.cps_bonus || 0) * 100;
+        const cpPercent = cpPercentRaw >= 1 ? cpPercentRaw.toFixed(1) : cpPercentRaw.toFixed(2);
+        const baseDesc = item.desc || "推进小游戏可获得活跃积分和产量加成。";
+        const miniTitle = `${baseDesc}；每次开展 +${fmtInt(points)} 活跃积分；累计 ${fmtInt(threshold)} 次升级；升级后产能约 +${cpPercent}%${sugarHint}`;
         const buttonClass = `btn btn-mini${hasSugar ? "" : " is-disabled"}`;
         const buttonTitle = hasSugar ? `投入${sugarCost > 0 ? ` ${sugarCost} 颗糖块` : ""}推进小游戏进度` : `至少需要 ${fmtInt(sugarCost)} 颗糖块（当前 ${fmtInt(sugarLumps)}）`;
         return `
@@ -357,7 +397,8 @@ const CookieFactoryPage = {
             <div class="cookie-mini__icon">${escapeHtml(item.icon || "🎯")}</div>
             <div class="cookie-mini__body">
               <div class="cookie-mini__head">${escapeHtml(item.name)} · 等级 ${fmtInt(item.level || 0)}</div>
-              <div class="cookie-mini__desc">${escapeHtml((item.desc || "推进小游戏可获得活跃积分和产量加成。") + sugarHint)}</div>
+              <div class="cookie-mini__desc">${escapeHtml(baseDesc)}${escapeHtml(sugarHint)}</div>
+              <div class="cookie-mini__stats"><span>⚡ +${fmtInt(points)} 活跃</span><span>⬆️ ${fmtInt(threshold)} 次升级</span><span>📈 +${cpPercent}% 产能</span></div>
               <div class="cookie-mini__progress">
                 <div class="progress-bar" title="${escapeHtml(progressTip)}"><div class="progress-bar__fill" style="width:${pct}%"></div></div>
                 <div class="cookie-mini__progress-label">${escapeHtml(progressTip)}</div>
@@ -384,9 +425,9 @@ const CookieFactoryPage = {
 
     const weeklyTable = `
       <div class="cookie-weekly">
-        <div class="progress-card" title="产量、活跃和签到将在周末自动换成砖">
+        <div class="progress-card" title="产量、活跃与签到奖励随时可通过下方按钮领取成砖">
           <div class="progress-card__head" id="cookie-weekly-head">🎯 本周预计 ${fmtInt(weekly.projected_bricks || 0)} / ${fmtInt(weekly.cap || 100)} 块砖</div>
-          <div class="progress-bar big" title="进度条显示本周距离上限的完成度">
+          <div class="progress-bar big" title="进度条显示当前距离每周上限的完成度">
             <div class="progress-bar__fill" id="cookie-weekly-progress" style="width:${projectedPct}%"></div>
           </div>
           <div class="cookie-breakdown">
@@ -395,7 +436,14 @@ const CookieFactoryPage = {
             <span id="cookie-weekly-login" title="每日登录的额外奖励">📬 签到 ${fmtInt(weekly.login_bricks || 0)}</span>
             <span id="cookie-weekly-streak" title="连续登录 7 天的连击奖励">🔥 连击 ${fmtInt(weekly.streak_bonus || 0)}</span>
           </div>
-          <div class="muted small">今日签到：${weekly.daily_login_claimed ? "✅ 已完成" : "⌛ 待签到"} · 连续登录 ${fmtInt(weekly.login_streak || 0)} 天</div>
+          <div class="cookie-claim">
+            <div class="cookie-claim__info">
+              <div id="cookie-weekly-claimed">📦 已领取 ${fmtInt(claimed)} 块</div>
+              <div id="cookie-weekly-claimable" class="cookie-claim__hint">${escapeHtml(claimableText)}</div>
+            </div>
+            <button type="button" class="${claimBtnClass}" id="cookie-claim" data-claimable="${claimable}" aria-disabled="${claimBtnDisabled ? "true" : "false"}" title="${escapeHtml(claimBtnTitle)}">📦 ${claimBtnDisabled ? "暂无可领取" : `领取 ${fmtInt(claimable)} 块砖`}</button>
+          </div>
+          <div class="muted small">今日签到：${weekly.daily_login_claimed ? "✅ 已完成" : "⌛ 待签到"} · 连续登录 ${fmtInt(weekly.login_streak || 0)} 天 · 本周剩余额度 ${fmtInt(capRemaining)} 块</div>
         </div>
       </div>`;
 
@@ -404,13 +452,85 @@ const CookieFactoryPage = {
     const goldenTitle = golden.available ? "黄金饼干出现啦！点击触发爆发收益。" : `黄金饼干正在酝酿，还需约 ${goldenCooldown} 分钟。`;
     const sugarTitle = sugar.available ? "收获一块糖块，用于升级建筑或小游戏。" : `糖块尚未成熟，大约 ${sugarCooldown} 小时后再来收获。`;
     const loginTitle = weekly.daily_login_claimed ? `今日签到奖励已领取，连续 ${fmtInt(weekly.login_streak || 0)} 天` : "每日首次进入饼干工厂可获得 2 块砖兑换额度。";
-    const prestigeTitle = totalCookies < 1_000_000 ? "需要至少 100 万枚饼干才能升天，继续冲产量吧。" : "升天可获得声望点并重置工厂，下一轮产量更高。";
+    const prestigeTitle = totalCookies < 1_000_000
+      ? "需要至少 100 万枚饼干才能升天。升天后将重置饼干、建筑和小游戏进度，请继续冲刺产量。"
+      : "升天会重置饼干、建筑与小游戏，但能获得声望点并提升下一轮的产量加成。";
     const goldenClass = `btn${golden.available ? "" : " is-disabled"}`;
     const loginClass = weekly.daily_login_claimed ? "btn ghost" : "btn";
     const sugarClass = `btn${sugar.available ? "" : " is-disabled"}`;
 
     const hintBar = `<div class="cookie-hint">💡 小贴士：点击大饼干获取即时产量，合理消耗糖块开展小游戏，黄金饼干冷却结束后别忘了触发爆发！</div>`;
     const funSection = `<div class="cookie-fun" id="cookie-fun">${this.funCards(profile, challenge)}</div>`;
+    const challengeTarget = Number(challenge.target || 120);
+    const todayClicks = Number(challenge.today ?? profile.manual_clicks ?? 0);
+    const challengeRemain = Math.max(0, challengeTarget - todayClicks);
+    const totalBuildings = buildings.reduce((sum, item) => sum + Number(item.count || 0), 0);
+    const miniLines = miniGames.length
+      ? miniGames.map(item => {
+          const cpPercent = Number(item.cps_bonus || 0) * 100;
+          const cpText = cpPercent >= 1 ? cpPercent.toFixed(1) : cpPercent.toFixed(2);
+          return `${item.icon || "🎮"} ${item.name}：每次开展 +${fmtInt(item.points || 0)} 活跃，${fmtInt(item.threshold || 0)} 次升级，产能 +${cpText}%`;
+        })
+      : ["解锁更多建筑后将出现小游戏，带来活跃积分与产量加成。"];
+    const bonusMultiplier = Number(profile.bonus_multiplier || 1);
+    const bonusPercentRaw = (bonusMultiplier - 1) * 100;
+    const bonusPercent = bonusPercentRaw > 0 ? bonusPercentRaw.toFixed(1) : "0";
+    const prestigeRequirement = 1_000_000;
+    const prestigeShortfall = Math.max(0, prestigeRequirement - totalCookies);
+    const prestigeLines = [
+      `当前声望 ${fmtInt(profile.prestige || 0)} 次，声望点 ${fmtInt(profile.prestige_points || 0)}`,
+      prestigeShortfall > 0
+        ? `还需 ${fmt(prestigeShortfall)} 枚饼干即可升天`
+        : "已满足升天条件，点击可立刻获得声望点",
+      `升天会重置饼干、建筑与小游戏，并额外提升联动加成（当前 +${bonusPercent}%）`,
+    ];
+    const guideEntries = [
+      {
+        key: "click",
+        icon: "👆",
+        title: "点击饼干",
+        lines: [
+          `今日已点击 ${fmtInt(todayClicks)} 次，距离挑战还差 ${fmtInt(challengeRemain)} 次`,
+          `实时有效产量约 ${fmt(profile.effective_cps || 0)} 饼干/秒，可随点击即时累积`,
+          "黄金饼干与小游戏也能提供活跃积分，助力获取砖",
+        ],
+      },
+      {
+        key: "build",
+        icon: "🏭",
+        title: "建筑产线",
+        lines: [
+          `已建造 ${fmtInt(totalBuildings)} 座建筑，基础产能 ${fmt(profile.cps || 0)} / 秒`,
+          `有效产能（含加成）约 ${fmt(profile.effective_cps || 0)} / 秒，自动生产不停歇`,
+          "购入建筑会增加活跃积分并提高点击收益",
+        ],
+      },
+      {
+        key: "mini",
+        icon: "🎮",
+        title: "小游戏",
+        lines: miniLines,
+      },
+      {
+        key: "prestige",
+        icon: "🌟",
+        title: "声望升天",
+        lines: prestigeLines,
+      },
+    ];
+    if (!guideEntries.some(entry => entry.key === this._guideKey)) {
+      this._guideKey = guideEntries[0].key;
+    }
+    const activeGuide = guideEntries.find(entry => entry.key === this._guideKey) || guideEntries[0];
+    const guideTabs = guideEntries.map(entry => `
+      <button type="button" class="cookie-guide__tab${entry.key === activeGuide.key ? " is-active" : ""}" data-guide="${entry.key}">
+        ${escapeHtml(entry.icon)} <span>${escapeHtml(entry.title)}</span>
+      </button>
+    `).join("");
+    const guideDetail = activeGuide
+      ? `<ul class="cookie-guide__list">${activeGuide.lines.map(line => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`
+      : '<div class="muted small">暂无提示</div>';
+    const guideSection = `<div class="cookie-guide"><div class="cookie-guide__tabs">${guideTabs}</div><div class="cookie-guide__detail">${guideDetail}</div></div>`;
 
     return `
       ${noticeStack}
@@ -428,6 +548,7 @@ const CookieFactoryPage = {
           <div class="stat-chip" title="三角洲联动加成，每周消费砖可提高该倍数">📈 加成 ×${profile.bonus_multiplier?.toFixed(2) || "1.00"}</div>
         </div>
       </div>
+      ${guideSection}
       ${funSection}
       <div class="cookie-actions">
         <button class="${goldenClass}" id="cookie-golden" aria-disabled="${golden.available ? "false" : "true"}" title="${escapeHtml(goldenTitle)}">✨ 黄金饼干${golden.ready_in > 0 ? `（${Math.ceil(golden.ready_in / 60)} 分钟后）` : ""}</button>
@@ -512,6 +633,26 @@ const CookieFactoryPage = {
           return;
         }
         this.handleAction({ type: 'mini', mini: key });
+      });
+    });
+    const claimBtn = document.getElementById('cookie-claim');
+    if (claimBtn) {
+      claimBtn.addEventListener('click', () => {
+        const claimableAmount = Number(claimBtn.getAttribute('data-claimable') || '0');
+        if (claimableAmount <= 0) {
+          this.showError('暂无可领取的砖奖励，继续生产或签到即可累积。');
+          return;
+        }
+        this.handleAction({ type: 'claim' });
+      });
+    }
+    root.querySelectorAll('[data-guide]').forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        const key = btn.getAttribute('data-guide');
+        if (!key || key === this._guideKey) return;
+        this._guideKey = key;
+        this.updateView();
       });
     });
   },
