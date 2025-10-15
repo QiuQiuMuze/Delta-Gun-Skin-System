@@ -154,6 +154,20 @@ class BrickBuyOrder(Base):
     active = Column(Boolean, default=True)
     created_at = Column(Integer, default=lambda: int(time.time()))
 
+
+class TradeLog(Base):
+    __tablename__ = "trade_logs"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    category = Column(String, nullable=False)  # brick / skin
+    action = Column(String, nullable=False)    # buy / sell
+    item_name = Column(String, nullable=False)
+    quantity = Column(Integer, nullable=False, default=1)
+    unit_price = Column(Integer, nullable=False, default=0)
+    total_amount = Column(Integer, nullable=False, default=0)
+    net_amount = Column(Integer, nullable=False, default=0)
+    created_at = Column(Integer, default=lambda: int(time.time()))
+
 def _ensure_user_sessionver():
     con = sqlite3.connect(DB_PATH_FS)
     cur = con.cursor()
@@ -803,6 +817,33 @@ def build_brick_histogram(layers: List[Dict[str, Any]], player_orders: List[Bric
         cur = upper
     return buckets
 
+
+def record_trade(
+    db: Session,
+    user_id: int,
+    category: Literal["brick", "skin"],
+    action: Literal["buy", "sell"],
+    item_name: str,
+    quantity: int,
+    unit_price: int,
+    total_amount: int,
+    net_amount: int = 0,
+) -> None:
+    qty = int(quantity or 0)
+    if qty <= 0 or not user_id:
+        return
+    log = TradeLog(
+        user_id=user_id,
+        category=category,
+        action=action,
+        item_name=item_name,
+        quantity=qty,
+        unit_price=int(unit_price or 0),
+        total_amount=int(total_amount or 0),
+        net_amount=int(net_amount or 0),
+    )
+    db.add(log)
+
 def brick_purchase_plan(
     db: Session,
     cfg: PoolConfig,
@@ -898,6 +939,17 @@ def process_brick_buy_orders(db: Session, cfg: PoolConfig) -> List[Dict[str, Any
                     gross = item["price"] * item["quantity"]
                     net = (gross * 95) // 100
                     seller.coins += net
+                    record_trade(
+                        db,
+                        seller.id,
+                        "brick",
+                        "sell",
+                        "未开砖",
+                        item["quantity"],
+                        item["price"],
+                        gross,
+                        net,
+                    )
                 sell_order.remaining -= item["quantity"]
                 if sell_order.remaining <= 0:
                     sell_order.active = False
@@ -914,6 +966,19 @@ def process_brick_buy_orders(db: Session, cfg: PoolConfig) -> List[Dict[str, Any
             buyer.gift_coin_balance += gift_refund
         order.locked_coins = 0
         order.gift_coin_locked = 0
+        if total_qty > 0 and total_cost > 0:
+            avg_price = total_cost // total_qty if total_qty else total_cost
+            record_trade(
+                db,
+                buyer.id,
+                "brick",
+                "buy",
+                "未开砖",
+                total_qty,
+                avg_price,
+                total_cost,
+                0,
+            )
         events.append({
             "order_id": order.id,
             "filled": total_qty,
@@ -1163,6 +1228,41 @@ def me(user: User = Depends(user_from_token)):
         "is_admin": bool(getattr(user, "is_admin", False)),
     }
 
+
+@app.get("/me/mailbox")
+def me_mailbox(
+    limit: int = Query(20, ge=1, le=100),
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    logs = (
+        db.query(TradeLog)
+        .filter_by(user_id=user.id)
+        .order_by(TradeLog.created_at.desc(), TradeLog.id.desc())
+        .limit(limit)
+        .all()
+    )
+    out: Dict[str, Dict[str, List[Dict[str, Any]]]] = {
+        "brick": {"buy": [], "sell": []},
+        "skin": {"buy": [], "sell": []},
+    }
+    for log in logs:
+        category = "brick" if str(log.category) == "brick" else "skin"
+        action = "sell" if str(log.action) == "sell" else "buy"
+        bucket = out[category]
+        entry = {
+            "id": log.id,
+            "item_name": log.item_name,
+            "quantity": log.quantity,
+            "unit_price": log.unit_price,
+            "total_amount": log.total_amount,
+            "net_amount": log.net_amount,
+            "created_at": log.created_at,
+            "action": action,
+        }
+        bucket[action].append(entry)
+    return out
+
 # ------------------ Wallet / Shop ------------------
 @app.post("/wallet/topup")
 def topup(op: WalletOp, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
@@ -1260,9 +1360,33 @@ def buy_bricks(inp: CountIn, user: User = Depends(user_from_token), db: Session 
                 gross = item["price"] * item["quantity"]
                 net = (gross * 95) // 100
                 seller.coins += net
+                record_trade(
+                    db,
+                    seller.id,
+                    "brick",
+                    "sell",
+                    "未开砖",
+                    item["quantity"],
+                    item["price"],
+                    gross,
+                    net,
+                )
             sell_order.remaining -= item["quantity"]
             if sell_order.remaining <= 0:
                 sell_order.active = False
+    if total_qty > 0 and total_cost > 0:
+        avg_price = total_cost // total_qty if total_qty else total_cost
+        record_trade(
+            db,
+            user.id,
+            "brick",
+            "buy",
+            "未开砖",
+            total_qty,
+            avg_price,
+            total_cost,
+            0,
+        )
     db.commit()
     process_brick_buy_orders(db, cfg)
     db.commit()
@@ -1591,6 +1715,7 @@ def brick_order_book(user: User = Depends(user_from_token), db: Session = Depend
         .filter(BrickSellOrder.active == True, BrickSellOrder.source == "player", BrickSellOrder.remaining > 0)\
         .order_by(BrickSellOrder.price.asc(), BrickSellOrder.created_at.asc(), BrickSellOrder.id.asc()).all()
     my_sell = []
+    player_sell_view = []
     for order, seller in player_rows:
         entry = {
             "id": order.id,
@@ -1603,9 +1728,12 @@ def brick_order_book(user: User = Depends(user_from_token), db: Session = Depend
         }
         if entry["mine"]:
             my_sell.append(entry)
+        if getattr(user, "is_admin", False):
+            player_sell_view.append(entry)
     buy_orders = db.query(BrickBuyOrder).filter(BrickBuyOrder.active == True, BrickBuyOrder.remaining > 0)\
         .order_by(BrickBuyOrder.target_price.desc(), BrickBuyOrder.created_at.asc(), BrickBuyOrder.id.asc()).all()
     my_buy = []
+    player_buy_view = []
     for order in buy_orders:
         entry = {
             "id": order.id,
@@ -1618,12 +1746,14 @@ def brick_order_book(user: User = Depends(user_from_token), db: Session = Depend
         }
         if entry["mine"]:
             my_buy.append(entry)
+        if getattr(user, "is_admin", False):
+            player_buy_view.append(entry)
     histogram = build_brick_histogram(layers, [row[0] for row in player_rows])
     return {
         "official_price": cfg.brick_price,
         "official_layers": layers,
-        "player_sells": [],
-        "player_buys": [],
+        "player_sells": player_sell_view if getattr(user, "is_admin", False) else [],
+        "player_buys": player_buy_view if getattr(user, "is_admin", False) else [],
         "my_sells": my_sell,
         "my_buys": my_buy,
         "histogram": histogram,
@@ -1636,8 +1766,8 @@ def brick_sell(inp: BrickSellIn, user: User = Depends(user_from_token), db: Sess
     price = int(inp.price or 0)
     if qty <= 0:
         raise HTTPException(400, "数量必须大于 0")
-    if price <= 40:
-        raise HTTPException(400, "价格必须大于 40")
+    if price < 40:
+        raise HTTPException(400, "价格必须大于等于 40")
     sellable = int(user.unopened_bricks or 0) - int(user.gift_unopened_bricks or 0)
     if sellable < qty:
         raise HTTPException(400, "可售砖数量不足，赠送砖不可出售")
@@ -1678,8 +1808,8 @@ def brick_buy_order(inp: BrickBuyOrderIn, user: User = Depends(user_from_token),
     target_price = int(inp.target_price or 0)
     if qty <= 0:
         raise HTTPException(400, "数量必须大于 0")
-    if target_price <= 40:
-        raise HTTPException(400, "价格必须大于 40")
+    if target_price < 40:
+        raise HTTPException(400, "价格必须大于等于 40")
     total_cost = target_price * qty
     if user.coins < total_cost:
         raise HTTPException(400, "三角币不足")
@@ -1896,6 +2026,28 @@ def market_buy(market_id: int = Path(..., ge=1),
     if gift_spent > 0:
         user.gift_coin_balance -= gift_spent
     seller.coins += mi.price
+    record_trade(
+        db,
+        seller.id,
+        "skin",
+        "sell",
+        inv.name or inv.skin_id,
+        1,
+        mi.price,
+        mi.price,
+        mi.price,
+    )
+    record_trade(
+        db,
+        user.id,
+        "skin",
+        "buy",
+        inv.name or inv.skin_id,
+        1,
+        mi.price,
+        mi.price,
+        0,
+    )
 
     inv.user_id = user.id
     inv.on_market = False

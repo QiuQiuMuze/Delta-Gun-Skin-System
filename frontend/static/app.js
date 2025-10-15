@@ -38,7 +38,48 @@ const Pages = {
   auth: AuthPage,
   me: {
     async render() {
-      const d = await API.me();
+      const [d, mailboxRaw] = await Promise.all([
+        API.me(),
+        API.mailbox().catch(() => ({ brick: { buy: [], sell: [] }, skin: { buy: [], sell: [] } })),
+      ]);
+      const mail = mailboxRaw || { brick: { buy: [], sell: [] }, skin: { buy: [], sell: [] } };
+      const formatTs = (ts) => {
+        if (!ts) return "-";
+        const date = new Date(ts * 1000);
+        if (Number.isNaN(date.getTime())) return "-";
+        return date.toLocaleString("zh-CN", { hour12: false });
+      };
+      const renderList = (items, mode) => {
+        if (!items || !items.length) {
+          return `<div class="muted">暂无记录</div>`;
+        }
+        return items.map(item => {
+          const name = escapeHtml(item.item_name || "未知物品");
+          const qty = item.quantity || 0;
+          const total = item.total_amount || 0;
+          const unit = item.unit_price || 0;
+          const net = item.net_amount || 0;
+          const time = formatTs(item.created_at);
+          const meta = mode === "buy"
+            ? `花费 <b>${total}</b> 三角币 · 均价 ${unit}`
+            : `售出金额 <b>${total}</b> 三角币 · 实得 <b>${net}</b>`;
+          return `
+            <div class="mail-entry">
+              <div class="mail-entry__head">
+                <span class="mail-entry__time">${time}</span>
+                <span class="mail-entry__qty">×${qty}</span>
+              </div>
+              <div class="mail-entry__body">
+                <span class="mail-entry__name">${name}</span>
+                <span class="mail-entry__meta">${meta}</span>
+              </div>
+            </div>`;
+        }).join("");
+      };
+      const brickBuy = renderList(mail?.brick?.buy || [], "buy");
+      const brickSell = renderList(mail?.brick?.sell || [], "sell");
+      const skinBuy = renderList(mail?.skin?.buy || [], "buy");
+      const skinSell = renderList(mail?.skin?.sell || [], "sell");
       return `<div class="card"><h2>我的信息</h2>
         <div class="grid cols-3">
           <div class="kv"><div class="k">用户名</div><div class="v">${d.username}</div></div>
@@ -48,8 +89,50 @@ const Pages = {
           <div class="kv"><div class="k">钥匙</div><div class="v">${d.keys}</div></div>
           <div class="kv"><div class="k">未开砖</div><div class="v">${d.unopened_bricks}</div></div>
           <div class="kv"><div class="k">是否管理员</div><div class="v">${d.is_admin ? '是' : '否'}</div></div>
+        </div>
+        <div class="mailbox">
+          <div class="mailbox-header">
+            <h3>交易邮箱</h3>
+            <div class="mailbox-tabs">
+              <button class="mailbox-tab active" data-mail-tab="brick">砖交易</button>
+              <button class="mailbox-tab" data-mail-tab="skin">枪皮交易</button>
+            </div>
+          </div>
+          <div class="mailbox-panels">
+            <div class="mailbox-panel active" data-mail-panel="brick">
+              <div class="mailbox-sub">
+                <h4>购买记录</h4>
+                <div class="mailbox-list" id="mail-brick-buy">${brickBuy}</div>
+              </div>
+              <div class="mailbox-sub">
+                <h4>售出记录</h4>
+                <div class="mailbox-list" id="mail-brick-sell">${brickSell}</div>
+              </div>
+            </div>
+            <div class="mailbox-panel" data-mail-panel="skin">
+              <div class="mailbox-sub">
+                <h4>购买记录</h4>
+                <div class="mailbox-list" id="mail-skin-buy">${skinBuy}</div>
+              </div>
+              <div class="mailbox-sub">
+                <h4>售出记录</h4>
+                <div class="mailbox-list" id="mail-skin-sell">${skinSell}</div>
+              </div>
+            </div>
+          </div>
         </div></div>`;
-    }, bind:()=>{}
+    },
+    bind() {
+      const tabs = document.querySelectorAll('[data-mail-tab]');
+      const panels = document.querySelectorAll('[data-mail-panel]');
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          const target = tab.dataset.mailTab;
+          tabs.forEach(btn => btn.classList.toggle('active', btn === tab));
+          panels.forEach(panel => panel.classList.toggle('active', panel.dataset.mailPanel === target));
+        });
+      });
+    }
   },
   wallet: WalletPage,
   shop: ShopPage,

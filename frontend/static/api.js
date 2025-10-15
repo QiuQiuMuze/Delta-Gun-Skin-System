@@ -140,6 +140,11 @@ const API = {
     API.json("/inventory/by-color" + (show_on_market ? "?show_on_market=true" : "")),
   craft: (from_rarity, inv_ids) =>
     API.json("/craft/compose", "POST", { from_rarity, inv_ids }),
+  mailbox: (limit = 20) => {
+    const usp = new URLSearchParams();
+    if (limit) usp.append("limit", limit);
+    return API.json(`/me/mailbox${usp.toString() ? `?${usp.toString()}` : ""}`);
+  },
 
   // ---- Market ----
   marketBrowse: (params = {}) => {

@@ -1,6 +1,7 @@
 const ShopPage = {
   _state: null,
   render() {
+    const isAdmin = !!(API._me && API._me.is_admin);
     return `
     <div class="card shop-card">
       <h2>商店</h2>
@@ -10,16 +11,17 @@ const ShopPage = {
           <h3>砖价区间</h3>
           <div class="histogram" id="brick-histogram"><div class="muted">加载中...</div></div>
         </div>
+        ${isAdmin ? `
         <div class="shop-board__lists">
           <div class="shop-board__column">
             <h3>玩家在售</h3>
-            <div class="order-list" id="player-sell-list"><div class="muted">玩家挂单信息现已不对外公开展示。</div></div>
+            <div class="order-list" id="player-sell-list"><div class="muted">暂无玩家挂单</div></div>
           </div>
           <div class="shop-board__column">
             <h3>收购委托</h3>
-            <div class="order-list" id="player-buy-list"><div class="muted">收购委托列表对外不可见。</div></div>
+            <div class="order-list" id="player-buy-list"><div class="muted">暂无收购委托</div></div>
           </div>
-        </div>
+        </div>` : ``}
       </div>
       <div class="shop-actions">
         <div class="shop-box">
@@ -44,7 +46,7 @@ const ShopPage = {
           <div class="muted small">赠送资金购得的砖不可售卖。</div>
           <div class="input-row">
             <input id="sell-count" type="number" min="1" placeholder="数量（≥1）"/>
-            <input id="sell-price" type="number" min="41" placeholder="单价（>40）"/>
+            <input id="sell-price" type="number" min="40" placeholder="单价（≥40）"/>
             <button class="btn" id="sell-bricks">上架</button>
           </div>
           <div class="order-list small" id="my-sell-orders"><div class="muted">暂无挂单</div></div>
@@ -54,7 +56,7 @@ const ShopPage = {
           <div class="muted small">达到目标价即成交，超出差价会返还。</div>
           <div class="input-row">
             <input id="buyorder-count" type="number" min="1" placeholder="数量（≥1）"/>
-            <input id="buyorder-price" type="number" min="41" placeholder="目标单价（>40）"/>
+            <input id="buyorder-price" type="number" min="40" placeholder="目标单价（≥40）"/>
             <button class="btn" id="place-buyorder">提交</button>
           </div>
           <div class="order-list small" id="my-buy-orders"><div class="muted">暂无委托</div></div>
@@ -64,6 +66,7 @@ const ShopPage = {
   },
   bind() {
     this._state = { price: null, book: null };
+    const isAdmin = !!(API._me && API._me.is_admin);
     const priceLine = byId("shop-prices");
     const histBox = byId("brick-histogram");
     const sellList = byId("player-sell-list");
@@ -142,6 +145,10 @@ const ShopPage = {
 
     const renderOrders = () => {
       const book = this._state.book;
+      if (isAdmin) {
+        renderOrderSection(sellList, book?.player_sells || [], { empty: "暂无玩家挂单" });
+        renderOrderSection(buyList, book?.player_buys || [], { empty: "暂无收购委托", type: "buy" });
+      }
       renderOrderSection(mySellList, book?.my_sells || [], { empty: "暂无挂单", allowCancel: true, cancelAction: "cancel-sell" });
       renderOrderSection(myBuyList, book?.my_buys || [], { empty: "暂无委托", allowCancel: true, cancelAction: "cancel-buy", type: "buy" });
     };
@@ -224,7 +231,7 @@ const ShopPage = {
       const qty = parseInt(sellCount.value, 10) || 0;
       const price = parseInt(sellPrice.value, 10) || 0;
       if (qty <= 0) return alert("数量必须 ≥ 1");
-      if (price <= 40) return alert("单价必须大于 40");
+      if (price < 40) return alert("单价必须 ≥ 40");
       try {
         const res = await API.brickSell(qty, price);
         alert(`已上架 ${qty} 块砖（#${res.order_id}）。`);
@@ -245,7 +252,7 @@ const ShopPage = {
       const qty = parseInt(buyCount.value, 10) || 0;
       const price = parseInt(buyPrice.value, 10) || 0;
       if (qty <= 0) return alert("数量必须 ≥ 1");
-      if (price <= 40) return alert("目标单价必须大于 40");
+      if (price < 40) return alert("目标单价必须 ≥ 40");
       try {
         const res = await API.brickBuyOrder(qty, price);
         let msg;
