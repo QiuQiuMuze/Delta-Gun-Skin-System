@@ -127,6 +127,11 @@ const API = {
   shopPrices: () => API.json("/shop/prices"),
   buyKeys: (count) => API.json("/shop/buy-keys", "POST", { count }),
   buyBricks: (count) => API.json("/shop/buy-bricks", "POST", { count }),
+  brickQuote: (count) => {
+    const usp = new URLSearchParams();
+    usp.append("count", count);
+    return API.json(`/shop/brick-quote?${usp.toString()}`);
+  },
   odds: () => API.json("/odds"),
   open: (count) => API.json("/gacha/open", "POST", { count }),
   inventory: (show_on_market = false) =>
@@ -135,6 +140,11 @@ const API = {
     API.json("/inventory/by-color" + (show_on_market ? "?show_on_market=true" : "")),
   craft: (from_rarity, inv_ids) =>
     API.json("/craft/compose", "POST", { from_rarity, inv_ids }),
+  mailbox: (limit = 20) => {
+    const usp = new URLSearchParams();
+    if (limit) usp.append("limit", limit);
+    return API.json(`/me/mailbox${usp.toString() ? `?${usp.toString()}` : ""}`);
+  },
 
   // ---- Market ----
   marketBrowse: (params = {}) => {
@@ -153,6 +163,11 @@ const API = {
   marketMine: () => API.json("/market/my"),
 
   marketDelist: (market_id) => API.json(`/market/delist/${market_id}`, "POST"),
+  brickBook: () => API.json("/market/bricks/book"),
+  brickSell: (quantity, price) => API.json("/market/bricks/sell", "POST", { quantity, price }),
+  brickCancelSell: (order_id) => API.json(`/market/bricks/cancel/${order_id}`, "POST"),
+  brickBuyOrder: (quantity, target_price) => API.json("/market/bricks/buy-order", "POST", { quantity, target_price }),
+  brickCancelBuyOrder: (order_id) => API.json(`/market/bricks/buy-order/cancel/${order_id}`, "POST"),
 
   // ---- Admin（JWT 管理接口）----
   adminUsers: (q = "", page = 1, page_size = 50) => {
