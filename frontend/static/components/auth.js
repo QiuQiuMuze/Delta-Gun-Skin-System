@@ -75,8 +75,8 @@ const AuthPage = {
       loginBtn.textContent = free ? "登录" : "获取验证码";
       loginVerifyRow.style.display = free ? "none" : "";
       loginHint.textContent = free
-        ? "登录现已取消短信验证码，输入账号密码即可完成登录。"
-        : "当前模式需短信验证码：先输入账号密码点击“获取验证码”，再在下方输入短信码完成登录。";
+        ? "输入账号密码即可完成登录。"
+        : "先输入账号密码点击“获取验证码”，再在下方输入短信码完成登录。";
 
       if (free) {
         regPhoneRow.style.display = "none";
@@ -94,8 +94,8 @@ const AuthPage = {
         if (resetCard) resetCard.style.display = "";
       }
       regHint.textContent = free
-        ? "注册无需短信验证码且无需填写手机号，新账号将自动获得 20000 法币。若勾选“申请管理员”，注册后会额外发放管理员验证码，需要再验证一次。"
-        : "当前模式需手机号 + 注册验证码，注册不再额外赠送法币。请先点击“获取验证码(注册)”获得短信码。";
+        ? "新账号将自动获得 20000 法币。若勾选“申请管理员”，注册后会额外发放管理员验证码。"
+        : "当前模式需手机号 + 注册验证码。请先点击“获取验证码(注册)”获得短信码。";
       if (free) loginUser = "";
     };
 
