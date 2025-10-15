@@ -183,6 +183,7 @@ class CookieFactoryProfile(Base):
     banked_cookies = Column(Float, default=0.0)
     total_bricks_earned = Column(Integer, default=0)
     weekly_bricks_awarded = Column(Integer, default=0)
+    claimed_bricks_this_week = Column(Integer, default=0)
     last_report = Column(Text, default="")
     last_sugar_ts = Column(Integer, default=0)
 
@@ -255,6 +256,10 @@ def _ensure_cookie_profile_columns():
     cols = {row[1] for row in cur.fetchall()}
     if "challenge_clicks" not in cols:
         cur.execute("ALTER TABLE cookie_factory_profiles ADD COLUMN challenge_clicks TEXT DEFAULT '{}'")
+    if "claimed_bricks_this_week" not in cols:
+        cur.execute(
+            "ALTER TABLE cookie_factory_profiles ADD COLUMN claimed_bricks_this_week INTEGER NOT NULL DEFAULT 0"
+        )
     con.commit()
     con.close()
 
@@ -1114,6 +1119,44 @@ def cookie_login_bricks(login_days: Dict[str, Any]) -> int:
     return len(login_days.keys()) * 2
 
 
+def cookie_weekly_progress(
+    profile: CookieFactoryProfile,
+) -> Tuple[
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    Dict[str, int],
+    Dict[str, Any],
+]:
+    active_map_raw = _json_object(profile.active_points, {})
+    active_map = {k: int(v) for k, v in active_map_raw.items()}
+    login_days = _json_object(profile.login_days, {})
+    base_bricks = cookie_calculate_base_bricks(float(profile.cookies_this_week or 0.0))
+    active_bricks = cookie_active_bricks(active_map)
+    login_bricks = cookie_login_bricks(login_days)
+    streak_bonus = 14 if int(profile.login_streak or 0) >= 7 else 0
+    projected = base_bricks + active_bricks + login_bricks + streak_bonus
+    projected = min(COOKIE_WEEKLY_CAP, max(0, projected))
+    claimed_raw = int(getattr(profile, "claimed_bricks_this_week", 0) or 0)
+    claimed = max(0, min(projected, min(COOKIE_WEEKLY_CAP, claimed_raw)))
+    claimable = max(0, projected - claimed)
+    return (
+        base_bricks,
+        active_bricks,
+        login_bricks,
+        streak_bonus,
+        projected,
+        claimed,
+        claimable,
+        active_map,
+        login_days,
+    )
+
+
 def cookie_challenge_map(profile: CookieFactoryProfile) -> Dict[str, int]:
     return {k: int(v or 0) for k, v in _json_object(getattr(profile, "challenge_clicks", "{}"), {}).items()}
 
@@ -1167,6 +1210,7 @@ def cookie_prepare_week(profile: CookieFactoryProfile, now: int) -> None:
         profile.penalty_multiplier = float(profile.pending_penalty_multiplier or 1.0)
         profile.pending_bonus_multiplier = 1.0
         profile.pending_penalty_multiplier = 1.0
+        profile.claimed_bricks_this_week = 0
     elif profile.week_start_ts < current_week:
         profile.week_start_ts = current_week
         profile.cookies_this_week = 0.0
@@ -1177,26 +1221,32 @@ def cookie_prepare_week(profile: CookieFactoryProfile, now: int) -> None:
         profile.penalty_multiplier = float(profile.pending_penalty_multiplier or 1.0)
         profile.pending_bonus_multiplier = 1.0
         profile.pending_penalty_multiplier = 1.0
+        profile.claimed_bricks_this_week = 0
 
 
 def cookie_finalize_week(db: Session, profile: CookieFactoryProfile, user: User, now: int) -> Optional[Dict[str, Any]]:
     if profile.week_start_ts == 0:
         return None
-    total = float(profile.cookies_this_week or 0.0)
-    active_map_raw = _json_object(profile.active_points, {})
-    active_map = {k: int(v) for k, v in active_map_raw.items()}
-    login_map = _json_object(profile.login_days, {})
-    base_bricks = cookie_calculate_base_bricks(total)
-    active_brick = cookie_active_bricks(active_map)
-    login_brick = cookie_login_bricks(login_map)
-    streak_bonus = 14 if int(profile.login_streak or 0) >= 7 else 0
-    raw_total = base_bricks + active_brick + login_brick + streak_bonus
-    awarded = min(COOKIE_WEEKLY_CAP, max(0, raw_total))
-    awarded = int(awarded)
-    if awarded > 0:
-        user.unopened_bricks += awarded
-        profile.total_bricks_earned += awarded
-    profile.weekly_bricks_awarded = awarded
+    (
+        base_bricks,
+        active_brick,
+        login_brick,
+        streak_bonus,
+        projected,
+        claimed,
+        claimable,
+        active_map,
+        login_map,
+    ) = cookie_weekly_progress(profile)
+    auto_claimed = 0
+    awarded = claimed
+    if claimable > 0:
+        auto_claimed = claimable
+        awarded += claimable
+        claimed += claimable
+        user.unopened_bricks += claimable
+        profile.total_bricks_earned += claimable
+    profile.weekly_bricks_awarded = int(awarded)
     report = {
         "week_start": profile.week_start_ts,
         "week_end": profile.week_start_ts + 7 * 86400,
@@ -1205,7 +1255,10 @@ def cookie_finalize_week(db: Session, profile: CookieFactoryProfile, user: User,
         "active_bricks": active_brick,
         "login_bricks": login_brick,
         "streak_bonus": streak_bonus,
-        "total_cookies": total,
+        "projected": projected,
+        "claimed": claimed,
+        "auto_claimed": auto_claimed,
+        "total_cookies": float(profile.cookies_this_week or 0.0),
         "penalty_multiplier": float(profile.penalty_multiplier or 1.0),
         "bonus_multiplier": float(profile.production_bonus_multiplier or 1.0),
         "timestamp": now,
@@ -1214,6 +1267,7 @@ def cookie_finalize_week(db: Session, profile: CookieFactoryProfile, user: User,
     profile.cookies_this_week = 0.0
     profile.active_points = _json_dump({})
     profile.login_days = _json_dump({})
+    profile.claimed_bricks_this_week = 0
     profile.production_bonus_multiplier = 1.0
     profile.penalty_multiplier = 1.0
     return report
@@ -1259,14 +1313,17 @@ def cookie_status_payload(
     counts = cookie_building_counts(profile)
     cps, effective_cps = cookie_cps(profile, counts)
     mini_state = cookie_mini_games_state(profile)
-    active_points = _json_object(profile.active_points, {})
-    login_days = _json_object(profile.login_days, {})
-    base_bricks = cookie_calculate_base_bricks(float(profile.cookies_this_week or 0.0))
-    active_brick = cookie_active_bricks({k: int(v) for k, v in active_points.items()})
-    login_brick = cookie_login_bricks(login_days)
-    streak_bonus = 14 if int(profile.login_streak or 0) >= 7 else 0
-    projected = base_bricks + active_brick + login_brick + streak_bonus
-    projected = min(COOKIE_WEEKLY_CAP, max(0, projected))
+    (
+        base_bricks,
+        active_brick,
+        login_brick,
+        streak_bonus,
+        projected,
+        claimed,
+        claimable,
+        active_points,
+        login_days,
+    ) = cookie_weekly_progress(profile)
     today = cookie_day_key(now)
     daily_claimed = today in login_days
     last_report = None
@@ -1300,6 +1357,8 @@ def cookie_status_payload(
             "threshold": int(cfg.get("threshold", 1)),
             "desc": cfg["desc"],
             "sugar_cost": int(cfg.get("sugar_cost", 0)),
+            "points": int(cfg.get("points", 0)),
+            "cps_bonus": float(cfg.get("cps_bonus", 0.0)),
         })
     active_breakdown = [
         {"day": day, "points": int(val)} for day, val in sorted(active_points.items())
@@ -1345,6 +1404,8 @@ def cookie_status_payload(
             "projected_bricks": projected,
             "cap": COOKIE_WEEKLY_CAP,
             "cap_remaining": max(0, COOKIE_WEEKLY_CAP - projected),
+            "claimed_bricks": claimed,
+            "claimable_bricks": claimable,
             "active_points": active_breakdown,
             "login_days": login_list,
             "daily_login_claimed": daily_claimed,
@@ -2050,6 +2111,31 @@ def cookie_factory_act(inp: CookieActIn, user: User = Depends(user_from_token), 
             "level": int(node.get("level", 0)),
             "leveled": leveled,
             "sugar_lumps": int(profile.sugar_lumps or 0),
+        }
+    elif action == "claim":
+        (
+            _,
+            _,
+            _,
+            _,
+            projected,
+            claimed,
+            claimable,
+            _,
+            _,
+        ) = cookie_weekly_progress(profile)
+        if claimable <= 0:
+            raise HTTPException(400, "暂无可领取的砖奖励")
+        new_claimed = claimed + claimable
+        profile.claimed_bricks_this_week = int(new_claimed)
+        profile.weekly_bricks_awarded = int(new_claimed)
+        user.unopened_bricks += claimable
+        profile.total_bricks_earned += claimable
+        result = {
+            "claimed": int(claimable),
+            "claimed_total": int(new_claimed),
+            "projected": int(projected),
+            "inventory_total": int(user.unopened_bricks or 0),
         }
     elif action == "prestige":
         requirement = 1_000_000
