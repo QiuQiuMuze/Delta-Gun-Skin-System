@@ -1,11 +1,37 @@
 // 简易路由与页面调度
 const $page = () => document.getElementById("page");
 const $nav = () => document.getElementById("nav");
+const $notify = () => document.getElementById("global-notify");
 const byId = (id) => document.getElementById(id);
 const escapeHtml = (s)=> String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 
 // ★★★ 关键：让 API 使用“每标签页独立会话”并迁移旧 token
 API.initSession();
+
+const Notifier = {
+  pushDiamond(payload = {}) {
+    const wrap = $notify();
+    if (!wrap) return;
+    const username = escapeHtml(payload.username || "玩家");
+    const item = payload.item || {};
+    const name = escapeHtml(item.name || "未知皮肤");
+    const rarity = escapeHtml(item.rarity || "");
+    const node = document.createElement("div");
+    node.className = "notify-card diamond";
+    node.innerHTML = `
+      <div class="notify-title">🎉 ${username}</div>
+      <div class="notify-body">抽出了钻石模板 <span>${name}</span>${rarity ? ` · ${rarity}` : ""}</div>
+    `;
+    wrap.appendChild(node);
+    requestAnimationFrame(() => node.classList.add("show"));
+    setTimeout(() => {
+      node.classList.remove("show");
+      setTimeout(() => node.remove(), 320);
+    }, 10000);
+  }
+};
+
+window.Notifier = Notifier;
 
 const Pages = {
   home: { render: () => `<div class="card"><h2>欢迎</h2><p>这是三角洲砖皮模拟器的网站版，我终于给他弄出来啦，快夸我~</p></div>`, bind: ()=>{} },
