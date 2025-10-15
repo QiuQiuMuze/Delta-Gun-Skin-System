@@ -154,7 +154,7 @@ const ShopPage = {
     return `<div class="shop-season__meta">${tagline}${desc}</div><div class="shop-season__groups">${listHtml}</div>`;
   },
   bind() {
-    this._state = { price: null, book: null };
+    this._state = { price: null, book: null, bookSeason: null };
     const isAdmin = !!(API._me && API._me.is_admin);
     const priceLine = byId("shop-prices");
     const histBox = byId("brick-histogram");
@@ -193,11 +193,18 @@ const ShopPage = {
 
     const renderHistogram = () => {
       if (!histBox) return;
-      const hist = this._state.book?.histogram;
-      if (!hist || !hist.length) {
-        histBox.innerHTML = `<div class="muted">暂无数据</div>`;
+      const seasonKey = this._state.bookSeason;
+      if (!seasonKey) {
+        histBox.innerHTML = `<div class="muted">请选择赛季后查看砖价区间。</div>`;
         return;
       }
+      const hist = this._state.book?.histogram;
+      if (!hist || !hist.length) {
+        const seasonName = this._state.book?.season_name || this._seasonMap[seasonKey]?.name || seasonKey;
+        histBox.innerHTML = `<div class="muted">${seasonName} 暂无挂单区间数据。</div>`;
+        return;
+      }
+      const seasonName = this._state.book?.season_name || this._seasonMap[seasonKey]?.name || seasonKey;
       const maxCount = Math.max(...hist.map(h => h.count || 0), 1);
       const rows = hist.map(bucket => {
         const pct = Math.max(6, Math.min(100, Math.round((bucket.count || 0) / maxCount * 100)));
@@ -210,7 +217,7 @@ const ShopPage = {
             </div>
           </div>`;
       }).join("");
-      histBox.innerHTML = rows;
+      histBox.innerHTML = `<div class="hist-title">${seasonName} 砖价区间</div>${rows}`;
     };
 
     const renderOrderSection = (el, items, opts = {}) => {
@@ -258,9 +265,10 @@ const ShopPage = {
       }
     };
 
-    const loadBook = async () => {
+    const loadBook = async (seasonKey = null) => {
       try {
-        this._state.book = await API.brickBook();
+        this._state.bookSeason = seasonKey || null;
+        this._state.book = await API.brickBook(seasonKey || null);
         renderPrice();
         renderHistogram();
         renderOrders();
@@ -284,6 +292,14 @@ const ShopPage = {
       seasonSelect.addEventListener('change', () => {
         this._selectedSeason = seasonSelect.value || "ALL";
         seasonCatalogBox.innerHTML = this._renderSeasonCatalog(this._selectedSeason);
+      });
+    }
+
+    if (buySeasonSelect) {
+      buySeasonSelect.addEventListener('change', () => {
+        const value = buySeasonSelect.value || null;
+        const normalized = value ? String(value) : null;
+        loadBook(normalized);
       });
     }
 
@@ -337,7 +353,7 @@ const ShopPage = {
         }).join("，");
         const extra = segmentText ? `成交明细：${segmentText}` : "";
         alert([`购砖成功，花费 ${res?.spent ?? quote?.total_cost ?? 0} 三角币。`, extra].filter(Boolean).join("\n"));
-        await Promise.all([loadPrices(), loadBook()]);
+        await Promise.all([loadPrices(), loadBook(this._state.bookSeason)]);
       } catch (e) {
         alert(e.message || "购买失败");
       }
@@ -362,7 +378,7 @@ const ShopPage = {
         } else {
           await API.me();
         }
-        await loadBook();
+        await loadBook(this._state.bookSeason);
       } catch (e) {
         alert(e.message || "上架失败");
       }
@@ -390,7 +406,7 @@ const ShopPage = {
         alert(`委托创建成功（#${res.order_id}）。${msg}`);
         buyCount.value = "";
         buyPrice.value = "";
-        await Promise.all([loadPrices(), loadBook(), API.me()]);
+        await Promise.all([loadPrices(), loadBook(this._state.bookSeason), API.me()]);
       } catch (e) {
         alert(e.message || "提交失败");
       }
@@ -407,7 +423,7 @@ const ShopPage = {
         } else if (btn.dataset.action === "cancel-buy") {
           await API.brickCancelBuyOrder(id);
         }
-        await Promise.all([loadPrices(), loadBook(), API.me()]);
+        await Promise.all([loadPrices(), loadBook(this._state.bookSeason), API.me()]);
       } catch (e) {
         alert(e.message || "撤销失败");
       }
@@ -418,6 +434,6 @@ const ShopPage = {
     });
 
     loadPrices();
-    loadBook();
+    loadBook(this._state.bookSeason);
   }
 };

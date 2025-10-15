@@ -176,6 +176,11 @@ const GachaPage = {
   },
   _seasonLabel(id) {
     if (!id) {
+      if (this._seasonCatalog && this._seasonCatalog.length) {
+        const latest = this._seasonCatalog[this._seasonCatalog.length - 1];
+        const label = latest?.name || latest?.id || "最新赛季";
+        return `${label}（默认）`;
+      }
       return this._seasonCatalog && this._seasonCatalog.length
         ? `${this._seasonCatalog[0].name || "最新赛季"}（默认）`
         : "默认奖池";
@@ -343,6 +348,11 @@ const GachaPage = {
     }
     if (needs.bricks > 0) {
       brickQuote = await API.brickQuote(needs.bricks, this._selectedSeason || null);
+      if ((brickQuote?.missing || 0) > 0) {
+        const seasonName = this._seasonLabel(this._selectedSeason);
+        alert(`当前赛季（${seasonName}）可用的未开砖不足，仅能提供 ${brickQuote.available || 0} 块，请稍后再试。`);
+        throw { message: "" };
+      }
     }
 
     const parts = [];
@@ -359,7 +369,7 @@ const GachaPage = {
     if (brickQuote?.segments?.length) {
       brickQuote.segments.forEach(seg => {
         const label = seg.source === "player" ? "玩家" : "官方";
-        const seasonLabel = seg.season_name || seg.season || "默认";
+        const seasonLabel = seg.season_name || this._seasonLabel(seg.season) || "默认";
         detail.push(`${label} ${seasonLabel} ${seg.price} ×${seg.quantity}`);
       });
     }

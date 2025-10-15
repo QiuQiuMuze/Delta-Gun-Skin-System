@@ -183,7 +183,12 @@ const API = {
   marketMine: () => API.json("/market/my"),
 
   marketDelist: (market_id) => API.json(`/market/delist/${market_id}`, "POST"),
-  brickBook: () => API.json("/market/bricks/book"),
+  brickBook: (season = null) => {
+    const usp = new URLSearchParams();
+    if (season) usp.append("season", season);
+    const suffix = usp.toString() ? `?${usp.toString()}` : "";
+    return API.json(`/market/bricks/book${suffix}`);
+  },
   brickSell: (quantity, price, season) => {
     const payload = { quantity, price };
     if (season) payload.season = season;
