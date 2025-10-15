@@ -2201,6 +2201,16 @@ def admin_cookie_factory_toggle(payload: Dict[str, Any], user: User = Depends(us
     db.commit()
     return {"enabled": desired}
 
+
+@app.post("/admin/cookie-factory/toggle")
+def admin_cookie_factory_toggle(payload: Dict[str, Any], user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(403, "需要管理员权限")
+    desired = bool((payload or {}).get("enabled", False))
+    set_cookie_factory_enabled(db, desired)
+    db.commit()
+    return {"enabled": desired}
+
 # ------------------ Wallet / Shop ------------------
 @app.post("/wallet/topup")
 def topup(op: WalletOp, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
