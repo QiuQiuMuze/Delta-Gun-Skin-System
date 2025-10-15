@@ -3,6 +3,7 @@ const API = {
   // —— 使用 sessionStorage 做“每标签页独立会话” —— //
   _tokenKey: "token",
   _me: null,
+  _features: {},
 
   // 初始化：若发现旧 localStorage token，则迁移到本标签页的 sessionStorage
   initSession() {
@@ -107,6 +108,7 @@ const API = {
   me: async () => {
     const d = await API.json("/me");
     API._me = { ...d, is_admin: !!d.is_admin };
+    API._features = d.features || API._features || {};
     return API._me;
   },
 
@@ -169,6 +171,11 @@ const API = {
   brickBuyOrder: (quantity, target_price) => API.json("/market/bricks/buy-order", "POST", { quantity, target_price }),
   brickCancelBuyOrder: (order_id) => API.json(`/market/bricks/buy-order/cancel/${order_id}`, "POST"),
 
+  // ---- Cookie Factory ----
+  cookieStatus: () => API.json("/cookie-factory/status"),
+  cookieLogin: () => API.json("/cookie-factory/login", "POST"),
+  cookieAct: (payload) => API.json("/cookie-factory/act", "POST", payload || {}),
+
   // ---- Admin（JWT 管理接口）----
   adminUsers: (q = "", page = 1, page_size = 50) => {
     const usp = new URLSearchParams();
@@ -206,6 +213,9 @@ const API = {
 
   adminDeleteUserConfirm: (target_username, code) =>
     API.json("/admin/delete-user/confirm", "POST", { target_username, code }),
+
+  cookieAdminStatus: () => API.json("/admin/cookie-factory"),
+  cookieAdminToggle: (enabled) => API.json("/admin/cookie-factory/toggle", "POST", { enabled }),
 
 
   adminAuthModeGet: () => API.json("/admin/auth-mode"),

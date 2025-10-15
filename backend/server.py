@@ -16,7 +16,7 @@ import time, os, secrets, jwt, re, json, random, math
 from passlib.context import CryptContext
 from sqlalchemy import (
     create_engine, Column, Integer, String, Boolean, Float,
-    ForeignKey
+    ForeignKey, Text, func
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 import sqlite3
@@ -155,6 +155,37 @@ class BrickBuyOrder(Base):
     created_at = Column(Integer, default=lambda: int(time.time()))
 
 
+class CookieFactoryProfile(Base):
+    __tablename__ = "cookie_factory_profiles"
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    total_cookies = Column(Float, default=0.0)
+    cookies_this_week = Column(Float, default=0.0)
+    manual_clicks = Column(Integer, default=0)
+    golden_cookies = Column(Integer, default=0)
+    prestige = Column(Integer, default=0)
+    prestige_points = Column(Integer, default=0)
+    sugar_lumps = Column(Integer, default=0)
+    buildings = Column(Text, default="{}")
+    mini_games = Column(Text, default="{}")
+    active_points = Column(Text, default="{}")
+    login_days = Column(Text, default="{}")
+    login_streak = Column(Integer, default=0)
+    last_login_day = Column(String, default="")
+    week_start_ts = Column(Integer, default=0)
+    last_active_ts = Column(Integer, default=0)
+    golden_ready_ts = Column(Integer, default=0)
+    golden_cooldown = Column(Integer, default=0)
+    production_bonus_multiplier = Column(Float, default=1.0)
+    pending_bonus_multiplier = Column(Float, default=1.0)
+    penalty_multiplier = Column(Float, default=1.0)
+    pending_penalty_multiplier = Column(Float, default=1.0)
+    banked_cookies = Column(Float, default=0.0)
+    total_bricks_earned = Column(Integer, default=0)
+    weekly_bricks_awarded = Column(Integer, default=0)
+    last_report = Column(Text, default="")
+    last_sugar_ts = Column(Integer, default=0)
+
+
 class TradeLog(Base):
     __tablename__ = "trade_logs"
     id = Column(Integer, primary_key=True)
@@ -264,6 +295,20 @@ class BrickSellIn(BaseModel):
 class BrickBuyOrderIn(BaseModel):
     quantity: int
     target_price: int
+
+
+class CookieActIn(BaseModel):
+    type: Literal[
+        "click",
+        "buy_building",
+        "golden",
+        "mini",
+        "prestige",
+        "sugar",
+    ]
+    amount: Optional[int] = 1
+    building: Optional[str] = None
+    mini: Optional[str] = None
 
 class PoolConfigIn(BaseModel):
     brick_price: int = 100
@@ -718,6 +763,566 @@ def ensure_visual(inv: Inventory) -> Dict[str, object]:
         "changed": changed,
     }
 
+
+# ------------------ Cookie Factory Mini-game ------------------
+COOKIE_FACTORY_SETTING_KEY = "cookie_factory_enabled"
+COOKIE_WEEKLY_CAP = 100
+COOKIE_DELTA_BONUS = 0.05
+COOKIE_DELTA_BONUS_CAP = 1.25
+COOKIE_SUGAR_COOLDOWN = 6 * 3600
+
+COOKIE_BUILDINGS = [
+    {
+        "key": "cursor",
+        "name": "光标",
+        "icon": "🖱️",
+        "base_cost": 15,
+        "cost_mult": 1.15,
+        "base_cps": 0.1,
+        "desc": "最基础的自动点击器，帮你轻点饼干。",
+    },
+    {
+        "key": "grandma",
+        "name": "奶奶",
+        "icon": "👵",
+        "base_cost": 100,
+        "cost_mult": 1.18,
+        "base_cps": 1.0,
+        "desc": "慈祥的奶奶专注烤炉，带来稳定产能。",
+    },
+    {
+        "key": "factory",
+        "name": "工厂",
+        "icon": "🏭",
+        "base_cost": 500,
+        "cost_mult": 1.2,
+        "base_cps": 8.0,
+        "desc": "自动化生产线滚滚冒出新鲜饼干。",
+    },
+    {
+        "key": "mine",
+        "name": "矿井",
+        "icon": "⛏️",
+        "base_cost": 2000,
+        "cost_mult": 1.22,
+        "base_cps": 47.0,
+        "desc": "从饼干岩层里采掘甜蜜原料。",
+    },
+    {
+        "key": "portal",
+        "name": "时空传送门",
+        "icon": "🌀",
+        "base_cost": 7000,
+        "cost_mult": 1.25,
+        "base_cps": 260.0,
+        "desc": "链接异世界，让饼干跨维度奔涌。",
+    },
+    {
+        "key": "time_machine",
+        "name": "时光机",
+        "icon": "⏱️",
+        "base_cost": 40000,
+        "cost_mult": 1.3,
+        "base_cps": 1400.0,
+        "desc": "倒转时间，在过去和未来同时烤饼干。",
+    },
+]
+
+COOKIE_MINI_GAMES = {
+    "garden": {
+        "name": "花园",
+        "icon": "🌱",
+        "points": 6,
+        "threshold": 4,
+        "cps_bonus": 0.01,
+        "desc": "种植奇妙植物，偶尔触发灵感加成。",
+    },
+    "temple": {
+        "name": "神殿",
+        "icon": "⛪",
+        "points": 5,
+        "threshold": 5,
+        "cps_bonus": 0.008,
+        "desc": "在神殿供奉饼干，祈求产量祝福。",
+    },
+    "market": {
+        "name": "证券市场",
+        "icon": "📈",
+        "points": 4,
+        "threshold": 6,
+        "cps_bonus": 0.012,
+        "desc": "做一笔甜蜜交易，提升收益效率。",
+    },
+}
+
+
+def _json_object(raw: str, default: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    if default is None:
+        default = {}
+    if not raw:
+        return dict(default)
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    return dict(default)
+
+
+def _json_dump(data: Dict[str, Any]) -> str:
+    return json.dumps(data, ensure_ascii=False)
+
+
+def cookie_factory_enabled(db: Session) -> bool:
+    row = db.query(SystemSetting).filter_by(key=COOKIE_FACTORY_SETTING_KEY).first()
+    if not row:
+        return True
+    return str(row.value) != "0"
+
+
+def set_cookie_factory_enabled(db: Session, enabled: bool) -> None:
+    value = "1" if enabled else "0"
+    row = db.query(SystemSetting).filter_by(key=COOKIE_FACTORY_SETTING_KEY).first()
+    if row:
+        row.value = value
+    else:
+        db.add(SystemSetting(key=COOKIE_FACTORY_SETTING_KEY, value=value))
+    db.flush()
+
+
+def cookie_week_start(ts: Optional[int] = None) -> int:
+    if ts is None:
+        ts = int(time.time())
+    dt = datetime.fromtimestamp(ts)
+    monday = dt - timedelta(days=dt.weekday())
+    start = monday.replace(hour=0, minute=0, second=0, microsecond=0)
+    return int(start.timestamp())
+
+
+def cookie_day_start(ts: Optional[int] = None) -> int:
+    if ts is None:
+        ts = int(time.time())
+    dt = datetime.fromtimestamp(ts)
+    start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    return int(start.timestamp())
+
+
+def cookie_day_key(ts: Optional[int] = None) -> str:
+    if ts is None:
+        ts = int(time.time())
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+
+
+def cookie_trim_map(data: Dict[str, Any], keep: int = 14) -> Dict[str, Any]:
+    if not data:
+        return {}
+    items = sorted(data.items(), key=lambda kv: kv[0])
+    if len(items) <= keep:
+        return dict(items)
+    return dict(items[-keep:])
+
+
+def cookie_mini_games_state(profile: CookieFactoryProfile) -> Dict[str, Any]:
+    state = _json_object(profile.mini_games, {})
+    changed = False
+    for key, cfg in COOKIE_MINI_GAMES.items():
+        node = state.get(key)
+        if not isinstance(node, dict):
+            node = {"level": 0, "progress": 0}
+            changed = True
+        else:
+            node.setdefault("level", 0)
+            node.setdefault("progress", 0)
+        node.setdefault("last_action", 0)
+        state[key] = node
+    if changed:
+        profile.mini_games = _json_dump(state)
+    return state
+
+
+def cookie_building_counts(profile: CookieFactoryProfile) -> Dict[str, int]:
+    raw = _json_object(profile.buildings, {})
+    counts: Dict[str, int] = {}
+    for cfg in COOKIE_BUILDINGS:
+        key = cfg["key"]
+        counts[key] = int(raw.get(key, 0) or 0)
+    return counts
+
+
+def cookie_store_buildings(profile: CookieFactoryProfile, counts: Dict[str, int]) -> None:
+    profile.buildings = _json_dump({k: int(v) for k, v in counts.items()})
+
+
+def cookie_building_cost(key: str, count: int) -> int:
+    cfg = next((c for c in COOKIE_BUILDINGS if c["key"] == key), None)
+    if not cfg:
+        return 0
+    base = float(cfg.get("base_cost", 0))
+    mult = float(cfg.get("cost_mult", 1.0))
+    cost = base * (mult ** count)
+    return int(math.ceil(cost))
+
+
+def cookie_cps(profile: CookieFactoryProfile, counts: Optional[Dict[str, int]] = None) -> Tuple[float, float]:
+    if counts is None:
+        counts = cookie_building_counts(profile)
+    base_cps = 0.0
+    for cfg in COOKIE_BUILDINGS:
+        key = cfg["key"]
+        base_cps += float(cfg.get("base_cps", 0.0)) * counts.get(key, 0)
+    prestige_bonus = 1.0 + (float(profile.prestige_points or 0) * 0.05) + (float(profile.prestige or 0) * 0.02)
+    mini_state = cookie_mini_games_state(profile)
+    mini_bonus = 1.0
+    for key, node in mini_state.items():
+        cfg = COOKIE_MINI_GAMES.get(key)
+        if not cfg:
+            continue
+        lvl = int(node.get("level", 0) or 0)
+        mini_bonus += lvl * float(cfg.get("cps_bonus", 0.0))
+    cps = base_cps * prestige_bonus * mini_bonus
+    effective = cps * float(profile.production_bonus_multiplier or 1.0) * float(profile.penalty_multiplier or 1.0)
+    return cps, effective
+
+
+def cookie_click_gain(profile: CookieFactoryProfile, clicks: int, counts: Optional[Dict[str, int]] = None) -> float:
+    if clicks <= 0:
+        return 0.0
+    if counts is None:
+        counts = cookie_building_counts(profile)
+    base = 1.0 + (profile.manual_clicks or 0) * 0.002
+    helper = sum(counts.values()) * 0.05
+    prestige_bonus = 1.0 + (float(profile.prestige_points or 0) * 0.05)
+    total = clicks * base * (1.0 + helper) * prestige_bonus
+    total *= float(profile.production_bonus_multiplier or 1.0) * float(profile.penalty_multiplier or 1.0)
+    return total
+
+
+def cookie_add(profile: CookieFactoryProfile, amount: float) -> float:
+    if amount <= 0:
+        return 0.0
+    profile.total_cookies += amount
+    profile.cookies_this_week += amount
+    profile.banked_cookies += amount
+    return amount
+
+
+def cookie_spend(profile: CookieFactoryProfile, amount: float) -> None:
+    if amount <= 0:
+        return
+    if profile.banked_cookies < amount:
+        raise HTTPException(400, "饼干数量不足")
+    profile.banked_cookies -= amount
+
+
+def cookie_add_active_points(profile: CookieFactoryProfile, now: int, points: int) -> None:
+    if points <= 0:
+        return
+    day = cookie_day_key(now)
+    data = _json_object(profile.active_points, {})
+    data[day] = int(data.get(day, 0) or 0) + int(points)
+    data = cookie_trim_map(data, keep=21)
+    profile.active_points = _json_dump(data)
+
+
+def cookie_register_login(profile: CookieFactoryProfile, now: int) -> Dict[str, Any]:
+    day = cookie_day_key(now)
+    already = (profile.last_login_day or "") == day
+    changed = False
+    penalty_triggered = False
+    if not already:
+        prev_day = profile.last_login_day or ""
+        if prev_day:
+            try:
+                prev_dt = datetime.strptime(prev_day, "%Y-%m-%d")
+                curr_dt = datetime.strptime(day, "%Y-%m-%d")
+                diff = (curr_dt - prev_dt).days
+            except Exception:
+                diff = 0
+            if diff == 1:
+                profile.login_streak = int(profile.login_streak or 0) + 1
+            elif diff > 1:
+                profile.login_streak = 1
+                penalty_triggered = True
+                current = float(profile.pending_penalty_multiplier or 1.0)
+                profile.pending_penalty_multiplier = min(current, 0.7)
+            else:
+                profile.login_streak = 1
+        else:
+            profile.login_streak = 1
+        profile.last_login_day = day
+        changed = True
+        days = _json_object(profile.login_days, {})
+        days[day] = {"ts": cookie_day_start(now)}
+        days = cookie_trim_map(days, keep=21)
+        profile.login_days = _json_dump(days)
+    return {
+        "added": changed,
+        "already": already,
+        "streak": int(profile.login_streak or 0),
+        "penalty_triggered": penalty_triggered,
+    }
+
+
+def cookie_calculate_base_bricks(total_cookies: float) -> int:
+    if total_cookies <= 0:
+        return 0
+    scale = total_cookies / 100_000_000
+    if scale < 1:
+        return 0
+    raw = scale ** 0.92
+    bricks = int(math.floor(raw))
+    return max(1, bricks)
+
+
+def cookie_active_bricks(active_points: Dict[str, int]) -> int:
+    total = 0
+    for points in active_points.values():
+        pts = int(points or 0)
+        total += min(10, pts // 10)
+    return total
+
+
+def cookie_login_bricks(login_days: Dict[str, Any]) -> int:
+    return len(login_days.keys()) * 2
+
+
+def ensure_cookie_profile(db: Session, user: User, now: Optional[int] = None) -> CookieFactoryProfile:
+    if now is None:
+        now = int(time.time())
+    profile = db.query(CookieFactoryProfile).filter_by(user_id=user.id).first()
+    if not profile:
+        profile = CookieFactoryProfile(
+            user_id=user.id,
+            week_start_ts=cookie_week_start(now),
+            last_active_ts=now,
+            golden_ready_ts=now + 120,
+            golden_cooldown=120,
+            production_bonus_multiplier=1.0,
+            pending_bonus_multiplier=1.0,
+            penalty_multiplier=1.0,
+            pending_penalty_multiplier=1.0,
+            banked_cookies=0.0,
+            last_sugar_ts=now,
+        )
+        db.add(profile)
+        db.flush()
+        cookie_mini_games_state(profile)
+    return profile
+
+
+def cookie_prepare_week(profile: CookieFactoryProfile, now: int) -> None:
+    current_week = cookie_week_start(now)
+    if profile.week_start_ts == 0:
+        profile.week_start_ts = current_week
+        profile.production_bonus_multiplier = float(profile.pending_bonus_multiplier or 1.0)
+        profile.penalty_multiplier = float(profile.pending_penalty_multiplier or 1.0)
+        profile.pending_bonus_multiplier = 1.0
+        profile.pending_penalty_multiplier = 1.0
+    elif profile.week_start_ts < current_week:
+        profile.week_start_ts = current_week
+        profile.cookies_this_week = 0.0
+        profile.weekly_bricks_awarded = 0
+        profile.active_points = _json_dump({})
+        profile.login_days = _json_dump({})
+        profile.production_bonus_multiplier = float(profile.pending_bonus_multiplier or 1.0)
+        profile.penalty_multiplier = float(profile.pending_penalty_multiplier or 1.0)
+        profile.pending_bonus_multiplier = 1.0
+        profile.pending_penalty_multiplier = 1.0
+
+
+def cookie_finalize_week(db: Session, profile: CookieFactoryProfile, user: User, now: int) -> Optional[Dict[str, Any]]:
+    if profile.week_start_ts == 0:
+        return None
+    total = float(profile.cookies_this_week or 0.0)
+    active_map_raw = _json_object(profile.active_points, {})
+    active_map = {k: int(v) for k, v in active_map_raw.items()}
+    login_map = _json_object(profile.login_days, {})
+    base_bricks = cookie_calculate_base_bricks(total)
+    active_brick = cookie_active_bricks(active_map)
+    login_brick = cookie_login_bricks(login_map)
+    streak_bonus = 14 if int(profile.login_streak or 0) >= 7 else 0
+    raw_total = base_bricks + active_brick + login_brick + streak_bonus
+    awarded = min(COOKIE_WEEKLY_CAP, max(0, raw_total))
+    awarded = int(awarded)
+    if awarded > 0:
+        user.unopened_bricks += awarded
+        profile.total_bricks_earned += awarded
+    profile.weekly_bricks_awarded = awarded
+    report = {
+        "week_start": profile.week_start_ts,
+        "week_end": profile.week_start_ts + 7 * 86400,
+        "awarded": awarded,
+        "base_bricks": base_bricks,
+        "active_bricks": active_brick,
+        "login_bricks": login_brick,
+        "streak_bonus": streak_bonus,
+        "total_cookies": total,
+        "penalty_multiplier": float(profile.penalty_multiplier or 1.0),
+        "bonus_multiplier": float(profile.production_bonus_multiplier or 1.0),
+        "timestamp": now,
+    }
+    profile.last_report = json.dumps(report, ensure_ascii=False)
+    profile.cookies_this_week = 0.0
+    profile.active_points = _json_dump({})
+    profile.login_days = _json_dump({})
+    profile.production_bonus_multiplier = 1.0
+    profile.penalty_multiplier = 1.0
+    return report
+
+
+def cookie_maybe_settle(db: Session, profile: CookieFactoryProfile, user: User, now: int) -> Optional[Dict[str, Any]]:
+    current_week = cookie_week_start(now)
+    if profile.week_start_ts == 0:
+        cookie_prepare_week(profile, now)
+        return None
+    if profile.week_start_ts < current_week:
+        report = cookie_finalize_week(db, profile, user, now)
+        profile.week_start_ts = current_week
+        profile.production_bonus_multiplier = float(profile.pending_bonus_multiplier or 1.0)
+        profile.penalty_multiplier = float(profile.pending_penalty_multiplier or 1.0)
+        profile.pending_bonus_multiplier = 1.0
+        profile.pending_penalty_multiplier = 1.0
+        return report
+    return None
+
+
+def cookie_tick(profile: CookieFactoryProfile, now: int) -> float:
+    last = int(profile.last_active_ts or 0)
+    if last <= 0:
+        profile.last_active_ts = now
+        return 0.0
+    delta = max(0, now - last)
+    profile.last_active_ts = now
+    if delta <= 0:
+        return 0.0
+    cps, effective = cookie_cps(profile)
+    gain = effective * delta
+    return cookie_add(profile, gain)
+
+
+def cookie_status_payload(
+    user: User,
+    profile: CookieFactoryProfile,
+    now: int,
+    settlement: Optional[Dict[str, Any]] = None,
+    feature_enabled: bool = True,
+) -> Dict[str, Any]:
+    counts = cookie_building_counts(profile)
+    cps, effective_cps = cookie_cps(profile, counts)
+    mini_state = cookie_mini_games_state(profile)
+    active_points = _json_object(profile.active_points, {})
+    login_days = _json_object(profile.login_days, {})
+    base_bricks = cookie_calculate_base_bricks(float(profile.cookies_this_week or 0.0))
+    active_brick = cookie_active_bricks({k: int(v) for k, v in active_points.items()})
+    login_brick = cookie_login_bricks(login_days)
+    streak_bonus = 14 if int(profile.login_streak or 0) >= 7 else 0
+    projected = base_bricks + active_brick + login_brick + streak_bonus
+    projected = min(COOKIE_WEEKLY_CAP, max(0, projected))
+    today = cookie_day_key(now)
+    daily_claimed = today in login_days
+    last_report = None
+    if profile.last_report:
+        try:
+            last_report = json.loads(profile.last_report)
+        except Exception:
+            last_report = None
+    buildings_payload = []
+    for cfg in COOKIE_BUILDINGS:
+        key = cfg["key"]
+        count = counts.get(key, 0)
+        buildings_payload.append({
+            "key": key,
+            "name": cfg["name"],
+            "icon": cfg["icon"],
+            "count": count,
+            "base_cps": cfg["base_cps"],
+            "next_cost": cookie_building_cost(key, count),
+            "desc": cfg["desc"],
+        })
+    mini_payload = []
+    for key, cfg in COOKIE_MINI_GAMES.items():
+        node = mini_state.get(key, {})
+        mini_payload.append({
+            "key": key,
+            "name": cfg["name"],
+            "icon": cfg["icon"],
+            "level": int(node.get("level", 0)),
+            "progress": int(node.get("progress", 0)),
+            "threshold": int(cfg.get("threshold", 1)),
+            "desc": cfg["desc"],
+        })
+    active_breakdown = [
+        {"day": day, "points": int(val)} for day, val in sorted(active_points.items())
+    ]
+    login_list = [
+        {"day": day, "ts": info.get("ts", 0)} for day, info in sorted(login_days.items())
+    ]
+    sugar_ready_in = max(0, (int(profile.last_sugar_ts or 0) + COOKIE_SUGAR_COOLDOWN) - now)
+    golden_ready_in = max(0, int(profile.golden_ready_ts or 0) - now)
+    return {
+        "enabled": bool(feature_enabled),
+        "now": now,
+        "profile": {
+            "cookies": round(float(profile.banked_cookies or 0.0), 2),
+            "cookies_this_week": round(float(profile.cookies_this_week or 0.0), 2),
+            "total_cookies": round(float(profile.total_cookies or 0.0), 2),
+            "manual_clicks": int(profile.manual_clicks or 0),
+            "golden_cookies": int(profile.golden_cookies or 0),
+            "prestige": int(profile.prestige or 0),
+            "prestige_points": int(profile.prestige_points or 0),
+            "sugar_lumps": int(profile.sugar_lumps or 0),
+            "cps": round(cps, 3),
+            "effective_cps": round(effective_cps, 3),
+            "bonus_multiplier": round(float(profile.production_bonus_multiplier or 1.0), 3),
+            "penalty_multiplier": round(float(profile.penalty_multiplier or 1.0), 3),
+            "next_bonus_multiplier": round(float(profile.pending_bonus_multiplier or 1.0), 3),
+            "next_penalty_multiplier": round(float(profile.pending_penalty_multiplier or 1.0), 3),
+        },
+        "buildings": buildings_payload,
+        "mini_games": mini_payload,
+        "weekly": {
+            "week_start": profile.week_start_ts,
+            "week_end": profile.week_start_ts + 7 * 86400,
+            "base_bricks": base_bricks,
+            "active_bricks": active_brick,
+            "login_bricks": login_brick,
+            "streak_bonus": streak_bonus,
+            "projected_bricks": projected,
+            "cap": COOKIE_WEEKLY_CAP,
+            "cap_remaining": max(0, COOKIE_WEEKLY_CAP - projected),
+            "active_points": active_breakdown,
+            "login_days": login_list,
+            "daily_login_claimed": daily_claimed,
+            "login_streak": int(profile.login_streak or 0),
+        },
+        "golden": {
+            "available": golden_ready_in <= 0,
+            "cooldown": int(profile.golden_cooldown or 0),
+            "ready_in": golden_ready_in,
+        },
+        "sugar": {
+            "available": sugar_ready_in <= 0,
+            "ready_in": sugar_ready_in,
+            "cooldown": COOKIE_SUGAR_COOLDOWN,
+        },
+        "settlement": settlement,
+        "last_report": last_report,
+    }
+
+
+def mark_cookie_delta_activity(db: Session, user_id: int) -> None:
+    if not user_id:
+        return
+    user = db.query(User).filter_by(id=user_id).first()
+    if not user:
+        return
+    profile = ensure_cookie_profile(db, user)
+    current = float(profile.pending_bonus_multiplier or 1.0)
+    bonus = min(COOKIE_DELTA_BONUS_CAP, current + COOKIE_DELTA_BONUS)
+    if bonus > current:
+        profile.pending_bonus_multiplier = bonus
+
 def _clamp_brick_price(val: float) -> float:
     try:
         return max(40.0, min(150.0, float(val)))
@@ -939,6 +1544,7 @@ def process_brick_buy_orders(db: Session, cfg: PoolConfig) -> List[Dict[str, Any
                     gross = item["price"] * item["quantity"]
                     net = (gross * 95) // 100
                     seller.coins += net
+                    mark_cookie_delta_activity(db, seller.id)
                     record_trade(
                         db,
                         seller.id,
@@ -1216,16 +1822,23 @@ def reset_password(inp: ResetPwdIn, db: Session = Depends(get_db)):
     return {"ok": True, "msg": "密码已重置，请使用新密码登录"}
 
 @app.get("/me")
-def me(user: User = Depends(user_from_token)):
+def me(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     phone = user.phone or ""
     if phone.startswith(VIRTUAL_PHONE_PREFIX):
         phone = ""
+    cookie_enabled = cookie_factory_enabled(db)
     return {
         "username": user.username, "phone": phone,
         "fiat": user.fiat, "coins": user.coins, "keys": user.keys,
         "unopened_bricks": user.unopened_bricks,
         "pity_brick": user.pity_brick, "pity_purple": user.pity_purple,
         "is_admin": bool(getattr(user, "is_admin", False)),
+        "features": {
+            "cookie_factory": {
+                "enabled": bool(cookie_enabled),
+                "available": bool(cookie_enabled or getattr(user, "is_admin", False)),
+            }
+        },
     }
 
 
@@ -1262,6 +1875,167 @@ def me_mailbox(
         }
         bucket[action].append(entry)
     return out
+
+
+@app.get("/cookie-factory/status")
+def cookie_factory_status(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    now = int(time.time())
+    enabled = cookie_factory_enabled(db)
+    if not enabled and not getattr(user, "is_admin", False):
+        return {"enabled": False, "now": now}
+    profile = ensure_cookie_profile(db, user, now)
+    settlement = cookie_maybe_settle(db, profile, user, now)
+    cookie_tick(profile, now)
+    db.flush()
+    payload = cookie_status_payload(user, profile, now, settlement, feature_enabled=enabled)
+    if not enabled and getattr(user, "is_admin", False):
+        payload["admin_preview"] = True
+    db.commit()
+    return payload
+
+
+@app.post("/cookie-factory/login")
+def cookie_factory_login(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    now = int(time.time())
+    enabled = cookie_factory_enabled(db)
+    if not enabled and not getattr(user, "is_admin", False):
+        raise HTTPException(404, "小游戏未开启")
+    profile = ensure_cookie_profile(db, user, now)
+    settlement = cookie_maybe_settle(db, profile, user, now)
+    cookie_tick(profile, now)
+    info = cookie_register_login(profile, now)
+    if info.get("added"):
+        cookie_add_active_points(profile, now, 5)
+    db.flush()
+    payload = cookie_status_payload(user, profile, now, settlement, feature_enabled=enabled)
+    info["daily_reward"] = 2 if info.get("added") else 0
+    payload["login_result"] = info
+    db.commit()
+    return payload
+
+
+@app.post("/cookie-factory/act")
+def cookie_factory_act(inp: CookieActIn, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    now = int(time.time())
+    enabled = cookie_factory_enabled(db)
+    if not enabled and not getattr(user, "is_admin", False):
+        raise HTTPException(404, "小游戏未开启")
+    profile = ensure_cookie_profile(db, user, now)
+    settlement = cookie_maybe_settle(db, profile, user, now)
+    cookie_tick(profile, now)
+    counts = cookie_building_counts(profile)
+    result: Dict[str, Any] = {}
+    action = inp.type
+    if action == "click":
+        amount = max(1, min(int(inp.amount or 1), 200))
+        gained = cookie_click_gain(profile, amount, counts)
+        cookie_add(profile, gained)
+        profile.manual_clicks = int(profile.manual_clicks or 0) + amount
+        cookie_add_active_points(profile, now, max(1, amount // 5))
+        result = {"gained": round(gained, 2), "clicks": amount}
+    elif action == "buy_building":
+        key = (inp.building or "").strip()
+        if not key or key not in {cfg["key"] for cfg in COOKIE_BUILDINGS}:
+            raise HTTPException(400, "未知建筑")
+        cost = cookie_building_cost(key, counts.get(key, 0))
+        cookie_spend(profile, cost)
+        counts[key] = counts.get(key, 0) + 1
+        cookie_store_buildings(profile, counts)
+        cookie_add_active_points(profile, now, 8)
+        result = {"building": key, "cost": cost, "count": counts[key]}
+    elif action == "golden":
+        if int(profile.golden_ready_ts or 0) > now:
+            raise HTTPException(400, "黄金饼干尚未出现")
+        cps, effective_cps = cookie_cps(profile, counts)
+        burst = effective_cps * 60 + cookie_click_gain(profile, 40, counts)
+        cookie_add(profile, burst)
+        profile.golden_cookies = int(profile.golden_cookies or 0) + 1
+        profile.golden_cooldown = 300
+        profile.golden_ready_ts = now + profile.golden_cooldown
+        cookie_add_active_points(profile, now, 12)
+        result = {"bonus": round(burst, 2)}
+    elif action == "mini":
+        mini_key = (inp.mini or "").strip()
+        if not mini_key or mini_key not in COOKIE_MINI_GAMES:
+            raise HTTPException(400, "未知小游戏")
+        state = cookie_mini_games_state(profile)
+        node = state.get(mini_key, {"level": 0, "progress": 0})
+        node["progress"] = int(node.get("progress", 0)) + 1
+        threshold = int(COOKIE_MINI_GAMES[mini_key].get("threshold", 1))
+        leveled = False
+        if node["progress"] >= threshold:
+            node["progress"] = 0
+            node["level"] = int(node.get("level", 0)) + 1
+            leveled = True
+        state[mini_key] = node
+        profile.mini_games = _json_dump(state)
+        cookie_add_active_points(profile, now, int(COOKIE_MINI_GAMES[mini_key].get("points", 3)))
+        if leveled:
+            current = float(profile.pending_bonus_multiplier or 1.0)
+            profile.pending_bonus_multiplier = min(COOKIE_DELTA_BONUS_CAP, current + 0.01)
+        result = {"mini": mini_key, "level": int(node.get("level", 0)), "leveled": leveled}
+    elif action == "prestige":
+        requirement = 1_000_000
+        if float(profile.total_cookies or 0.0) < requirement:
+            raise HTTPException(400, "需要至少 100 万枚饼干方可升天")
+        points = max(1, int((float(profile.total_cookies or 0.0) / 1_000_000_000) ** 0.5))
+        profile.prestige = int(profile.prestige or 0) + 1
+        profile.prestige_points = int(profile.prestige_points or 0) + points
+        profile.banked_cookies = 0.0
+        profile.cookies_this_week = 0.0
+        profile.manual_clicks = 0
+        profile.golden_cookies = 0
+        profile.golden_ready_ts = now + 180
+        profile.golden_cooldown = 180
+        counts = {cfg["key"]: 0 for cfg in COOKIE_BUILDINGS}
+        cookie_store_buildings(profile, counts)
+        reset_state = {k: {"level": 0, "progress": 0, "last_action": now} for k in COOKIE_MINI_GAMES}
+        profile.mini_games = _json_dump(reset_state)
+        profile.last_active_ts = now
+        profile.pending_bonus_multiplier = min(COOKIE_DELTA_BONUS_CAP, float(profile.pending_bonus_multiplier or 1.0) + 0.02)
+        cookie_add_active_points(profile, now, 20)
+        result = {"prestige": int(profile.prestige or 0), "points_gained": points}
+    elif action == "sugar":
+        ready_at = int(profile.last_sugar_ts or 0) + COOKIE_SUGAR_COOLDOWN
+        if ready_at > now:
+            raise HTTPException(400, "糖块尚未成熟")
+        profile.last_sugar_ts = now
+        profile.sugar_lumps = int(profile.sugar_lumps or 0) + 1
+        cookie_add_active_points(profile, now, 5)
+        result = {"sugar_lumps": int(profile.sugar_lumps or 0)}
+    else:
+        raise HTTPException(400, "不支持的操作")
+
+    db.flush()
+    payload = cookie_status_payload(user, profile, now, settlement, feature_enabled=enabled)
+    payload["action_result"] = result
+    db.commit()
+    return payload
+
+
+@app.get("/admin/cookie-factory")
+def admin_cookie_factory_status(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(403, "需要管理员权限")
+    enabled = cookie_factory_enabled(db)
+    total_profiles = db.query(CookieFactoryProfile).count()
+    total_bricks = db.query(func.coalesce(func.sum(CookieFactoryProfile.total_bricks_earned), 0)).scalar()
+    total_bricks = int(total_bricks or 0)
+    return {
+        "enabled": bool(enabled),
+        "profiles": total_profiles,
+        "total_bricks": total_bricks,
+    }
+
+
+@app.post("/admin/cookie-factory/toggle")
+def admin_cookie_factory_toggle(payload: Dict[str, Any], user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(403, "需要管理员权限")
+    desired = bool((payload or {}).get("enabled", False))
+    set_cookie_factory_enabled(db, desired)
+    db.commit()
+    return {"enabled": desired}
 
 # ------------------ Wallet / Shop ------------------
 @app.post("/wallet/topup")
@@ -1464,6 +2238,7 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
     locked_consumed = min(int(user.gift_unopened_bricks or 0), inp.count)
     if locked_consumed > 0:
         user.gift_unopened_bricks = max(0, int(user.gift_unopened_bricks or 0) - locked_consumed)
+    mark_cookie_delta_activity(db, user.id)
 
     results = []
 
