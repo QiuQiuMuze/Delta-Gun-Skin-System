@@ -2,8 +2,8 @@ const GachaPage = {
   _timer: null,
   _skip: false,
   _currentResults: null,
-  _selectedCount: 10,
-  _choiceButtons: null,
+  _drawButtons: null,
+  _opening: false,
 
   async render() {
     const me = await API.me();
@@ -35,44 +35,39 @@ const GachaPage = {
         未出紫：<span id="pity-purple">${odds.pity_purple}</span>（还差 <span id="left-purple">${left_purple}</span> 抽保底）
       </div></div>
 
-      <div class="input-row">
-        <div class="choice-group" id="open-choice">
-          <button class="btn" data-count="1">单抽</button>
-          <button class="btn active" data-count="10">十连</button>
-        </div>
-        <button class="btn" id="do-open">开！</button>
-        <button class="btn" id="skip" style="display:none;">跳过动画</button>
-      </div>
-
-      <div id="open-stage"></div>
+      <div id="open-stage" class="open-stage"></div>
       <div id="open-result"></div>
+      <div class="draw-actions">
+        <div class="draw-panels">
+          <button class="draw-panel draw-btn draw-btn-single" data-count="1">
+            <span class="draw-panel__title">单抽</span>
+            <span class="draw-panel__desc">消耗 1 把钥匙 + 1 块未开砖</span>
+          </button>
+          <button class="draw-panel draw-btn draw-btn-ten" data-count="10">
+            <span class="draw-panel__title">十连</span>
+            <span class="draw-panel__desc">消耗 10 把钥匙 + 10 块未开砖</span>
+          </button>
+        </div>
+        <div class="draw-helper">
+          <button class="btn ghost" id="skip" style="display:none;">跳过动画</button>
+        </div>
+      </div>
     </div>`;
   },
 
   bind() {
-    byId("do-open").onclick = () => this._open();
     byId("skip").onclick    = () => this._doSkip();
-
-    const choiceWrap = byId("open-choice");
-    this._choiceButtons = choiceWrap ? Array.from(choiceWrap.querySelectorAll("button[data-count]")) : [];
-    const applySelect = (count) => {
-      this._selectedCount = count;
-      (this._choiceButtons || []).forEach(btn => {
-        const val = parseInt(btn.dataset.count || "0", 10);
-        btn.classList.toggle("active", val === count);
-      });
-    };
-    (this._choiceButtons || []).forEach(btn => {
+    this._drawButtons = Array.from(document.querySelectorAll(".draw-btn[data-count]"));
+    this._drawButtons.forEach(btn => {
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
-        if (byId("do-open").disabled) return;
+        if (this._opening) return;
         const val = parseInt(btn.dataset.count || "0", 10);
         if (val === 1 || val === 10) {
-          applySelect(val);
+          this._open(val);
         }
       });
     });
-    applySelect(this._selectedCount);
   },
 
   // —— 抽完后刷新顶部 & 概率/保底 —— //
@@ -162,19 +157,98 @@ const GachaPage = {
   },
   _showStage(html) { byId("open-stage").innerHTML = html; },
 
-  _setChoiceDisabled(disabled) {
-    (this._choiceButtons || []).forEach(btn => {
+  _setDrawDisabled(disabled) {
+    (this._drawButtons || []).forEach(btn => {
       btn.disabled = !!disabled;
     });
   },
 
-  async _open() {
-    const c = [1, 10].includes(this._selectedCount) ? this._selectedCount : 1;
+  async _ensureResources(count) {
+    if (!count) return;
+    let me;
+    try {
+      me = await API.me();
+    } catch (_) {
+      return;
+    }
+    const needs = {
+      keys: Math.max(0, count - (me.keys ?? 0)),
+      bricks: Math.max(0, count - (me.unopened_bricks ?? 0))
+    };
+    if (needs.keys <= 0 && needs.bricks <= 0) return;
+
+    let keyCost = 0;
+    let keyUnit = 0;
+    let brickQuote = null;
+    if (needs.keys > 0) {
+      try {
+        const prices = await API.shopPrices();
+        const price = Number(prices?.key_price || 0);
+        keyUnit = price;
+        keyCost = price * needs.keys;
+      } catch (e) {
+        throw new Error(e?.message || "无法获取钥匙价格");
+      }
+    }
+    if (needs.bricks > 0) {
+      brickQuote = await API.brickQuote(needs.bricks);
+    }
+
+    const parts = [];
+    if (needs.keys > 0) {
+      const unit = keyUnit ? `（单价 ${keyUnit} 三角币，共 ${keyCost}）` : "";
+      parts.push(`钥匙 ×${needs.keys}${unit}`);
+    }
+    if (needs.bricks > 0) {
+      const brickCost = brickQuote?.total_cost || 0;
+      const unit = needs.bricks > 0 ? `（预计 ${brickCost} 三角币）` : "";
+      parts.push(`未开砖 ×${needs.bricks}${unit}`);
+    }
+    const detail = [];
+    if (brickQuote?.segments?.length) {
+      brickQuote.segments.forEach(seg => {
+        const label = seg.source === "player" ? "玩家" : "官方";
+        detail.push(`${label} ${seg.price} ×${seg.quantity}`);
+      });
+    }
+    const totalCost = keyCost + (brickQuote?.total_cost || 0);
+    const intro = totalCost > 0
+      ? `当前钥匙/砖不足，将自动购入所需资源，预计额外花费 ${totalCost} 三角币：`
+      : "当前钥匙/砖不足，将自动购买：";
+    const lines = [intro, ...parts];
+    if (detail.length) {
+      lines.push(`预计拆分：${detail.join("，")}`);
+    }
+    lines.push("是否继续？");
+    if (!confirm(lines.join("\n"))) {
+      throw { message: "" };
+    }
+    if (needs.keys > 0) {
+      await API.buyKeys(needs.keys);
+    }
+    if (needs.bricks > 0) {
+      await API.buyBricks(needs.bricks);
+    }
+    await this._refreshStats();
+  },
+
+  async _open(count = 1) {
+    const c = [1, 10].includes(count) ? count : 1;
     this._skip = false;
-    byId("do-open").disabled = true;
-    this._setChoiceDisabled(true);
+    this._opening = true;
+    this._setDrawDisabled(true);
     byId("skip").style.display = "none";
     byId("open-result").innerHTML = "";
+
+    // 自动补购所需钥匙/砖
+    try {
+      await this._ensureResources(c);
+    } catch (err) {
+      this._opening = false;
+      this._setDrawDisabled(false);
+      if (err?.message) alert(err.message);
+      return;
+    }
 
     // ① “开砖中...”动画
     this._showStage(`<div class="glow fade-in"><span class="spinner"></span>开砖中...</div>`);
@@ -184,13 +258,14 @@ const GachaPage = {
     try { data = await API.open(c); }
     catch (e) {
       alert(e.message);
-      byId("do-open").disabled = false;
-      this._setChoiceDisabled(false);
+      this._setDrawDisabled(false);
+      this._opening = false;
       this._showStage("");
       return;
     }
     const list = data.results || [];
     this._currentResults = list.slice();
+    this._notifyDiamonds(list);
     const maxR = this._maxRarity(list);
     const glowCls = this._glowClass(maxR);
     const glowCN  = this._glowCN(maxR);
@@ -328,8 +403,8 @@ const GachaPage = {
     const step = () => {
       if (this._skip) return this._revealAll(); // 随时可跳过
       if (i >= list.length) {
-        byId("do-open").disabled = false;
-        this._setChoiceDisabled(false);
+        this._setDrawDisabled(false);
+        this._opening = false;
         this._showStage("");      // 清掉上方阶段区
         this._refreshStats();     // 抽完刷新保底/概率/库存
         return;
@@ -371,8 +446,8 @@ const GachaPage = {
         ${brickNote}
         ${tableHTML}
       </div>`;
-    byId("do-open").disabled = false;
-    this._setChoiceDisabled(false);
+    this._setDrawDisabled(false);
+    this._opening = false;
     this._refreshStats(); // 跳过路径也要刷新
     this._currentResults = null;
   },
@@ -389,6 +464,18 @@ const GachaPage = {
     if (!name) return false;
     const key = String(name).toLowerCase();
     return key.includes("white_diamond") || key.includes("yellow_diamond") || key.includes("pink_diamond");
+  },
+
+  _notifyDiamonds(list) {
+    if (!Array.isArray(list) || !window.Notifier || typeof window.Notifier.pushDiamond !== "function") return;
+    const diamonds = list.filter(item => this._isDiamondTemplate(item?.template) || this._isDiamondTemplate(item?.hidden_template));
+    if (!diamonds.length) return;
+    const username = (API._me && API._me.username) ? API._me.username : "你";
+    diamonds.forEach(item => {
+      try {
+        window.Notifier.pushDiamond({ username, item });
+      } catch (_) {}
+    });
   },
 
   _animateWear(el, value, duration = 1200) {
