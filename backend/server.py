@@ -195,6 +195,16 @@ class BrickBuyOrder(Base):
     season = Column(String, default="")
 
 
+class UserPresence(Base):
+    __tablename__ = "user_presence"
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    username = Column(String, nullable=False)
+    page = Column(String, default="")
+    activity = Column(String, default="")
+    detail = Column(Text, default="{}")
+    last_seen = Column(Integer, default=lambda: int(time.time()))
+
+
 class CookieFactoryProfile(Base):
     __tablename__ = "cookie_factory_profiles"
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
@@ -504,6 +514,21 @@ class CookieActIn(BaseModel):
     amount: Optional[int] = 1
     building: Optional[str] = None
     mini: Optional[str] = None
+
+
+class CultivationBeginIn(BaseModel):
+    talents: List[str]
+    attributes: Dict[str, int]
+
+
+class CultivationAdvanceIn(BaseModel):
+    choice: str
+
+
+class PresenceUpdateIn(BaseModel):
+    page: str
+    activity: str
+    details: Optional[Dict[str, Any]] = None
 
 class PoolConfigIn(BaseModel):
     brick_price: int = 100
@@ -1781,6 +1806,7 @@ def ensure_visual(inv: Inventory, skin: Optional[Skin] = None) -> Dict[str, obje
 
 # ------------------ Cookie Factory Mini-game ------------------
 COOKIE_FACTORY_SETTING_KEY = "cookie_factory_enabled"
+COOKIE_CULTIVATION_SETTING_KEY = "cookie_cultivation_enabled"
 COOKIE_WEEKLY_CAP = 100
 COOKIE_DELTA_BONUS = 0.05
 COOKIE_DELTA_BONUS_CAP = 1.25
@@ -1844,6 +1870,7 @@ COOKIE_BUILDINGS = [
     },
 ]
 
+COOKIE_CULTIVATION_KEY = "cultivation"
 COOKIE_MINI_GAMES = {
     "garden": {
         "name": "花园",
@@ -1872,7 +1899,135 @@ COOKIE_MINI_GAMES = {
         "sugar_cost": 2,
         "desc": "做一笔甜蜜交易，投入 2 颗糖块换取收益效率。",
     },
+    COOKIE_CULTIVATION_KEY: {
+        "name": "模拟修仙",
+        "icon": "🧘",
+        "points": 8,
+        "threshold": 1,
+        "cps_bonus": 0.0,
+        "sugar_cost": 0,
+        "desc": "闭关悟道、奇遇不断，完成整场修仙历练即可获得故事结局与得分。",
+        "score_threshold": 160,
+    },
 }
+
+
+CULTIVATION_STAT_KEYS = [
+    ("body", "体魄"),
+    ("mind", "悟性"),
+    ("spirit", "心性"),
+    ("luck", "气运"),
+]
+
+CULTIVATION_TALENTS = [
+    {
+        "id": "iron_body",
+        "name": "金刚体魄",
+        "desc": "体魄 +3，战斗时所受伤害降低",
+        "effects": {"body": 3},
+        "flags": {"combat_resist": 0.5},
+    },
+    {
+        "id": "sage_mind",
+        "name": "悟道奇才",
+        "desc": "悟性 +3，闭关悟道成功率提升",
+        "effects": {"mind": 3},
+        "flags": {"insight_bonus": 0.15},
+    },
+    {
+        "id": "serene_heart",
+        "name": "静心如水",
+        "desc": "心性 +2，失败损失减少",
+        "effects": {"spirit": 2},
+        "flags": {"setback_reduce": 4},
+    },
+    {
+        "id": "child_of_luck",
+        "name": "气运之子",
+        "desc": "气运 +4，奇遇收益提升",
+        "effects": {"luck": 4},
+        "flags": {"chance_bonus": 0.25},
+    },
+    {
+        "id": "alchemy_adept",
+        "name": "丹道新星",
+        "desc": "首次炼丹事件必定成功并悟性 +1",
+        "effects": {"mind": 1},
+        "flags": {"alchemy_mastery": 1},
+    },
+    {
+        "id": "sword_soul",
+        "name": "剑魂共鸣",
+        "desc": "战斗成功奖励提升，体魄 +1，悟性 +1",
+        "effects": {"body": 1, "mind": 1},
+        "flags": {"combat_bonus": 0.2},
+    },
+    {
+        "id": "phoenix_blood",
+        "name": "凤血重生",
+        "desc": "寿元 +15，濒死时有机会重生",
+        "effects": {},
+        "flags": {"lifespan_bonus": 15, "resurrection": 0.3},
+    },
+    {
+        "id": "spirit_talker",
+        "name": "灵识敏锐",
+        "desc": "心性 +3，可预判风险",
+        "effects": {"spirit": 3},
+        "flags": {"hazard_hint": 1},
+    },
+]
+
+CULTIVATION_BASE_POINTS = 8
+CULTIVATION_MAX_TALENTS = 2
+CULTIVATION_REFRESH_COUNT = 3
+CULTIVATION_STAGE_NAMES = ["凡人", "炼气", "筑基", "金丹", "元婴", "化神", "飞升"]
+CULTIVATION_STAGE_THRESHOLDS = [120, 260, 420, 660, 960, 1320]
+
+CULTIVATION_SUCCESS_SNIPPETS = [
+    "灵光涌动，丹田内真意交织",
+    "气机归一，道韵在周身环绕",
+    "悟出一缕新法，心境空明",
+    "体魄与灵识同进，神采焕发",
+    "星光入体，法则痕迹在指尖流转",
+]
+
+CULTIVATION_FAILURE_SNIPPETS = [
+    "气血翻涌，险些走火入魔",
+    "灵台震荡，道心摇曳",
+    "经脉受损，只得勉强稳住",
+    "心魔趁虚而入，功行受挫",
+    "天地灵机逆流，身躯大受打击",
+]
+
+CULTIVATION_FORTUNE_SCENES = [
+    "枯井中升起星河幻影",
+    "古木裂开露出幽蓝玉简",
+    "荒山间显化远古神祇虚影",
+    "山泉化作灵脉，灵气喷薄",
+    "夜空有流星坠落，化为神秘晶石",
+]
+
+
+def _cultivation_stat_label(stat_key: str) -> str:
+    return next((label for key, label in CULTIVATION_STAT_KEYS if key == stat_key), stat_key)
+
+
+def _cultivation_log_entry(text: str, tone: str = "info") -> Dict[str, str]:
+    return {"text": str(text), "tone": tone}
+
+
+def _cultivation_normalize_log(run: Dict[str, Any]) -> List[Dict[str, str]]:
+    raw_log = run.get("log") or []
+    normalized: List[Dict[str, str]] = []
+    for entry in raw_log:
+        if isinstance(entry, dict) and "text" in entry:
+            tone = entry.get("tone") or "info"
+            normalized.append(_cultivation_log_entry(entry.get("text"), tone))
+        elif entry:
+            normalized.append(_cultivation_log_entry(entry, "info"))
+    run["log"] = normalized
+    return normalized
 
 
 def _json_object(raw: str, default: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1907,6 +2062,23 @@ def set_cookie_factory_enabled(db: Session, enabled: bool) -> None:
         row.value = value
     else:
         db.add(SystemSetting(key=COOKIE_FACTORY_SETTING_KEY, value=value))
+    db.flush()
+
+
+def cookie_cultivation_enabled(db: Session) -> bool:
+    row = db.query(SystemSetting).filter_by(key=COOKIE_CULTIVATION_SETTING_KEY).first()
+    if not row:
+        return False
+    return str(row.value) != "0"
+
+
+def set_cookie_cultivation_enabled(db: Session, enabled: bool) -> None:
+    value = "1" if enabled else "0"
+    row = db.query(SystemSetting).filter_by(key=COOKIE_CULTIVATION_SETTING_KEY).first()
+    if row:
+        row.value = value
+    else:
+        db.add(SystemSetting(key=COOKIE_CULTIVATION_SETTING_KEY, value=value))
     db.flush()
 
 
@@ -1954,6 +2126,10 @@ def cookie_mini_games_state(profile: CookieFactoryProfile) -> Dict[str, Any]:
             node.setdefault("level", 0)
             node.setdefault("progress", 0)
         node.setdefault("last_action", 0)
+        if key == COOKIE_CULTIVATION_KEY:
+            node.setdefault("last_result", {})
+            node.setdefault("best_score", 0)
+            node.setdefault("play_count", 0)
         state[key] = node
     if changed:
         profile.mini_games = _json_dump(state)
@@ -1971,6 +2147,1041 @@ def cookie_building_counts(profile: CookieFactoryProfile) -> Dict[str, int]:
 
 def cookie_store_buildings(profile: CookieFactoryProfile, counts: Dict[str, int]) -> None:
     profile.buildings = _json_dump({k: int(v) for k, v in counts.items()})
+
+
+def cookie_cultivation_admin_stats(db: Session) -> Tuple[int, int]:
+    runs = 0
+    best = 0
+    rows = db.query(CookieFactoryProfile.mini_games).all()
+    for (raw,) in rows:
+        data = _json_object(raw, {})
+        node = data.get(COOKIE_CULTIVATION_KEY)
+        if not isinstance(node, dict):
+            continue
+        try:
+            runs += int(node.get("play_count") or 0)
+            best = max(best, int(node.get("best_score") or 0))
+        except Exception:
+            continue
+    return runs, best
+
+
+def update_presence(
+    db: Session,
+    user: User,
+    page: str,
+    activity: str,
+    details: Optional[Dict[str, Any]] = None,
+) -> None:
+    now = int(time.time())
+    if not user:
+        return
+    row = db.query(UserPresence).filter_by(user_id=user.id).first()
+    if not row:
+        row = UserPresence(user_id=user.id, username=user.username)
+        db.add(row)
+    row.username = user.username
+    row.page = (page or "")[:200]
+    row.activity = (activity or "")[:120]
+    row.detail = _json_dump(details or {})
+    row.last_seen = now
+
+
+def list_active_presence(db: Session, horizon: int = 180) -> List[Dict[str, Any]]:
+    now = int(time.time())
+    cutoff = now - max(30, int(horizon or 0))
+    rows = (
+        db.query(UserPresence)
+        .filter(UserPresence.last_seen >= cutoff)
+        .order_by(UserPresence.last_seen.desc())
+        .all()
+    )
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        info = _json_object(row.detail, {})
+        out.append(
+            {
+                "username": row.username,
+                "page": row.page,
+                "activity": row.activity,
+                "details": info,
+                "last_seen": int(row.last_seen or 0),
+                "seconds_ago": max(0, now - int(row.last_seen or 0)),
+            }
+        )
+    stale_cutoff = now - 3600
+    db.query(UserPresence).filter(UserPresence.last_seen < stale_cutoff).delete()
+    return out
+
+
+def _cultivation_opportunity(rng: random.Random, stats: Dict[str, int]) -> Tuple[str, float]:
+    stat_key, stat_label = rng.choice(CULTIVATION_STAT_KEYS)
+    boost = rng.randint(1, 3)
+    stats[stat_key] = int(stats.get(stat_key, 0)) + boost
+    harvest = rng.uniform(40, 90)
+    scene = rng.choice(CULTIVATION_FORTUNE_SCENES)
+    return (
+        f"机缘：{scene}，{stat_label}+{boost}，额外修为 {int(harvest)}",
+        harvest,
+    )
+
+
+def _cultivation_adventure(
+    rng: random.Random, stats: Dict[str, int], health: float
+) -> Tuple[str, float, float]:
+    mishaps = [
+        "外出历练遭遇灵兽狂袭",
+        "炼丹炉爆裂，丹毒侵体",
+        "天劫失控，雷霆倒灌经脉",
+        "被卷入宗门纷争，刀兵入体",
+    ]
+    loss = rng.randint(14, 32)
+    siphon = rng.uniform(30, 70)
+    weaken_key, weaken_label = rng.choice(CULTIVATION_STAT_KEYS)
+    stats[weaken_key] = max(0, int(stats.get(weaken_key, 0)) - 1)
+    new_health = max(0.0, float(health) - loss)
+    return (
+        f"意外：{rng.choice(mishaps)}，损失寿元 {loss}，{weaken_label}-1，修为倒退 {int(siphon)}",
+        -siphon,
+        new_health,
+    )
+
+
+def _cultivation_chance(rng: random.Random, stats: Dict[str, int]) -> Tuple[str, float]:
+    fortunes = [
+        "闭关七日顿悟剑意",
+        "炼体淬骨，筋骨如龙",
+        "观星夜得太一心法残篇",
+        "结识同道，共参大道",
+        "入梦仙宫，与古仙对弈悟道",
+    ]
+    gain = rng.uniform(28, 62)
+    stat_key, stat_label = rng.choice(CULTIVATION_STAT_KEYS)
+    stats[stat_key] = int(stats.get(stat_key, 0)) + 1
+    return (f"奇遇：{rng.choice(fortunes)}，{stat_label}+1，悟得 {int(gain)}", gain)
+
+
+
+
+def _cultivation_node(profile: CookieFactoryProfile) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    state = cookie_mini_games_state(profile)
+    raw_node = state.get(COOKIE_CULTIVATION_KEY)
+    node = raw_node if isinstance(raw_node, dict) else {}
+    if "best_score" not in node:
+        legacy_last = node.get("last_result") if isinstance(node.get("last_result"), dict) else None
+        best = int(node.get("best_score") or node.get("best") or 0)
+        play_count = int(node.get("play_count") or node.get("count") or 0)
+        history = node.get("history") if isinstance(node.get("history"), list) else []
+        node = {
+            "best_score": max(0, best),
+            "play_count": max(0, play_count),
+            "last_result": legacy_last,
+            "history": history,
+        }
+    node.setdefault("history", [])
+    state[COOKIE_CULTIVATION_KEY] = node
+    profile.mini_games = _json_dump(state)
+    return state, node
+
+
+def _cultivation_stats_template() -> Dict[str, int]:
+    base: Dict[str, int] = {}
+    for key, _ in CULTIVATION_STAT_KEYS:
+        base[key] = 4
+    return base
+
+
+def _cultivation_render_talent(talent: Dict[str, Any]) -> Dict[str, Any]:
+    effects = talent.get("effects") or {}
+    display_effects: List[Dict[str, Any]] = []
+    for key, value in effects.items():
+        label = next((label for (k, label) in CULTIVATION_STAT_KEYS if k == key), key)
+        display_effects.append({"stat": key, "label": label, "value": int(value)})
+    return {
+        "id": talent.get("id"),
+        "name": talent.get("name"),
+        "desc": talent.get("desc"),
+        "effects": display_effects,
+    }
+
+
+def _cultivation_pick_talents(rng: random.Random) -> List[Dict[str, Any]]:
+    pool = list(CULTIVATION_TALENTS)
+    rng.shuffle(pool)
+    size = min(4, len(pool))
+    return [_cultivation_render_talent(talent) for talent in pool[:size]]
+
+
+def _cultivation_prepare_lobby(node: Dict[str, Any], seed: Optional[int] = None) -> Dict[str, Any]:
+    lobby = node.get("lobby") if isinstance(node.get("lobby"), dict) else None
+    if lobby and lobby.get("talents"):
+        return lobby
+    base_seed = seed or secrets.randbits(64)
+    rng = random.Random(base_seed)
+    lobby = {
+        "roll_id": secrets.token_hex(6),
+        "talents": _cultivation_pick_talents(rng),
+        "refreshes_left": CULTIVATION_REFRESH_COUNT,
+        "base_stats": _cultivation_stats_template(),
+        "points": CULTIVATION_BASE_POINTS,
+        "max_talents": CULTIVATION_MAX_TALENTS,
+    }
+    node["lobby"] = lobby
+    return lobby
+
+
+def _cultivation_find_talent(talent_id: str) -> Optional[Dict[str, Any]]:
+    for talent in CULTIVATION_TALENTS:
+        if talent.get("id") == talent_id:
+            return talent
+    return None
+
+
+def _cultivation_apply_talents(
+    base_stats: Dict[str, int],
+    selected: List[Dict[str, Any]],
+) -> Tuple[Dict[str, int], Dict[str, Any]]:
+    stats = {k: int(base_stats.get(k, 0)) for k, _ in CULTIVATION_STAT_KEYS}
+    flags: Dict[str, Any] = {}
+    for talent in selected:
+        effects = talent.get("effects") or {}
+        for key, val in effects.items():
+            stats[key] = int(stats.get(key, 0)) + int(val)
+        for flag_key, flag_val in (talent.get("flags") or {}).items():
+            current = flags.get(flag_key)
+            if isinstance(flag_val, (int, float)) and isinstance(current, (int, float)):
+                flags[flag_key] = current + flag_val
+            else:
+                flags[flag_key] = flag_val
+    return stats, flags
+
+
+def _cultivation_start_run(
+    node: Dict[str, Any],
+    talents: List[Dict[str, Any]],
+    stats: Dict[str, int],
+    flags: Dict[str, Any],
+) -> Dict[str, Any]:
+    seed = secrets.randbits(64)
+    rng = random.Random(seed)
+    age = rng.randint(15, 22)
+    base_health = 60 + stats.get("body", 0) * 4 + rng.randint(0, 14)
+    lifespan = 70 + stats.get("spirit", 0) * 3 + stats.get("luck", 0) * 2 + rng.randint(12, 36)
+    lifespan += int(flags.get("lifespan_bonus") or 0)
+    run = {
+        "session": secrets.token_hex(8),
+        "seed": seed,
+        "age": age,
+        "lifespan": lifespan,
+        "health": float(base_health),
+        "max_health": float(base_health),
+        "progress": 0.0,
+        "stage_index": 0,
+        "stats": {k: int(v) for k, v in stats.items()},
+        "talents": [
+            {
+                "id": t.get("id"),
+                "name": t.get("name"),
+                "desc": t.get("desc"),
+                "effects": t.get("effects"),
+            }
+            for t in talents
+        ],
+        "talent_flags": flags,
+        "log": [],
+        "score": 0.0,
+        "step": 0,
+        "finished": False,
+        "ending_type": None,
+    }
+    start_phrase = rng.choice(
+        [
+            "立誓求道，迈入修行之途",
+            "带着热血与渴望，踏入修仙之境",
+            "推开山门，新的修行篇章自此展开",
+        ]
+    )
+    run["log"].append(
+        _cultivation_log_entry(f"{age} 岁{start_phrase}。", "info")
+    )
+    node["active_run"] = run
+    node.pop("lobby", None)
+    return run
+
+
+def _cultivation_option(
+    option_id: str,
+    label: str,
+    detail: str,
+    focus: str,
+    option_type: str,
+    progress: Tuple[float, float],
+    health: Tuple[float, float],
+    score: Tuple[float, float],
+    flavor: str,
+    *,
+    risk: float = 0.25,
+    success_flavor: Optional[List[str]] = None,
+    failure_flavor: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    return {
+        "id": option_id,
+        "label": label,
+        "detail": detail,
+        "focus": focus,
+        "type": option_type,
+        "progress": progress,
+        "health": health,
+        "score": score,
+        "flavor": flavor,
+        "risk": float(risk),
+        "success_flavor": list(success_flavor or []),
+        "failure_flavor": list(failure_flavor or []),
+    }
+
+
+def _cultivation_generate_event(run: Dict[str, Any]) -> None:
+    if run.get("finished"):
+        run["pending_event"] = None
+        return
+    run["step"] = int(run.get("step") or 0) + 1
+    rng = random.Random(run["seed"] + run["step"] * 7919)
+    near_break = False
+    if run["stage_index"] < len(CULTIVATION_STAGE_THRESHOLDS):
+        threshold = CULTIVATION_STAGE_THRESHOLDS[run["stage_index"]]
+        near_break = threshold > 0 and run.get("progress", 0.0) >= threshold * 0.8
+    if near_break and run["stage_index"] >= 1:
+        event_type = "tribulation"
+    else:
+        event_type = rng.choices(
+            ["meditation", "adventure", "opportunity", "training"],
+            weights=[0.3, 0.3, 0.25, 0.15],
+        )[0]
+
+    options: List[Dict[str, Any]] = []
+    if event_type == "meditation":
+        title = "闭关悟道"
+        desc = "你在静室中参悟大道，灵气环绕，丹炉旁白烟袅袅。"
+        options = [
+            _cultivation_option(
+                "focus",
+                "全力冥想悟道",
+                "专注悟性，追求境界突破。",
+                "mind",
+                "insight",
+                (58, 92),
+                (-6, -2),
+                (55, 82),
+                "闭关冥想，灵光乍现",
+                risk=0.38,
+                success_flavor=[
+                    "心神归于一线，刹那勘破瓶颈",
+                    "道韵在识海中流淌，悟得新篇",
+                ],
+                failure_flavor=[
+                    "心神浮动，被纷乱杂念拉回现实",
+                    "灵光闪烁而逝，差点走火入魔",
+                ],
+            ),
+            _cultivation_option(
+                "temper",
+                "以身炼体",
+                "调动体魄，淬炼筋骨。",
+                "body",
+                "combat",
+                (40, 68),
+                (-4, 3),
+                (40, 65),
+                "运转真气淬炼肉身",
+                risk=0.26,
+                success_flavor=[
+                    "气血澎湃，筋骨发出龙吟",
+                    "肉身似铁，劲力在四肢奔涌",
+                ],
+                failure_flavor=[
+                    "强行淬体，血气逆流",
+                    "筋骨扭曲，疼痛袭来",
+                ],
+            ),
+            _cultivation_option(
+                "alchemy",
+                "尝试炼丹",
+                "配制灵丹提升修为，风险与机遇并存。",
+                "mind",
+                "alchemy",
+                (50, 75),
+                (-5, 1),
+                (48, 76),
+                "潜心炼丹，丹香扑鼻",
+                risk=0.32,
+                success_flavor=[
+                    "丹炉赤焰稳固，丹成霞光四溢",
+                    "灵药融合，丹纹缭绕",
+                ],
+                failure_flavor=[
+                    "火候失控，丹炉轰鸣",
+                    "药力暴走，丹香化作焦糊",
+                ],
+            ),
+        ]
+    elif event_type == "adventure":
+        title = "山野历练"
+        desc = "你走入幽深山林，灵兽出没，天地灵机萦绕。"
+        options = [
+            _cultivation_option(
+                "battle",
+                "拔剑迎敌",
+                "以锋芒试探灵兽，搏命求精进。",
+                "body",
+                "combat",
+                (62, 96),
+                (-12, -5),
+                (62, 88),
+                "与灵兽鏖战，杀伐果决",
+                risk=0.42,
+                success_flavor=[
+                    "剑芒横扫，灵兽悲鸣倒地",
+                    "战意冲霄，一剑破开狂风",
+                ],
+                failure_flavor=[
+                    "被灵兽巨尾掀飞，血气沸腾",
+                    "刀光刺入护体真气，皮开肉绽",
+                ],
+            ),
+            _cultivation_option(
+                "dodge",
+                "身法游走",
+                "凭借气运与身法化解危机。",
+                "luck",
+                "chance",
+                (44, 66),
+                (-6, 2),
+                (46, 70),
+                "以巧取胜，化险为夷",
+                risk=0.28,
+                success_flavor=[
+                    "脚踏青云，身影在林间穿梭",
+                    "借势借力，险境化作助力",
+                ],
+                failure_flavor=[
+                    "脚下一滑，险些坠入幽潭",
+                    "躲闪失误，被爪影擦身",
+                ],
+            ),
+            _cultivation_option(
+                "befriend",
+                "以灵识安抚",
+                "尝试驯服灵兽，借机悟道。",
+                "spirit",
+                "chance",
+                (48, 74),
+                (-8, 0),
+                (50, 78),
+                "与灵兽心神交汇",
+                risk=0.3,
+                success_flavor=[
+                    "灵识抚平躁动，灵兽俯首帖耳",
+                    "心神共鸣，自然万物皆可为友",
+                ],
+                failure_flavor=[
+                    "灵兽抗拒，凶性暴涨",
+                    "沟通失误，灵识反噬",
+                ],
+            ),
+        ]
+    elif event_type == "opportunity":
+        title = "奇遇机缘"
+        desc = "云游途中偶遇机缘，前辈遗泽与上古遗迹皆现于眼前。"
+        options = [
+            _cultivation_option(
+                "inherit",
+                "探取遗迹",
+                "深入遗迹寻找传承。",
+                "luck",
+                "chance",
+                (55, 88),
+                (-5, 4),
+                (58, 90),
+                "获得上古法诀",
+                risk=0.34,
+                success_flavor=[
+                    "石壁裂开，古老符文涌现",
+                    "遗迹深处传来仙音，引你入胜",
+                ],
+                failure_flavor=[
+                    "机关突发，灵力震荡",
+                    "古阵崩塌，被迫狼狈逃离",
+                ],
+            ),
+            _cultivation_option(
+                "mentor",
+                "虚心请教",
+                "向高人讨教心法。",
+                "mind",
+                "insight",
+                (52, 82),
+                (-3, 3),
+                (54, 84),
+                "前辈指点迷津",
+                risk=0.22,
+                success_flavor=[
+                    "得前辈点破迷津，心境豁然",
+                    "对答如流，获赠珍贵心得",
+                ],
+                failure_flavor=[
+                    "道心不稳，难以领悟高人所言",
+                    "心浮气躁，被前辈喝止",
+                ],
+            ),
+            _cultivation_option(
+                "ally",
+                "结交道友",
+                "与同道互换心得，共同进步。",
+                "spirit",
+                "insight",
+                (48, 78),
+                (-4, 4),
+                (50, 82),
+                "与同道切磋互进",
+                risk=0.24,
+                success_flavor=[
+                    "切磋中互补短板，共同精进",
+                    "结识挚友，道途从此不再孤单",
+                ],
+                failure_flavor=[
+                    "观点冲突，道友拂袖离去",
+                    "交流受阻，心境微受影响",
+                ],
+            ),
+        ]
+    elif event_type == "training":
+        title = "门派试炼"
+        desc = "门派发布试炼任务，需要调动全身心完成挑战。"
+        options = [
+            _cultivation_option(
+                "guard",
+                "守护灵脉",
+                "守护灵脉抵御外敌，稳固根基。",
+                "body",
+                "combat",
+                (50, 80),
+                (-10, -2),
+                (55, 82),
+                "守卫灵脉，稳固根基",
+                risk=0.36,
+                success_flavor=[
+                    "灵脉安稳，敌人尽数退散",
+                    "护阵与血气合一，稳如磐石",
+                ],
+                failure_flavor=[
+                    "敌势凶猛，灵脉震荡",
+                    "护阵失衡，被迫吐血稳住",
+                ],
+            ),
+            _cultivation_option(
+                "lecture",
+                "讲道授业",
+                "梳理所学为同门讲道，融会贯通。",
+                "mind",
+                "insight",
+                (46, 74),
+                (-2, 4),
+                (48, 78),
+                "讲道授业，悟道更深",
+                risk=0.18,
+                success_flavor=[
+                    "讲道入微，众人心悦诚服",
+                    "整理所得，道法更臻圆满",
+                ],
+                failure_flavor=[
+                    "言语不畅，道理难以尽述",
+                    "临台紧张，思绪有些紊乱",
+                ],
+            ),
+            _cultivation_option(
+                "patrol",
+                "巡游四境",
+                "外出巡逻，体悟世间变幻。",
+                "luck",
+                "chance",
+                (44, 70),
+                (-6, 2),
+                (46, 74),
+                "巡游四方，心境开阔",
+                risk=0.26,
+                success_flavor=[
+                    "万象入怀，道心于世俗中沉淀",
+                    "巡游途中，感悟天地气息",
+                ],
+                failure_flavor=[
+                    "遭遇突发事件，被迫仓促应对",
+                    "一路波折，心力交瘁",
+                ],
+            ),
+        ]
+    else:
+        title = "境界瓶颈"
+        desc = "气息鼓荡，境界临近突破，雷云隐现。"
+        options = [
+            _cultivation_option(
+                "force",
+                "强行渡劫",
+                "以强横气血硬撼天劫。",
+                "body",
+                "combat",
+                (70, 110),
+                (-16, -6),
+                (72, 108),
+                "强撑雷劫，气血沸腾",
+                risk=0.5,
+                success_flavor=[
+                    "雷霆炸裂，却被你硬生生挡下",
+                    "血气成盾，撕裂劫云",
+                ],
+                failure_flavor=[
+                    "雷劫反噬，肉身焦糊",
+                    "体内气血紊乱，险些陨落",
+                ],
+            ),
+            _cultivation_option(
+                "guide",
+                "以心引雷",
+                "借助心性引导雷霆之力。",
+                "spirit",
+                "insight",
+                (68, 105),
+                (-10, -3),
+                (70, 104),
+                "以心引雷，神识稳固",
+                risk=0.38,
+                success_flavor=[
+                    "心神如镜，引导雷霆化为己用",
+                    "神识镇守四方，雷势顺势消散",
+                ],
+                failure_flavor=[
+                    "念头稍乱，引雷入体剧痛难忍",
+                    "心神被雷霆震荡，元神动摇",
+                ],
+            ),
+            _cultivation_option(
+                "borrow",
+                "借助机缘",
+                "祭出机缘宝物辅助渡劫。",
+                "luck",
+                "chance",
+                (66, 102),
+                (-8, 2),
+                (68, 100),
+                "借助机缘，化险为夷",
+                risk=0.32,
+                success_flavor=[
+                    "机缘宝物绽放神光，护体雷火尽散",
+                    "宝光护体，劫云被驱散",
+                ],
+                failure_flavor=[
+                    "宝物能量不足，反被劫雷击裂",
+                    "借力不成，反遭反噬",
+                ],
+            ),
+        ]
+
+    event = {
+        "id": f"{run['session']}-{run['step']}",
+        "title": title,
+        "description": desc,
+        "options": options,
+        "seed": run["seed"] + run["step"] * 9973,
+        "kind": event_type,
+    }
+    if run.get("talent_flags", {}).get("hazard_hint"):
+        worst = min(opt["health"][0] for opt in options)
+        if worst <= -14:
+            event["hint"] = "⚠️ 风险极大，稍有不慎便会重伤"
+        elif worst <= -8:
+            event["hint"] = "⚠️ 需谨慎，部分选择会造成不小损耗"
+        else:
+            event["hint"] = "✅ 风险可控，可随心抉择"
+    run["pending_event"] = event
+
+
+def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, Any]:
+    event = run.get("pending_event") or {}
+    options = event.get("options") or []
+    option = next((opt for opt in options if opt.get("id") == choice_id), None)
+    if not option:
+        raise HTTPException(400, "未知选项")
+    rng = random.Random(event.get("seed", 0) + hash(choice_id) % 10007)
+    focus = option.get("focus") or "mind"
+    stats = run.get("stats", {})
+    stat_value = int(stats.get(focus, 0))
+    _cultivation_normalize_log(run)
+
+    progress_low, progress_high = option.get("progress", (40.0, 60.0))
+    score_low, score_high = option.get("score", (40.0, 60.0))
+    health_low, health_high = option.get("health", (-4.0, 2.0))
+    base_progress = rng.uniform(progress_low, progress_high)
+    base_score = rng.uniform(score_low, score_high)
+    base_health = rng.uniform(health_low, health_high)
+    flags = run.get("talent_flags", {})
+    risk = max(0.0, min(1.0, float(option.get("risk") or 0.25)))
+    base_chance = 0.55 - risk * 0.25 + stat_value * 0.03
+    if option.get("type") == "insight":
+        base_chance += float(flags.get("insight_bonus") or 0.0) * 0.6
+    if option.get("type") == "chance":
+        base_chance += float(flags.get("chance_bonus") or 0.0) * 0.35
+    if option.get("type") == "combat":
+        base_chance += float(flags.get("combat_bonus") or 0.0) * 0.3
+    base_chance += float(flags.get("success_bonus") or 0.0)
+    base_chance = max(0.12, min(0.95, base_chance))
+
+    success = rng.random() < base_chance
+    if option.get("type") == "alchemy" and flags.get("alchemy_mastery") and not run.get("alchemy_mastery_used"):
+        success = True
+        run["alchemy_mastery_used"] = True
+
+    if success:
+        progress_gain = base_progress + stat_value * 4.0
+        score_gain = base_score + stat_value * 2.2
+        health_delta = base_health
+    else:
+        progress_gain = -abs(base_progress * rng.uniform(0.45, 0.75)) - stat_value * rng.uniform(0.4, 0.8)
+        score_gain = -abs(base_score * rng.uniform(0.4, 0.7)) - stat_value * rng.uniform(0.6, 1.0)
+        penalty = max(abs(health_low), abs(health_high), 6.0)
+        health_delta = -abs(penalty * rng.uniform(0.7, 1.1)) - stat_value * 0.4
+
+    if option.get("type") == "insight" and success:
+        bonus = float(flags.get("insight_bonus") or 0.0)
+        progress_gain *= 1.0 + bonus
+    if option.get("type") == "chance" and success:
+        chance_bonus = float(flags.get("chance_bonus") or 0.0)
+        extra = progress_gain * chance_bonus
+        progress_gain += extra
+        score_gain += extra * 0.6
+    if option.get("type") == "combat":
+        resist = float(flags.get("combat_resist") or 0.0)
+        if health_delta < 0:
+            health_delta *= max(0.2, 1.0 - resist)
+        if success:
+            score_gain *= 1.0 + float(flags.get("combat_bonus") or 0.0)
+        else:
+            score_gain *= max(0.5, 1.0 - resist * 0.6)
+    if option.get("type") == "alchemy" and success and flags.get("alchemy_mastery"):
+        progress_gain *= 1.3
+        score_gain *= 1.25
+
+    if health_delta < 0 and flags.get("setback_reduce"):
+        health_delta = min(0.0, health_delta + float(flags.get("setback_reduce")))
+
+    bonus_progress = 0.0
+    bonus_score = 0.0
+    extra_entries: List[Dict[str, str]] = []
+    new_health_override: Optional[float] = None
+
+    if success and option.get("type") == "chance":
+        if rng.random() < 0.45:
+            fortune_text, gain = _cultivation_opportunity(rng, stats)
+            bonus_progress += gain
+            bonus_score += gain * 0.7
+            extra_entries.append(_cultivation_log_entry(fortune_text, "fortune"))
+        elif rng.random() < 0.6:
+            fortune_text, gain = _cultivation_chance(rng, stats)
+            bonus_progress += gain
+            bonus_score += gain * 0.6
+            extra_entries.append(_cultivation_log_entry(fortune_text, "fortune"))
+    elif success and option.get("type") == "insight" and rng.random() < 0.25:
+        fortune_text, gain = _cultivation_chance(rng, stats)
+        bonus_progress += gain * 0.6
+        bonus_score += gain * 0.4
+        extra_entries.append(_cultivation_log_entry(fortune_text, "fortune"))
+
+    if not success and rng.random() < 0.55:
+        mishap_text, setback, forced_health = _cultivation_adventure(
+            rng, stats, float(run.get("health", 0.0)) + health_delta
+        )
+        bonus_progress += setback
+        bonus_score += setback * 0.5
+        new_health_override = forced_health
+        extra_entries.append(_cultivation_log_entry(mishap_text, "danger"))
+
+    total_progress_gain = progress_gain + bonus_progress
+    total_score_gain = score_gain + bonus_score
+
+    base_health_value = float(run.get("health", 0.0))
+    max_health = float(run.get("max_health", 0.0))
+    new_health = base_health_value + health_delta
+    if new_health_override is not None:
+        new_health = min(new_health, new_health_override)
+    if new_health > max_health:
+        new_health = max_health
+
+    aging_rng = random.Random(event.get("seed", 0) ^ 0x5F5E100)
+    aging = aging_rng.uniform(0.5, 1.8)
+    new_health -= aging
+    new_health = max(0.0, min(new_health, max_health))
+
+    run["progress"] = max(0.0, float(run.get("progress", 0.0)) + total_progress_gain)
+    run["score"] = max(0.0, float(run.get("score", 0.0) + total_score_gain))
+    run["health"] = new_health
+
+    run["age"] = int(run.get("age") or 0) + 1
+
+    tone = "success" if success else "danger"
+    focus_label = _cultivation_stat_label(focus)
+    action_prefix = rng.choice(["顺势催动", "沉心凝神", "借势引导", "静心凝练"]) if success else rng.choice(["仓促运转", "勉力支撑", "试图掌控", "逆势催动"])
+    snippet_pool = option.get("success_flavor") if success else option.get("failure_flavor")
+    snippet_candidates = list(snippet_pool or []) + (CULTIVATION_SUCCESS_SNIPPETS if success else CULTIVATION_FAILURE_SNIPPETS)
+    snippet = rng.choice(snippet_candidates)
+    tail = (
+        rng.choice(["修为稳步攀升", "心境愈发澄明", f"{focus_label}更上一层"])
+        if success
+        else rng.choice(["花费许久才稳住气息", "只能暂且止损", f"{focus_label}受到不小冲击"])
+    )
+    summary = f"修为{total_progress_gain:+.0f} · 积分{total_score_gain:+.0f} · 体魄{(new_health - base_health_value):+.1f}"
+    run["pending_event"] = None
+
+    if run["health"] <= 0:
+        if flags.get("resurrection") and not run.get("resurrected"):
+            chance = float(flags.get("resurrection") or 0.0)
+            if rng.random() < chance:
+                run["resurrected"] = True
+                run["health"] = min(max_health, max_health * 0.6)
+                run["log"].append(_cultivation_log_entry("凤凰血觉醒，濒死之际重生归来。", "fortune"))
+            else:
+                run["finished"] = True
+                run["ending_type"] = "fallen"
+                run["log"].append(_cultivation_log_entry("伤重难愈，功败垂成。", "danger"))
+        else:
+            run["finished"] = True
+            run["ending_type"] = "fallen"
+            run["log"].append(_cultivation_log_entry("元气衰竭，跌坐于尘埃。", "danger"))
+
+    if not run.get("finished") and int(run.get("age") or 0) >= int(run.get("lifespan") or 0):
+        run["finished"] = True
+        run["ending_type"] = "lifespan"
+        run["log"].append(_cultivation_log_entry("寿元耗尽，化作飞灰。", "danger"))
+
+    stage_logs: List[Dict[str, str]] = []
+    if not run.get("finished"):
+        rng_stage = random.Random(event.get("seed", 0) ^ 0xABCDEF)
+        while run["stage_index"] < len(CULTIVATION_STAGE_THRESHOLDS):
+            threshold = CULTIVATION_STAGE_THRESHOLDS[run["stage_index"]]
+            if run["progress"] < threshold:
+                break
+            run["progress"] -= threshold
+            run["stage_index"] += 1
+            stage_name = CULTIVATION_STAGE_NAMES[min(run["stage_index"], len(CULTIVATION_STAGE_NAMES) - 1)]
+            surge = rng_stage.uniform(70, 120)
+            run["score"] += surge + stat_value * 3
+            health_bonus = 18 + run["stage_index"] * 7
+            run["max_health"] = float(run.get("max_health", 0.0)) + health_bonus
+            run["health"] = min(run["max_health"], run["health"] + health_bonus * rng.uniform(0.5, 0.8))
+            stage_logs.append(
+                _cultivation_log_entry(
+                    f"{run['age']} 岁突破至 {stage_name}，灵气如海，体魄焕然一新。",
+                    "breakthrough",
+                )
+            )
+            if run["stage_index"] >= len(CULTIVATION_STAGE_NAMES) - 1:
+                run["finished"] = True
+                run["ending_type"] = "ascend"
+                stage_logs.append(_cultivation_log_entry("天劫散去，羽化登仙。", "fortune"))
+                break
+
+    run["progress"] = max(0.0, run.get("progress", 0.0))
+    final_health_delta = run["health"] - base_health_value
+    summary = f"修为{total_progress_gain:+.0f} · 积分{total_score_gain:+.0f} · 体魄{final_health_delta:+.1f}"
+    narrative = f"{action_prefix}{option.get('label')}，{snippet}，{tail}（{summary}）"
+    run.setdefault("log", []).append(
+        _cultivation_log_entry(f"{run['age']} 岁{narrative}", tone)
+    )
+    for entry in extra_entries:
+        run["log"].append(
+            _cultivation_log_entry(
+                f"{run['age']} 岁{entry.get('text', '')}", entry.get("tone") or "info"
+            )
+        )
+    run["log"].extend(stage_logs)
+    run["log"] = run["log"][-40:]
+
+    return {
+        "progress_gain": total_progress_gain,
+        "score_gain": total_score_gain,
+        "health_delta": final_health_delta,
+        "age": run["age"],
+        "success": success,
+        "tone": tone,
+        "narration": narrative,
+    }
+
+
+def _cultivation_run_view(run: Dict[str, Any]) -> Dict[str, Any]:
+    event = run.get("pending_event") or None
+    event_view: Optional[Dict[str, Any]] = None
+    if event:
+        opts_view = []
+        for opt in event.get("options", []):
+            opts_view.append(
+                {
+                    "id": opt.get("id"),
+                    "label": opt.get("label"),
+                    "detail": opt.get("detail"),
+                    "focus": opt.get("focus"),
+                    "type": opt.get("type"),
+                    "risk": float(opt.get("risk", 0.0)),
+                }
+            )
+        event_view = {
+            "id": event.get("id"),
+            "title": event.get("title"),
+            "description": event.get("description"),
+            "options": opts_view,
+            "kind": event.get("kind"),
+        }
+        if event.get("hint"):
+            event_view["hint"] = event.get("hint")
+    stage_name = CULTIVATION_STAGE_NAMES[min(run.get("stage_index", 0), len(CULTIVATION_STAGE_NAMES) - 1)]
+    view_logs: List[Dict[str, str]] = []
+    for entry in list(run.get("log", [])[-30:]):
+        if isinstance(entry, dict):
+            view_logs.append(
+                {
+                    "text": str(entry.get("text", "")),
+                    "tone": entry.get("tone") or "info",
+                }
+            )
+        else:
+            view_logs.append({"text": str(entry), "tone": "info"})
+    return {
+        "stage": stage_name,
+        "stage_index": int(run.get("stage_index", 0)),
+        "age": int(run.get("age", 0)),
+        "lifespan": int(run.get("lifespan", 0)),
+        "health": round(float(run.get("health", 0.0)), 1),
+        "max_health": round(float(run.get("max_health", 0.0)), 1),
+        "progress": round(float(run.get("progress", 0.0)), 1),
+        "score": int(round(float(run.get("score", 0.0)))),
+        "stats": {k: int(v) for k, v in (run.get("stats") or {}).items()},
+        "talents": run.get("talents", []),
+        "pending_event": event_view,
+        "log": view_logs,
+        "finished": bool(run.get("finished")),
+        "ending_type": run.get("ending_type"),
+    }
+
+
+def _cultivation_choose_ending(run: Dict[str, Any]) -> str:
+    rng = random.Random(run.get("seed", 0) ^ 0x13579BDF)
+    stage_name = CULTIVATION_STAGE_NAMES[min(run.get("stage_index", 0), len(CULTIVATION_STAGE_NAMES) - 1)]
+    ending_type = run.get("ending_type")
+    if ending_type == "ascend":
+        pool = [
+            "羽化登仙，身入上界。",
+            "破碎虚空，于九天之上留名。",
+            "托身青冥，成就一方仙尊。",
+        ]
+    elif ending_type == "lifespan":
+        pool = [
+            "寿元圆满，安然坐化。",
+            "化作一缕清风，遗泽后人。",
+            "归隐山林，将道统留于世间。",
+        ]
+    elif ending_type == "fallen":
+        pool = [
+            "道途折戟，神魂散去。",
+            "身陨道消，只余道痕萦绕。",
+            "天劫难渡，化作星辉坠落。",
+        ]
+    else:
+        pool = [
+            f"{stage_name}境界圆满，重归凡尘济世。",
+            f"虽未飞升，却在{stage_name}境界自成一派。",
+            f"游历九州，以{stage_name}修为守护一域。",
+        ]
+    return rng.choice(pool)
+
+
+def _cultivation_finalize(
+    db: Session,
+    profile: CookieFactoryProfile,
+    user: User,
+    now: int,
+    state: Dict[str, Any],
+    node: Dict[str, Any],
+    run: Dict[str, Any],
+) -> Dict[str, Any]:
+    raw_log = run.get("log", [])
+    result_log: List[str] = []
+    for entry in raw_log[-30:]:
+        if isinstance(entry, dict):
+            result_log.append(str(entry.get("text", "")))
+        else:
+            result_log.append(str(entry))
+    stage_index = int(run.get("stage_index", 0))
+    stage_name = CULTIVATION_STAGE_NAMES[min(stage_index, len(CULTIVATION_STAGE_NAMES) - 1)]
+    base_score = float(run.get("score", 0.0))
+    stats = run.get("stats") or {}
+    base_score += stage_index * 140
+    base_score += sum(int(v) for v in stats.values()) * 6
+    base_score += max(0.0, float(run.get("health", 0.0))) * 0.8
+    base_score += max(0, int(run.get("lifespan", 0)) - int(run.get("age", 0))) * 3
+    base_score += len(result_log) * 2
+    score = max(0, int(round(base_score)))
+
+    cfg = COOKIE_MINI_GAMES.get(COOKIE_CULTIVATION_KEY, {})
+    threshold = int(cfg.get("score_threshold", 0) or 0)
+    reward_allocation: Dict[str, int] = {}
+    bricks_awarded = 0
+    if threshold and score >= threshold:
+        bricks_awarded = 1 + (1 if score >= threshold * 2 else 0)
+        available_seasons = SEASON_IDS[:6] if len(SEASON_IDS) >= 6 else (SEASON_IDS or [])
+        if not available_seasons:
+            available_seasons = [LATEST_SEASON or BRICK_SEASON_FALLBACK]
+        for _ in range(bricks_awarded):
+            sid = random.choice(available_seasons) if available_seasons else BRICK_SEASON_FALLBACK
+            grant_user_bricks(db, user, sid, 1)
+            reward_allocation[sid] = reward_allocation.get(sid, 0) + 1
+        profile.total_bricks_earned = int(profile.total_bricks_earned or 0) + bricks_awarded
+
+    ending = _cultivation_choose_ending(run)
+
+    best_prev = int(node.get("best_score") or 0)
+    if score > best_prev:
+        node["best_score"] = score
+    node["play_count"] = int(node.get("play_count") or 0) + 1
+
+    last_result = {
+        "score": score,
+        "best": int(node.get("best_score") or score),
+        "stage": stage_name,
+        "age": int(run.get("age", 0)),
+        "ending": ending,
+        "events": result_log,
+        "reward": {"bricks": bricks_awarded, "by_season": reward_allocation},
+        "timestamp": now,
+        "talents": [t.get("name") for t in run.get("talents", [])],
+        "stats": {k: int(v) for k, v in stats.items()},
+    }
+    node["last_result"] = last_result
+    history = node.get("history") if isinstance(node.get("history"), list) else []
+    history.append(last_result)
+    node["history"] = history[-10:]
+    node.pop("active_run", None)
+    node.pop("lobby", None)
+    state[COOKIE_CULTIVATION_KEY] = node
+    profile.mini_games = _json_dump(state)
+    summary = f"{stage_name}境界 · {int(run.get('age', 0))} 岁 · 得分 {score}"
+    return {
+        "mini": COOKIE_CULTIVATION_KEY,
+        "mode": "cultivation",
+        "score": score,
+        "stage": stage_name,
+        "age": int(run.get("age", 0)),
+        "ending": ending,
+        "events": result_log,
+        "reward": {"bricks": bricks_awarded, "by_season": reward_allocation},
+        "summary": summary,
+    }
+
 
 
 def cookie_building_cost(key: str, count: int) -> int:
@@ -2307,6 +3518,7 @@ def cookie_status_payload(
     now: int,
     settlement: Optional[Dict[str, Any]] = None,
     feature_enabled: bool = True,
+    cultivation_enabled: bool = True,
 ) -> Dict[str, Any]:
     counts = cookie_building_counts(profile)
     cps, effective_cps = cookie_cps(profile, counts)
@@ -2345,8 +3557,10 @@ def cookie_status_payload(
         })
     mini_payload = []
     for key, cfg in COOKIE_MINI_GAMES.items():
+        if key == COOKIE_CULTIVATION_KEY:
+            continue
         node = mini_state.get(key, {})
-        mini_payload.append({
+        item = {
             "key": key,
             "name": cfg["name"],
             "icon": cfg["icon"],
@@ -2357,7 +3571,19 @@ def cookie_status_payload(
             "sugar_cost": int(cfg.get("sugar_cost", 0)),
             "points": int(cfg.get("points", 0)),
             "cps_bonus": float(cfg.get("cps_bonus", 0.0)),
-        })
+        }
+        if key == COOKIE_CULTIVATION_KEY:
+            last_result = node.get("last_result") if isinstance(node.get("last_result"), dict) else {}
+            item.update(
+                {
+                    "mode": "cultivation",
+                    "best_score": int(node.get("best_score") or last_result.get("best") or 0),
+                    "play_count": int(node.get("play_count") or 0),
+                    "score_threshold": int(cfg.get("score_threshold", 0) or 0),
+                    "last_result": last_result or None,
+                }
+            )
+        mini_payload.append(item)
     active_breakdown = [
         {"day": day, "points": int(val)} for day, val in sorted(active_points.items())
     ]
@@ -2428,6 +3654,9 @@ def cookie_status_payload(
         },
         "settlement": settlement,
         "last_report": last_report,
+        "features": {
+            "cultivation_enabled": bool(cultivation_enabled),
+        },
     }
 
 
@@ -3036,6 +4265,7 @@ def me(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     if phone.startswith(VIRTUAL_PHONE_PREFIX):
         phone = ""
     cookie_enabled = cookie_factory_enabled(db)
+    cultivation_enabled = cookie_cultivation_enabled(db)
     brick_detail = brick_balance_detail(db, user.id)
     pity_detail = season_pity_detail(db, user.id)
     return {
@@ -3050,7 +4280,11 @@ def me(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
             "cookie_factory": {
                 "enabled": bool(cookie_enabled),
                 "available": bool(cookie_enabled or getattr(user, "is_admin", False)),
-            }
+            },
+            "cultivation": {
+                "enabled": bool(cultivation_enabled),
+                "available": bool(cultivation_enabled or getattr(user, "is_admin", False)),
+            },
         },
     }
 
@@ -3095,13 +4329,21 @@ def me_mailbox(
 def cookie_factory_status(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     now = int(time.time())
     enabled = cookie_factory_enabled(db)
+    cultivation_enabled = cookie_cultivation_enabled(db)
     if not enabled and not getattr(user, "is_admin", False):
         return {"enabled": False, "now": now}
     profile = ensure_cookie_profile(db, user, now)
     settlement = cookie_maybe_settle(db, profile, user, now)
     cookie_tick(profile, now)
     db.flush()
-    payload = cookie_status_payload(user, profile, now, settlement, feature_enabled=enabled)
+    payload = cookie_status_payload(
+        user,
+        profile,
+        now,
+        settlement,
+        feature_enabled=enabled,
+        cultivation_enabled=cultivation_enabled,
+    )
     if not enabled and getattr(user, "is_admin", False):
         payload["admin_preview"] = True
     db.commit()
@@ -3112,6 +4354,7 @@ def cookie_factory_status(user: User = Depends(user_from_token), db: Session = D
 def cookie_factory_login(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     now = int(time.time())
     enabled = cookie_factory_enabled(db)
+    cultivation_enabled = cookie_cultivation_enabled(db)
     if not enabled and not getattr(user, "is_admin", False):
         raise HTTPException(404, "小游戏未开启")
     profile = ensure_cookie_profile(db, user, now)
@@ -3121,7 +4364,14 @@ def cookie_factory_login(user: User = Depends(user_from_token), db: Session = De
     if info.get("added"):
         cookie_add_active_points(profile, now, 5)
     db.flush()
-    payload = cookie_status_payload(user, profile, now, settlement, feature_enabled=enabled)
+    payload = cookie_status_payload(
+        user,
+        profile,
+        now,
+        settlement,
+        feature_enabled=enabled,
+        cultivation_enabled=cultivation_enabled,
+    )
     info["daily_reward"] = 2 if info.get("added") else 0
     payload["login_result"] = info
     db.commit()
@@ -3132,6 +4382,7 @@ def cookie_factory_login(user: User = Depends(user_from_token), db: Session = De
 def cookie_factory_act(inp: CookieActIn, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     now = int(time.time())
     enabled = cookie_factory_enabled(db)
+    cultivation_enabled = cookie_cultivation_enabled(db)
     if not enabled and not getattr(user, "is_admin", False):
         raise HTTPException(404, "小游戏未开启")
     profile = ensure_cookie_profile(db, user, now)
@@ -3180,30 +4431,35 @@ def cookie_factory_act(inp: CookieActIn, user: User = Depends(user_from_token), 
             raise HTTPException(400, "未知小游戏")
         state = cookie_mini_games_state(profile)
         node = state.get(mini_key, {"level": 0, "progress": 0})
-        sugar_cost = int(COOKIE_MINI_GAMES[mini_key].get("sugar_cost", 0))
-        if sugar_cost > 0:
-            if int(profile.sugar_lumps or 0) < sugar_cost:
-                raise HTTPException(400, f"糖块不足，需要 {sugar_cost} 颗糖块才能开展 {COOKIE_MINI_GAMES[mini_key]['name']}")
-            profile.sugar_lumps = int(profile.sugar_lumps or 0) - sugar_cost
-        node["progress"] = int(node.get("progress", 0)) + 1
-        threshold = int(COOKIE_MINI_GAMES[mini_key].get("threshold", 1))
-        leveled = False
-        if node["progress"] >= threshold:
-            node["progress"] = 0
-            node["level"] = int(node.get("level", 0)) + 1
-            leveled = True
-        state[mini_key] = node
-        profile.mini_games = _json_dump(state)
-        cookie_add_active_points(profile, now, int(COOKIE_MINI_GAMES[mini_key].get("points", 3)))
-        if leveled:
-            current = float(profile.pending_bonus_multiplier or 1.0)
-            profile.pending_bonus_multiplier = min(COOKIE_DELTA_BONUS_CAP, current + 0.01)
-        result = {
-            "mini": mini_key,
-            "level": int(node.get("level", 0)),
-            "leveled": leveled,
-            "sugar_lumps": int(profile.sugar_lumps or 0),
-        }
+        if mini_key == COOKIE_CULTIVATION_KEY:
+            if not cultivation_enabled and not getattr(user, "is_admin", False):
+                raise HTTPException(404, "小游戏未开启")
+            raise HTTPException(400, "修仙玩法已移至独立界面，请前往修仙页面体验")
+        else:
+            sugar_cost = int(COOKIE_MINI_GAMES[mini_key].get("sugar_cost", 0))
+            if sugar_cost > 0:
+                if int(profile.sugar_lumps or 0) < sugar_cost:
+                    raise HTTPException(400, f"糖块不足，需要 {sugar_cost} 颗糖块才能开展 {COOKIE_MINI_GAMES[mini_key]['name']}")
+                profile.sugar_lumps = int(profile.sugar_lumps or 0) - sugar_cost
+            node["progress"] = int(node.get("progress", 0)) + 1
+            threshold = int(COOKIE_MINI_GAMES[mini_key].get("threshold", 1))
+            leveled = False
+            if node["progress"] >= threshold:
+                node["progress"] = 0
+                node["level"] = int(node.get("level", 0)) + 1
+                leveled = True
+            state[mini_key] = node
+            profile.mini_games = _json_dump(state)
+            cookie_add_active_points(profile, now, int(COOKIE_MINI_GAMES[mini_key].get("points", 3)))
+            if leveled:
+                current = float(profile.pending_bonus_multiplier or 1.0)
+                profile.pending_bonus_multiplier = min(COOKIE_DELTA_BONUS_CAP, current + 0.01)
+            result = {
+                "mini": mini_key,
+                "level": int(node.get("level", 0)),
+                "leveled": leveled,
+                "sugar_lumps": int(profile.sugar_lumps or 0),
+            }
     elif action == "claim":
         (
             _,
@@ -3252,7 +4508,13 @@ def cookie_factory_act(inp: CookieActIn, user: User = Depends(user_from_token), 
         profile.golden_cooldown = 180
         counts = {cfg["key"]: 0 for cfg in COOKIE_BUILDINGS}
         cookie_store_buildings(profile, counts)
-        reset_state = {k: {"level": 0, "progress": 0, "last_action": now} for k in COOKIE_MINI_GAMES}
+        reset_state = {
+            k: {"level": 0, "progress": 0, "last_action": now}
+            for k in COOKIE_MINI_GAMES
+            if k != COOKIE_CULTIVATION_KEY
+        }
+        _, cultivation_node = _cultivation_node(profile)
+        reset_state[COOKIE_CULTIVATION_KEY] = cultivation_node
         profile.mini_games = _json_dump(reset_state)
         profile.last_active_ts = now
         profile.pending_bonus_multiplier = min(COOKIE_DELTA_BONUS_CAP, float(profile.pending_bonus_multiplier or 1.0) + 0.02)
@@ -3270,10 +4532,184 @@ def cookie_factory_act(inp: CookieActIn, user: User = Depends(user_from_token), 
         raise HTTPException(400, "不支持的操作")
 
     db.flush()
-    payload = cookie_status_payload(user, profile, now, settlement, feature_enabled=enabled)
+    payload = cookie_status_payload(
+        user,
+        profile,
+        now,
+        settlement,
+        feature_enabled=enabled,
+        cultivation_enabled=cultivation_enabled,
+    )
     payload["action_result"] = result
     db.commit()
     return payload
+
+
+@app.get("/cultivation/status")
+def cultivation_status(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    now = int(time.time())
+    enabled = cookie_cultivation_enabled(db)
+    is_admin = bool(getattr(user, "is_admin", False))
+    if not enabled and not is_admin:
+        return {"enabled": False, "now": now}
+    profile = ensure_cookie_profile(db, user, now)
+    state, node = _cultivation_node(profile)
+    run = node.get("active_run") if isinstance(node.get("active_run"), dict) else None
+    if run and run.get("finished"):
+        node.pop("active_run", None)
+        run = None
+    if run and not run.get("pending_event"):
+        _cultivation_generate_event(run)
+    lobby = None
+    if not run:
+        lobby = _cultivation_prepare_lobby(node)
+    run_view = _cultivation_run_view(run) if run else None
+    history = node.get("history") if isinstance(node.get("history"), list) else []
+    payload = {
+        "enabled": bool(enabled),
+        "now": now,
+        "lobby": lobby,
+        "run": run_view,
+        "best_score": int(node.get("best_score") or 0),
+        "play_count": int(node.get("play_count") or 0),
+        "last_result": node.get("last_result"),
+        "history": history[-5:],
+        "score_threshold": int(COOKIE_MINI_GAMES.get(COOKIE_CULTIVATION_KEY, {}).get("score_threshold", 0) or 0),
+    }
+    if not enabled and is_admin:
+        payload["admin_preview"] = True
+    state[COOKIE_CULTIVATION_KEY] = node
+    profile.mini_games = _json_dump(state)
+    db.commit()
+    return payload
+
+
+@app.post("/cultivation/refresh")
+def cultivation_refresh(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    now = int(time.time())
+    enabled = cookie_cultivation_enabled(db)
+    if not enabled and not getattr(user, "is_admin", False):
+        raise HTTPException(404, "小游戏未开启")
+    profile = ensure_cookie_profile(db, user, now)
+    state, node = _cultivation_node(profile)
+    run = node.get("active_run") if isinstance(node.get("active_run"), dict) else None
+    if run and not run.get("finished"):
+        raise HTTPException(400, "历练进行中，无法刷新天赋")
+    lobby = _cultivation_prepare_lobby(node)
+    remaining = int(lobby.get("refreshes_left") or 0)
+    if remaining <= 0:
+        raise HTTPException(400, "刷新次数已用尽")
+    lobby["refreshes_left"] = remaining - 1
+    rng = random.Random(secrets.randbits(64))
+    lobby["talents"] = _cultivation_pick_talents(rng)
+    node["lobby"] = lobby
+    state[COOKIE_CULTIVATION_KEY] = node
+    profile.mini_games = _json_dump(state)
+    db.commit()
+    return {"lobby": lobby}
+
+
+@app.post("/cultivation/begin")
+def cultivation_begin(
+    inp: CultivationBeginIn,
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    now = int(time.time())
+    enabled = cookie_cultivation_enabled(db)
+    if not enabled and not getattr(user, "is_admin", False):
+        raise HTTPException(404, "小游戏未开启")
+    profile = ensure_cookie_profile(db, user, now)
+    state, node = _cultivation_node(profile)
+    run = node.get("active_run") if isinstance(node.get("active_run"), dict) else None
+    if run and not run.get("finished"):
+        raise HTTPException(400, "仍有历练尚未结束")
+    lobby = _cultivation_prepare_lobby(node)
+    max_talents = int(lobby.get("max_talents") or CULTIVATION_MAX_TALENTS)
+    selected_ids: List[str] = []
+    for tid in inp.talents:
+        tid = (tid or "").strip()
+        if not tid or tid in selected_ids:
+            continue
+        selected_ids.append(tid)
+    if len(selected_ids) > max_talents:
+        raise HTTPException(400, f"最多可选择 {max_talents} 项天赋")
+    selected_actual = []
+    for tid in selected_ids:
+        talent = _cultivation_find_talent(tid)
+        if not talent:
+            raise HTTPException(400, f"未知天赋 {tid}")
+        selected_actual.append(talent)
+    base_stats = {k: int(v) for k, v in (lobby.get("base_stats") or {}).items()}
+    points = int(lobby.get("points") or CULTIVATION_BASE_POINTS)
+    allocations = inp.attributes or {}
+    total_alloc = 0
+    for key, value in allocations.items():
+        if key not in base_stats:
+            raise HTTPException(400, f"未知属性 {key}")
+        add = int(value or 0)
+        if add < 0:
+            raise HTTPException(400, "属性点不可为负数")
+        base_stats[key] += add
+        total_alloc += add
+    if total_alloc != points:
+        raise HTTPException(400, f"属性点需分配 {points} 点 (已使用 {total_alloc})")
+    stats, flags = _cultivation_apply_talents(base_stats, selected_actual)
+    display_talents = [_cultivation_render_talent(t) for t in selected_actual]
+    run = _cultivation_start_run(node, display_talents, stats, flags)
+    _cultivation_generate_event(run)
+    state[COOKIE_CULTIVATION_KEY] = node
+    profile.mini_games = _json_dump(state)
+    db.commit()
+    return {
+        "run": _cultivation_run_view(run),
+        "best_score": int(node.get("best_score") or 0),
+        "lobby": None,
+    }
+
+
+@app.post("/cultivation/advance")
+def cultivation_advance(
+    inp: CultivationAdvanceIn,
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    now = int(time.time())
+    enabled = cookie_cultivation_enabled(db)
+    if not enabled and not getattr(user, "is_admin", False):
+        raise HTTPException(404, "小游戏未开启")
+    profile = ensure_cookie_profile(db, user, now)
+    state, node = _cultivation_node(profile)
+    run = node.get("active_run") if isinstance(node.get("active_run"), dict) else None
+    if not run or run.get("finished"):
+        raise HTTPException(400, "当前没有进行中的历练")
+    if not run.get("pending_event"):
+        _cultivation_generate_event(run)
+    if not run.get("pending_event"):
+        raise HTTPException(400, "暂无可推进的事件")
+    outcome = _cultivation_apply_choice(run, (inp.choice or "").strip())
+    if run.get("finished"):
+        result = _cultivation_finalize(db, profile, user, now, state, node, run)
+        _cultivation_prepare_lobby(node)
+        state[COOKIE_CULTIVATION_KEY] = node
+        profile.mini_games = _json_dump(state)
+        db.commit()
+        return {
+            "finished": True,
+            "result": result,
+            "best_score": int(node.get("best_score") or 0),
+            "last_result": node.get("last_result"),
+        }
+    if not run.get("pending_event"):
+        _cultivation_generate_event(run)
+    state[COOKIE_CULTIVATION_KEY] = node
+    profile.mini_games = _json_dump(state)
+    db.commit()
+    return {
+        "finished": False,
+        "run": _cultivation_run_view(run),
+        "outcome": outcome,
+    }
 
 
 @app.get("/admin/cookie-factory")
@@ -3281,6 +4717,8 @@ def admin_cookie_factory_status(user: User = Depends(user_from_token), db: Sessi
     if not getattr(user, "is_admin", False):
         raise HTTPException(403, "需要管理员权限")
     enabled = cookie_factory_enabled(db)
+    cultivation_enabled = cookie_cultivation_enabled(db)
+    cultivation_runs, cultivation_best = cookie_cultivation_admin_stats(db)
     total_profiles = db.query(CookieFactoryProfile).count()
     total_bricks = db.query(func.coalesce(func.sum(CookieFactoryProfile.total_bricks_earned), 0)).scalar()
     total_bricks = int(total_bricks or 0)
@@ -3288,6 +4726,9 @@ def admin_cookie_factory_status(user: User = Depends(user_from_token), db: Sessi
         "enabled": bool(enabled),
         "profiles": total_profiles,
         "total_bricks": total_bricks,
+        "cultivation_enabled": bool(cultivation_enabled),
+        "cultivation_runs": int(cultivation_runs),
+        "cultivation_best": int(cultivation_best),
     }
 
 
@@ -3301,14 +4742,36 @@ def admin_cookie_factory_toggle(payload: Dict[str, Any], user: User = Depends(us
     return {"enabled": desired}
 
 
-@app.post("/admin/cookie-factory/toggle")
-def admin_cookie_factory_toggle(payload: Dict[str, Any], user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+@app.post("/admin/cookie-factory/cultivation-toggle")
+def admin_cookie_cultivation_toggle(payload: Dict[str, Any], user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     if not getattr(user, "is_admin", False):
         raise HTTPException(403, "需要管理员权限")
     desired = bool((payload or {}).get("enabled", False))
-    set_cookie_factory_enabled(db, desired)
+    set_cookie_cultivation_enabled(db, desired)
     db.commit()
     return {"enabled": desired}
+
+
+@app.post("/presence/update")
+def presence_update(
+    inp: PresenceUpdateIn,
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    update_presence(db, user, inp.page or "", inp.activity or "", inp.details or {})
+    db.commit()
+    return {"ok": True, "now": int(time.time())}
+
+
+@app.get("/admin/presence")
+def admin_presence(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(403, "需要管理员权限")
+    data = list_active_presence(db)
+    db.commit()
+    return {"now": int(time.time()), "online": data}
+
+
 
 # ------------------ Wallet / Shop ------------------
 @app.post("/wallet/topup")
