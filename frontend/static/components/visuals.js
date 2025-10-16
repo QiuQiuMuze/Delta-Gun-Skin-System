@@ -693,6 +693,22 @@ const MODEL_VARIANTS = (() => {
     }
   });
 
+  variants.m16 = extendVariant('carbine_classic', {
+    label: "M16",
+    transforms: {
+      stock: "scale(1.1,1.04) translate(-28,-8)",
+      body: "scale(1.06,1.02) translate(-16,-10)",
+      fore: "scale(1.14,0.98) translate(-2,-10)",
+      barrel: "scale(1.28,1.02) translate(12,-8)",
+      muzzle: "scale(1.24,1.02) translate(16,-8)",
+      scope: "translate(-20,-14)",
+      rail: "translate(-20,-12)"
+    },
+    extras: {
+      fore: ({ base, lighten }) => `<path d="M384 122 L512 100 L520 138 L392 162 Z" fill="${lighten(base.bodyPrimary,0.1)}" opacity="0.34"/>`
+    }
+  });
+
   variants.carbine_honey = extendVariant('carbine_m4', {
     label: "Honey Badger 平台",
     transforms: {
@@ -710,6 +726,264 @@ const MODEL_VARIANTS = (() => {
     extras: {
       muzzle: ({ base, darken }) => `<rect x="560" y="130" width="62" height="24" rx="10" fill="${darken(base.attachmentPrimary, 0.3)}" opacity="0.75"/>`,
       body: ({ base, lighten }) => `<path d="M222 148 L312 124 L340 132 L252 168 Z" fill="${lighten(base.bodyPrimary, 0.18)}" opacity="0.28"/>`
+    }
+  });
+
+  variants.m4a1 = extendVariant('carbine_m4', {
+    label: "M4A1",
+    transforms: {
+      stock: "translate(-6,-6) scale(1.02,1)",
+      body: "translate(-2,-4) scale(1.02,1)",
+      rail: "translate(-8,-4)",
+      scope: "translate(-6,-6)",
+      fore: "translate(8,-2)",
+      barrel: "translate(12,-4)",
+      muzzle: "translate(18,-6)",
+      mag: "translate(2,-2)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M214 128 L284 108 L312 118 L260 150 Z" fill="${lighten(base.bodySecondary, 0.16)}" opacity="0.34"/>`,
+      rail: ({ base, darken }) => `<rect x="212" y="70" width="120" height="18" rx="6" fill="${darken(base.bodyPrimary,0.28)}" opacity="0.55"/>`
+    }
+  });
+
+  variants.k416 = extendVariant('carbine_m4', {
+    label: "HK416",
+    transforms: {
+      stock: "translate(-12,-2) scale(1.04,0.98)",
+      body: "translate(-6,-2) scale(1.04,0.98)",
+      rail: "translate(-10,-6)",
+      scope: "translate(-10,-8)",
+      fore: "translate(4,-4) scale(1.02,1)",
+      barrel: "translate(10,-6)",
+      muzzle: "translate(14,-6)",
+      grip: "translate(-12,0)",
+      mag: "translate(-2,-2)"
+    },
+    extras: {
+      body: ({ base, darken }) => `<path d="M224 134 L324 104 L340 114 L236 158 Z" fill="${darken(base.bodyPrimary, 0.15)}" opacity="0.4"/>`,
+      grip: ({ base, darken }) => `<path d="M320 192 L346 194 L328 240 L300 236 Z" fill="${darken(base.attachmentPrimary,0.25)}" opacity="0.65"/>`
+    }
+  });
+
+  variants.mcx = extendVariant('carbine_m4', {
+    label: "MCX",
+    transforms: {
+      stock: "translate(-8,-4) scale(1.02,0.98)",
+      body: "translate(-2,-2) scale(1.02,0.98)",
+      rail: "translate(-6,-6)",
+      scope: "translate(-6,-8)",
+      fore: "translate(10,-4) scale(1.02,0.96)",
+      barrel: "translate(16,-4) scale(1.06,0.96)",
+      muzzle: "translate(20,-4) scale(1.04,0.98)",
+      grip: "translate(-16,0)",
+      mag: "translate(0,-2) scale(1.02,1.02)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M216 134 L316 108 L334 118 L232 156 Z" fill="${lighten(base.bodySecondary,0.18)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.mk18 = extendVariant('carbine_m4', {
+    label: "MK18",
+    transforms: {
+      stock: "translate(-4,4) scale(0.98,0.96)",
+      body: "translate(4,2) scale(0.96,0.96)",
+      rail: "translate(-4,-6)",
+      scope: "translate(-6,-8)",
+      fore: "scale(0.92,0.92) translate(40,28)",
+      barrel: "scale(0.86,0.88) translate(68,40)",
+      muzzle: "scale(0.9,0.9) translate(70,44)",
+      mag: "scale(0.94,0.94) translate(10,12)",
+      grip: "translate(-22,10)"
+    },
+    extras: {
+      barrel: ({ base, darken }) => `<rect x="520" y="140" width="66" height="18" rx="6" fill="${darken(base.attachmentPrimary,0.32)}" opacity="0.6"/>`,
+      fore: ({ base, darken }) => `<path d="M380 148 L458 130 L466 152 L388 170 Z" fill="${darken(base.bodyPrimary,0.2)}" opacity="0.45"/>`
+    }
+  });
+
+  variants.scar_l = extendVariant('battle', {
+    label: "SCAR-L",
+    transforms: {
+      stock: "translate(-18,-6) scale(1.12,0.96)",
+      body: "translate(-10,-8) scale(1.08,0.98)",
+      fore: "translate(6,-10) scale(1.06,0.94)",
+      barrel: "translate(20,-10) scale(1.18,0.94)",
+      muzzle: "translate(24,-10) scale(1.12,0.96)",
+      rail: "translate(-12,-10) scale(1.04,1)",
+      scope: "translate(-14,-12)",
+      grip: "translate(-20,-2)",
+      mag: "translate(-4,-4) scale(1.04,1.04)"
+    },
+    extras: {
+      stock: ({ base, darken }) => `<path d="M60 188 L156 138 L196 142 L180 198 L96 226 Z" fill="${darken(base.bodyPrimary,0.18)}" opacity="0.32"/>`,
+      body: ({ base, lighten }) => `<path d="M210 120 L320 92 L344 102 L232 148 Z" fill="${lighten(base.bodySecondary,0.2)}" opacity="0.38"/>`,
+      fore: ({ base, darken }) => `<path d="M360 140 L488 118 L498 146 L370 170 Z" fill="${darken(base.attachmentPrimary,0.18)}" opacity="0.52"/>`,
+      mag: ({ base, darken }) => `<path d="M320 160 L360 160 L350 230 L310 226 Z" fill="${darken(base.attachmentPrimary,0.35)}" opacity="0.65"/>`
+    }
+  });
+
+  variants.sig_552 = extendVariant('carbine_m4', {
+    label: "SIG 552",
+    transforms: {
+      stock: "translate(10,10) scale(0.92,0.92)",
+      body: "translate(14,8) scale(0.92,0.92)",
+      rail: "translate(6,2)",
+      scope: "translate(6,-2)",
+      fore: "scale(0.94,0.92) translate(40,22)",
+      barrel: "scale(0.96,0.92) translate(52,24)",
+      muzzle: "scale(0.92,0.9) translate(60,28)",
+      mag: "scale(0.9,0.92) translate(20,18)",
+      grip: "translate(-10,12)"
+    },
+    extras: {
+      stock: ({ base, lighten }) => `<path d="M120 188 L178 162 L182 210 L126 228 Z" fill="${lighten(base.bodyPrimary,0.18)}" opacity="0.35"/>`,
+      body: ({ base, lighten }) => `<path d="M230 140 L302 118 L316 134 L240 166 Z" fill="${lighten(base.bodySecondary,0.24)}" opacity="0.32"/>`
+    }
+  });
+
+  variants.g36 = extendVariant('carbine_m4', {
+    label: "G36",
+    hide: ['scope', 'rail'],
+    transforms: {
+      stock: "translate(16,-4) scale(0.94,0.94)",
+      body: "translate(12,-4) scale(0.98,0.96)",
+      fore: "translate(-8,-6) scale(0.98,0.94)",
+      barrel: "translate(-2,-6) scale(1.02,0.94)",
+      muzzle: "translate(0,-6) scale(1.02,0.94)",
+      grip: "translate(-24,0)",
+      mag: "translate(-12,-4) scale(1.08,1.04)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M180 120 L304 84 L344 100 L212 156 Z" fill="${lighten(base.bodySecondary,0.22)}" opacity="0.36"/>`,
+      body_detail: ({ base, lighten }) => `<path d="M200 82 L332 54 L360 70 L228 112 Z" fill="${lighten(base.bodyPrimary,0.26)}" opacity="0.4"/>`,
+      stock: ({ base, darken }) => `<path d="M56 172 L148 128 L174 134 L154 198 L72 222 Z" fill="${darken(base.bodyPrimary,0.16)}" opacity="0.36"/>`
+    }
+  });
+
+  variants.g36c = extendVariant('g36', {
+    label: "G36C",
+    transforms: {
+      stock: "scale(0.88,0.9) translate(30,26)",
+      body: "scale(0.9,0.92) translate(42,26)",
+      fore: "scale(0.88,0.9) translate(60,36)",
+      barrel: "scale(0.86,0.88) translate(84,50)",
+      muzzle: "scale(0.84,0.86) translate(90,54)",
+      mag: "scale(0.88,0.92) translate(24,22)"
+    },
+    extras: {
+      body: ({ base, darken }) => `<path d="M230 148 L312 122 L328 138 L240 174 Z" fill="${darken(base.bodyPrimary,0.12)}" opacity="0.42"/>`
+    }
+  });
+
+  variants.aug = extendVariant('bullpup_modern', {
+    label: "AUG",
+    hide: ['scope'],
+    transforms: {
+      stock: "translate(16,-4) scale(1,0.96)",
+      body: "translate(22,-6) scale(1.02,0.96)",
+      fore: "translate(-12,-12) scale(1.02,0.92)",
+      barrel: "translate(-6,-12) scale(1.1,0.94)",
+      muzzle: "translate(-6,-12) scale(1.16,0.94)",
+      grip: "translate(-54,-12)",
+      mag: "translate(-64,-12) rotate(-6,318,184) scale(1.1,1.06)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M168 142 L300 96 L348 110 L216 168 Z" fill="${lighten(base.bodySecondary,0.18)}" opacity="0.4"/>`,
+      rail: ({ base, darken }) => `<path d="M256 74 L352 48 L366 58 L270 88 Z" fill="${darken(base.bodyPrimary,0.2)}" opacity="0.45"/>`,
+      body_detail: ({ base, lighten }) => `<path d="M210 72 L340 40 L360 54 L228 100 Z" fill="${lighten(base.bodyPrimary,0.24)}" opacity="0.35"/>`
+    }
+  });
+
+  variants.famas = extendVariant('bullpup_modern', {
+    label: "FAMAS",
+    hide: ['scope'],
+    transforms: {
+      stock: "translate(12,-2) scale(1,0.96)",
+      body: "translate(20,-4) scale(1.04,0.96)",
+      fore: "translate(-28,-6) scale(1.08,0.94)",
+      barrel: "translate(-24,-6) scale(1.12,0.94)",
+      muzzle: "translate(-22,-6) scale(1.14,0.94)",
+      grip: "translate(-72,-4)",
+      mag: "translate(-86,-8) rotate(-10,310,182) scale(1.14,1.08)",
+      trigger: "translate(-30,0)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M168 160 L288 114 L332 128 L204 186 Z" fill="${lighten(base.bodySecondary,0.22)}" opacity="0.36"/>`,
+      body_detail: ({ base, darken }) => `<path d="M166 96 L284 68 L312 78 L196 120 Z" fill="${darken(base.bodyPrimary,0.1)}" opacity="0.42"/>`,
+      stock: ({ base, darken }) => `<path d="M60 200 L148 146 L182 150 L168 210 L86 238 Z" fill="${darken(base.bodyPrimary,0.2)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.tavor = extendVariant('bullpup_modern', {
+    label: "Tavor",
+    hide: ['scope'],
+    transforms: {
+      stock: "translate(20,2) scale(1.04,0.96)",
+      body: "translate(28,0) scale(1.06,0.98)",
+      fore: "translate(-32,-2) scale(1.04,0.94)",
+      barrel: "translate(-26,-2) scale(1.08,0.94)",
+      muzzle: "translate(-24,-2) scale(1.1,0.94)",
+      grip: "translate(-66,4)",
+      mag: "translate(-80,6) rotate(-8,314,186) scale(1.12,1.06)",
+      trigger: "translate(-28,4)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M184 156 L304 120 L328 132 L210 180 Z" fill="${lighten(base.bodySecondary,0.24)}" opacity="0.34"/>`,
+      body_detail: ({ base, darken }) => `<path d="M220 114 L332 90 L344 104 L228 140 Z" fill="${darken(base.bodyPrimary,0.12)}" opacity="0.4"/>`
+    }
+  });
+
+  variants.qbz_95 = extendVariant('bullpup_modern', {
+    label: "QBZ-95",
+    hide: ['scope'],
+    transforms: {
+      stock: "translate(28,0) scale(1.08,0.98)",
+      body: "translate(34,-4) scale(1.1,0.96)",
+      fore: "translate(-36,-10) scale(1.1,0.92)",
+      barrel: "translate(-32,-10) scale(1.16,0.92)",
+      muzzle: "translate(-30,-10) scale(1.2,0.92)",
+      grip: "translate(-72,-2)",
+      mag: "translate(-88,-6) rotate(-6,316,182) scale(1.18,1.08)",
+      trigger: "translate(-32,-2)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M188 142 L318 102 L356 118 L224 168 Z" fill="${lighten(base.bodySecondary,0.22)}" opacity="0.38"/>`,
+      body_detail: ({ base, darken }) => `<path d="M228 90 L356 62 L372 78 L244 124 Z" fill="${darken(base.bodyPrimary,0.14)}" opacity="0.42"/>`
+    }
+  });
+
+  variants.qbz95_1 = extendVariant('qbz_95', {
+    label: "QBZ-95-1",
+    transforms: {
+      fore: "scale(1.06,0.94) translate(-34,-6)",
+      barrel: "scale(1.12,0.94) translate(-30,-6)",
+      muzzle: "scale(1.18,0.94) translate(-28,-6)",
+      mag: "rotate(-4,316,184) scale(1.14,1.08) translate(-10,-4)",
+      grip: "translate(-68,2)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M198 150 L332 112 L360 126 L228 176 Z" fill="${lighten(base.bodySecondary,0.2)}" opacity="0.36"/>`
+    }
+  });
+
+  variants.fn_f2000 = extendVariant('bullpup_modern', {
+    label: "F2000",
+    hide: ['scope'],
+    transforms: {
+      stock: "translate(24,6) scale(1.12,0.98)",
+      body: "translate(30,2) scale(1.16,0.98)",
+      fore: "translate(-24,-2) scale(1.14,0.96)",
+      barrel: "translate(-20,-2) scale(1.22,0.96)",
+      muzzle: "translate(-20,-2) scale(1.26,0.96)",
+      grip: "translate(-60,8)",
+      mag: "translate(-74,10) rotate(-4,320,188) scale(1.16,1.1)",
+      trigger: "translate(-24,6)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M200 150 L328 116 L356 130 L224 182 Z" fill="${lighten(base.bodySecondary,0.2)}" opacity="0.36"/>`,
+      fore: ({ base, darken }) => `<path d="M336 148 L468 126 L480 150 L344 174 Z" fill="${darken(base.attachmentPrimary,0.18)}" opacity="0.5"/>`
     }
   });
 
@@ -764,6 +1038,133 @@ const MODEL_VARIANTS = (() => {
       scope: "translate(-8,4)"
     }
   });
+
+  variants.ak_47 = extendVariant('ak_classic', {
+    label: "AK-47",
+    extras: {
+      stock: ({ base, lighten }) => `<path d="M92 200 L184 154 L208 158 L184 214 L110 242 Z" fill="${lighten(base.bodyPrimary,0.18)}" opacity="0.32"/>`,
+      body: ({ base, lighten }) => `<path d="M204 152 L318 110 L336 122 L220 170 Z" fill="${lighten(base.bodySecondary,0.2)}" opacity="0.34"/>`,
+      mag: ({ base, darken }) => `<path d="M320 168 C332 210 354 224 374 232 L334 232 C314 208 304 182 302 152 Z" fill="${darken(base.attachmentPrimary,0.32)}" opacity="0.62"/>`
+    }
+  });
+
+  variants.ak_74 = extendVariant('ak_modern', {
+    label: "AK-74",
+    transforms: {
+      rail: "translate(-10,-8)",
+      scope: "translate(-10,-10)",
+      mag: "rotate(10,342,170) scale(1.06,1.06) translate(-4,-2)",
+      fore: "translate(-30,2) scale(1.08,0.94)",
+      barrel: "translate(-32,4) scale(1.06,0.94)",
+      muzzle: "translate(-34,6) scale(0.96,0.92)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M212 150 L322 112 L340 122 L228 174 Z" fill="${lighten(base.bodySecondary,0.18)}" opacity="0.32"/>`
+    }
+  });
+
+  variants.ak_74m = extendVariant('ak_74', {
+    label: "AK-74M",
+    transforms: {
+      stock: "translate(10,2) scale(0.96,0.96)",
+      fore: "translate(-36,0) scale(1.06,0.94)",
+      mag: "rotate(9,344,172) scale(1.08,1.08)",
+      grip: "translate(-18,6)"
+    },
+    extras: {
+      stock: ({ base, darken }) => `<path d="M96 194 L170 152 L192 156 L176 210 L112 236 Z" fill="${darken(base.bodyPrimary,0.18)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.ak_12 = extendVariant('ak_modern', {
+    label: "AK-12",
+    transforms: {
+      rail: "translate(-16,-12)",
+      scope: "translate(-16,-14)",
+      fore: "translate(-34,-6) scale(1.08,0.94)",
+      barrel: "translate(-36,-4) scale(1.08,0.94)",
+      muzzle: "translate(-38,-2) scale(0.98,0.94)",
+      mag: "rotate(8,340,168) scale(1.08,1.08) translate(-2,-4)"
+    },
+    extras: {
+      body: ({ base, darken }) => `<path d="M216 140 L326 108 L346 120 L232 164 Z" fill="${darken(base.bodyPrimary,0.12)}" opacity="0.4"/>`,
+      fore: ({ base, darken }) => `<path d="M362 140 L474 118 L486 140 L368 168 Z" fill="${darken(base.attachmentPrimary,0.2)}" opacity="0.52"/>`
+    }
+  });
+
+  variants.ak117 = extendVariant('ak_12', {
+    label: "AK-117",
+    transforms: {
+      stock: "translate(8,6) scale(0.94,0.94)",
+      fore: "translate(-28,-2) scale(1.06,0.92)",
+      barrel: "translate(-30,-2) scale(1.08,0.92)",
+      muzzle: "translate(-32,0) scale(1,0.92)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M220 150 L330 118 L348 130 L236 168 Z" fill="${lighten(base.bodySecondary,0.18)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.galil = extendVariant('ak_modern', {
+    label: "Galil",
+    transforms: {
+      stock: "translate(22,10) scale(0.92,0.94)",
+      fore: "translate(-22,8) scale(1.04,0.96)",
+      barrel: "translate(-26,8) scale(1.06,0.96)",
+      muzzle: "translate(-28,10) scale(0.96,0.94)",
+      mag: "rotate(12,340,174) scale(1.08,1.1)"
+    },
+    extras: {
+      stock: ({ base, lighten }) => `<path d="M120 206 L192 162 L214 168 L198 220 L138 246 Z" fill="${lighten(base.bodyPrimary,0.18)}" opacity="0.32"/>`
+    }
+  });
+
+  variants.type81 = extendVariant('ak_modern', {
+    label: "Type 81",
+    transforms: {
+      stock: "translate(20,8) scale(0.94,0.96)",
+      fore: "translate(-24,4) scale(1.06,0.96)",
+      barrel: "translate(-28,6) scale(1.06,0.96)",
+      muzzle: "translate(-30,8) scale(0.96,0.94)",
+      mag: "rotate(12,340,176) scale(1.08,1.1)",
+      grip: "translate(-14,8)"
+    },
+    extras: {
+      stock: ({ base, darken }) => `<path d="M108 206 L186 166 L206 172 L192 224 L132 250 Z" fill="${darken(base.bodyPrimary,0.18)}" opacity="0.34"/>`,
+      body: ({ base, lighten }) => `<path d="M216 152 L326 116 L344 128 L232 176 Z" fill="${lighten(base.bodySecondary,0.18)}" opacity="0.32"/>`
+    }
+  });
+
+  variants.as_val = extendVariant('ak_compact', {
+    label: "AS VAL",
+    hide: ['muzzle'],
+    transforms: {
+      barrel: "scale(1.1,0.94) translate(-24,-2)",
+      fore: "scale(1.02,0.94) translate(-18,-2)",
+      mag: "scale(0.92,0.94) translate(16,10)",
+      grip: "translate(-16,12)"
+    },
+    extras: {
+      barrel: ({ base, darken }) => `<rect x="456" y="126" width="140" height="28" rx="18" fill="${darken(base.attachmentPrimary,0.28)}" opacity="0.58"/>`,
+      body: ({ base, lighten }) => `<path d="M232 150 L310 126 L328 138 L244 170 Z" fill="${lighten(base.bodySecondary,0.18)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.aks_74u = extendVariant('ak_compact', {
+    label: "AKS-74U",
+    transforms: {
+      stock: "scale(0.82,0.84) translate(46,40)",
+      body: "scale(0.88,0.86) translate(54,38)",
+      fore: "scale(0.86,0.86) translate(70,46)",
+      barrel: "scale(0.84,0.86) translate(92,58)",
+      muzzle: "scale(0.82,0.84) translate(96,60)",
+      mag: "scale(0.86,0.88) translate(36,32)"
+    },
+    extras: {
+      body: ({ base, darken }) => `<path d="M230 154 L310 130 L324 142 L240 174 Z" fill="${darken(base.bodyPrimary,0.1)}" opacity="0.42"/>`
+    }
+  });
+
 
   variants.bullpup_modern = extendVariant('bullpup', {
     label: "现代无托",
@@ -888,6 +1289,189 @@ const MODEL_VARIANTS = (() => {
     hide: ["stock"]
   });
 
+  variants.mp5 = extendVariant('smg_classic', {
+    label: "MP5",
+    transforms: {
+      body: "scale(0.9,0.94) translate(42,20)",
+      fore: "scale(0.88,0.92) translate(62,24)",
+      barrel: "scale(0.8,0.86) translate(140,54)",
+      muzzle: "scale(0.78,0.84) translate(146,56)",
+      mag: "translate(8,10) scale(0.96,0.98) rotate(4,320,190)",
+      grip: "translate(-36,12)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M238 168 L320 146 L328 164 L240 188 Z" fill="${lighten(base.bodySecondary,0.18)}" opacity="0.32"/>`
+    }
+  });
+
+  variants.mp5k = extendVariant('smg_compact', {
+    label: "MP5K",
+    transforms: {
+      body: "scale(0.72,0.78) translate(118,52)",
+      fore: "scale(0.66,0.74) translate(150,70)",
+      barrel: "scale(0.58,0.66) translate(230,102)",
+      muzzle: "scale(0.56,0.64) translate(236,104)",
+      grip: "translate(-8,28)",
+      mag: "translate(48,24) scale(0.8,0.84) rotate(6,320,204)"
+    },
+    extras: {
+      body: ({ base, darken }) => `<path d="M248 178 L310 160 L316 180 L252 198 Z" fill="${darken(base.bodyPrimary,0.12)}" opacity="0.36"/>`
+    }
+  });
+
+  variants.mp5pdw = extendVariant('smg_pdw', {
+    label: "MP5 PDW",
+    transforms: {
+      body: "scale(0.8,0.86) translate(86,30)",
+      fore: "scale(0.78,0.84) translate(108,36)",
+      barrel: "scale(0.72,0.8) translate(184,58)",
+      muzzle: "scale(0.7,0.78) translate(190,60)",
+      grip: "translate(-26,18)",
+      mag: "translate(18,16) scale(0.86,0.9) rotate(4,320,192)"
+    }
+  });
+
+  variants.mp7 = extendVariant('smg_pdw', {
+    label: "MP7",
+    transforms: {
+      body: "scale(0.76,0.82) translate(98,32)",
+      fore: "scale(0.74,0.8) translate(120,38)",
+      barrel: "scale(0.68,0.76) translate(194,60)",
+      muzzle: "scale(0.66,0.74) translate(200,62)",
+      grip: "translate(-18,20)",
+      mag: "translate(28,18) scale(0.84,0.9)",
+      trigger: "translate(-4,14)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M250 170 L320 150 L326 168 L254 190 Z" fill="${lighten(base.bodySecondary,0.16)}" opacity="0.3"/>`
+    }
+  });
+
+  variants.mp9 = extendVariant('smg_modern', {
+    label: "MP9",
+    transforms: {
+      body: "scale(0.76,0.84) translate(94,32)",
+      fore: "scale(0.7,0.8) translate(126,46)",
+      barrel: "scale(0.64,0.74) translate(206,78)",
+      muzzle: "scale(0.62,0.72) translate(210,80)",
+      mag: "translate(18,18) scale(0.84,0.9)",
+      grip: "translate(-28,22)",
+      trigger: "translate(-10,14)"
+    }
+  });
+
+  variants.pp_2000 = extendVariant('smg_pdw', {
+    label: "PP-2000",
+    transforms: {
+      body: "scale(0.74,0.82) translate(100,36)",
+      fore: "scale(0.7,0.78) translate(132,46)",
+      barrel: "scale(0.66,0.74) translate(206,74)",
+      muzzle: "scale(0.64,0.72) translate(212,76)",
+      mag: "translate(32,26) scale(0.76,0.86) rotate(-10,318,208)",
+      grip: "translate(-18,20)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M244 176 L312 156 L318 176 L248 196 Z" fill="${lighten(base.bodySecondary,0.18)}" opacity="0.32"/>`
+    }
+  });
+
+  variants.sig_mpx = extendVariant('smg_modern', {
+    label: "SIG MPX",
+    transforms: {
+      body: "scale(0.8,0.86) translate(86,28)",
+      fore: "scale(0.76,0.82) translate(114,40)",
+      barrel: "scale(0.7,0.78) translate(192,68)",
+      muzzle: "scale(0.68,0.76) translate(198,70)",
+      mag: "translate(12,14) scale(0.9,0.94)",
+      grip: "translate(-30,20)",
+      trigger: "translate(-12,12)",
+      rail: "translate(58,18) scale(0.88,0.9)"
+    }
+  });
+
+  variants.uzi = extendVariant('smg_classic', {
+    label: "Uzi",
+    transforms: {
+      body: "scale(0.84,0.9) translate(72,30)",
+      fore: "scale(0.82,0.88) translate(92,34)",
+      barrel: "scale(0.74,0.82) translate(164,64)",
+      muzzle: "scale(0.72,0.8) translate(170,66)",
+      grip: "translate(-32,18)",
+      mag: "translate(24,22) scale(0.88,0.94)",
+      trigger: "translate(-14,12)"
+    },
+    extras: {
+      body: ({ base, darken }) => `<path d="M240 174 L316 152 L322 170 L244 192 Z" fill="${darken(base.bodyPrimary,0.12)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.pp_19 = extendVariant('smg_helical', {
+    label: "PP-19",
+    transforms: {
+      body: "scale(0.86,0.92) translate(64,28)",
+      fore: "scale(0.8,0.88) translate(100,44)",
+      barrel: "scale(0.74,0.82) translate(188,74)",
+      muzzle: "scale(0.72,0.8) translate(194,76)",
+      mag: "translate(-14,18) scale(1.08,1.02)",
+      grip: "translate(-34,18)"
+    }
+  });
+
+  variants.pp_19_01 = extendVariant('pp_19', {
+    label: "PP-19-01",
+    transforms: {
+      body: "scale(0.84,0.9) translate(70,30)",
+      fore: "scale(0.78,0.86) translate(108,44)",
+      barrel: "scale(0.72,0.8) translate(196,74)",
+      muzzle: "scale(0.7,0.78) translate(202,76)",
+      mag: "translate(-12,22) scale(1.08,1.04)",
+      grip: "translate(-30,20)"
+    }
+  });
+
+  variants.kriss = extendVariant('smg_vector', {
+    label: "KRISS",
+    transforms: {
+      body: "scale(0.8,0.88) translate(76,30)",
+      fore: "scale(0.78,0.86) translate(106,40)",
+      barrel: "scale(0.7,0.78) translate(188,70)",
+      muzzle: "scale(0.68,0.76) translate(194,72)",
+      mag: "translate(18,18) scale(0.9,0.94)",
+      grip: "translate(-30,22)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M236 168 L310 150 L318 170 L240 192 Z" fill="${lighten(base.bodySecondary,0.2)}" opacity="0.3"/>`
+    }
+  });
+
+  variants.vector = extendVariant('smg_vector', {
+    label: "Vector",
+    transforms: {
+      body: "scale(0.82,0.88) translate(70,28)",
+      fore: "scale(0.8,0.86) translate(100,38)",
+      barrel: "scale(0.72,0.78) translate(182,66)",
+      muzzle: "scale(0.7,0.76) translate(188,68)",
+      mag: "translate(16,16) scale(0.92,0.94)",
+      grip: "translate(-28,22)",
+      trigger: "translate(-12,14)"
+    }
+  });
+
+  variants.p90 = extendVariant('smg_p90', {
+    label: "P90",
+    transforms: {
+      body: "translate(16,6) scale(0.96,0.96)",
+      fore: "translate(-10,10) scale(0.94,0.94)",
+      barrel: "translate(36,20) scale(0.88,0.92)",
+      muzzle: "translate(42,22) scale(0.86,0.9)",
+      mag: "translate(-92,-8) scale(0.78,0.68)",
+      grip: "translate(-58,12)",
+      trigger: "translate(-34,12)",
+      rail: "translate(4,-6) scale(1.04,0.9)",
+      scope: "translate(2,-6) scale(1.02)"
+    }
+  });
+
     variants.pistol_service = extendVariant('vector', {
       label: "制式手枪",
       hide: ["stock", "fore", "scope", "rail"],
@@ -932,6 +1516,109 @@ const MODEL_VARIANTS = (() => {
     }
   });
 
+  variants.usp = extendVariant('pistol_service', {
+    label: "USP",
+    transforms: {
+      body: "scale(0.64,0.74) translate(186,80)",
+      barrel: "scale(0.52,0.64) translate(270,112)",
+      muzzle: "scale(0.5,0.62) translate(276,116)",
+      grip: "translate(26,18) scale(0.96,0.94)",
+      mag: "translate(58,26) scale(0.62,0.76)",
+      trigger: "translate(30,20)"
+    },
+    extras: {
+      body: ({ base, darken }) => `<path d="M250 150 L332 130 L338 146 L256 168 Z" fill="${darken(base.bodyPrimary,0.12)}" opacity="0.38"/>`
+    }
+  });
+
+  variants.glock = extendVariant('pistol_service', {
+    label: "Glock",
+    transforms: {
+      body: "scale(0.6,0.72) translate(196,84)",
+      barrel: "scale(0.48,0.6) translate(290,120)",
+      muzzle: "scale(0.46,0.58) translate(296,124)",
+      grip: "translate(32,20) scale(0.9,0.92)",
+      mag: "translate(66,30) scale(0.56,0.72)",
+      trigger: "translate(32,20)"
+    }
+  });
+
+  variants.p226 = extendVariant('pistol_service', {
+    label: "P226",
+    transforms: {
+      body: "scale(0.62,0.74) translate(190,82)",
+      barrel: "scale(0.5,0.62) translate(282,118)",
+      muzzle: "scale(0.48,0.6) translate(288,122)",
+      grip: "translate(28,18) scale(0.94,0.94)",
+      mag: "translate(60,28) scale(0.6,0.76)"
+    }
+  });
+
+  variants.m9 = extendVariant('pistol_service', {
+    label: "M9",
+    transforms: {
+      body: "scale(0.64,0.76) translate(184,78)",
+      barrel: "scale(0.52,0.64) translate(270,114)",
+      muzzle: "scale(0.5,0.62) translate(276,118)",
+      grip: "translate(24,16) scale(0.98,0.96)",
+      mag: "translate(56,26) scale(0.64,0.78)"
+    }
+  });
+
+  variants.m1911 = extendVariant('pistol_heavy', {
+    label: "M1911",
+    transforms: {
+      body: "scale(0.66,0.76) translate(180,76)",
+      barrel: "scale(0.54,0.66) translate(266,112)",
+      muzzle: "scale(0.52,0.64) translate(272,116)",
+      grip: "translate(24,14) scale(1,0.96)",
+      mag: "translate(54,24) scale(0.66,0.8)"
+    }
+  });
+
+  variants.five_seven = extendVariant('pistol_service', {
+    label: "Five-Seven",
+    transforms: {
+      body: "scale(0.62,0.74) translate(192,82)",
+      barrel: "scale(0.5,0.62) translate(284,118)",
+      muzzle: "scale(0.48,0.6) translate(290,122)",
+      grip: "translate(30,18) scale(0.94,0.94)",
+      mag: "translate(64,28) scale(0.6,0.78)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M246 148 L332 128 L338 144 L252 168 Z" fill="${lighten(base.bodySecondary,0.16)}" opacity="0.32"/>`
+    }
+  });
+
+  variants.deserteagle = extendVariant('pistol_heavy', {
+    label: "Desert Eagle",
+    transforms: {
+      body: "scale(0.7,0.78) translate(166,70)",
+      barrel: "scale(0.58,0.68) translate(248,108)",
+      muzzle: "scale(0.56,0.66) translate(254,112)",
+      grip: "translate(18,12) scale(1.04,1)",
+      mag: "translate(50,22) scale(0.68,0.82)"
+    },
+    extras: {
+      body: ({ base, darken }) => `<path d="M238 146 L328 126 L336 140 L246 166 Z" fill="${darken(base.bodyPrimary,0.12)}" opacity="0.36"/>`
+    }
+  });
+
+  variants.deserteaglehandgun = extendVariant('deserteagle', {
+    label: "Desert Eagle 手枪"
+  });
+
+  variants.ruger = extendVariant('pistol_compact', {
+    label: "Ruger",
+    transforms: {
+      body: "scale(0.54,0.66) translate(214,92)",
+      barrel: "scale(0.42,0.56) translate(318,130)",
+      muzzle: "scale(0.4,0.54) translate(324,134)",
+      grip: "translate(44,28) scale(0.82,0.86)",
+      mag: "translate(74,34) scale(0.48,0.64)"
+    }
+  });
+
   variants.shotgun_pump = extendVariant('battle', {
     label: "泵动霰弹枪",
     transforms: {
@@ -966,6 +1653,89 @@ const MODEL_VARIANTS = (() => {
     label: "弹匣霰弹枪",
     extras: {
       mag: ({ base, darken }) => `<path d="M300 180 L360 176 L348 232 L288 230 Z" fill="${darken(base.attachmentPrimary, 0.35)}" opacity="0.7"/>`
+    }
+  });
+
+  variants.mp_153 = extendVariant('shotgun_auto', {
+    label: "MP-153",
+    transforms: {
+      stock: "translate(-8,4) scale(1.08,1.02)",
+      fore: "scale(1.2,1.02) translate(-18,18)",
+      barrel: "scale(1.32,1.02) translate(-12,22)",
+      muzzle: "scale(1.26,1.02) translate(-8,22)",
+      mag: "translate(-18,16) scale(1.12,1.04)"
+    },
+    extras: {
+      barrel: ({ base, darken }) => `<rect x="518" y="140" width="150" height="20" rx="10" fill="${darken(base.attachmentPrimary,0.28)}" opacity="0.6"/>`
+    }
+  });
+
+  variants.saiga = extendVariant('shotgun_mag', {
+    label: "Saiga",
+    transforms: {
+      stock: "translate(4,8) scale(1.02,1.02)",
+      fore: "scale(1.14,1) translate(-10,12)",
+      barrel: "scale(1.26,1) translate(-4,16)",
+      muzzle: "scale(1.2,1) translate(0,16)",
+      mag: "translate(-10,18) scale(1.2,1.12)",
+      grip: "translate(-12,12)"
+    },
+    extras: {
+      mag: ({ base, darken }) => `<path d="M304 190 L368 186 L358 246 L296 244 Z" fill="${darken(base.attachmentPrimary,0.38)}" opacity="0.7"/>`
+    }
+  });
+
+  variants.m870 = extendVariant('shotgun_pump', {
+    label: "M870",
+    transforms: {
+      stock: "translate(-12,6) scale(1.12,1.04)",
+      fore: "scale(1.18,1) translate(10,12)",
+      barrel: "scale(1.28,1) translate(18,16)",
+      muzzle: "scale(1.24,1) translate(22,16)"
+    },
+    extras: {
+      stock: ({ base, lighten }) => `<path d="M36 200 L150 150 L184 158 L170 214 L80 244 Z" fill="${lighten(base.bodyPrimary,0.24)}" opacity="0.32"/>`
+    }
+  });
+
+  variants.m590 = extendVariant('shotgun_pump', {
+    label: "M590",
+    transforms: {
+      stock: "translate(-10,4) scale(1.1,1.02)",
+      fore: "scale(1.16,1) translate(8,10)",
+      barrel: "scale(1.26,1) translate(16,14)",
+      muzzle: "scale(1.22,1) translate(20,14)"
+    },
+    extras: {
+      body: ({ base, darken }) => `<path d="M220 158 L332 134 L344 148 L230 176 Z" fill="${darken(base.bodyPrimary,0.12)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.m500 = extendVariant('shotgun_pump', {
+    label: "M500",
+    transforms: {
+      stock: "translate(-8,8) scale(1.1,1.04)",
+      fore: "scale(1.18,1) translate(6,12)",
+      barrel: "scale(1.26,1) translate(16,16)",
+      muzzle: "scale(1.22,1) translate(20,16)"
+    },
+    extras: {
+      stock: ({ base, darken }) => `<path d="M44 206 L160 156 L194 164 L180 220 L92 248 Z" fill="${darken(base.bodyPrimary,0.16)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.spas_12 = extendVariant('shotgun_auto', {
+    label: "SPAS-12",
+    transforms: {
+      stock: "translate(-6,6) scale(1.1,1.02)",
+      fore: "scale(1.22,1) translate(-16,16)",
+      barrel: "scale(1.3,1) translate(-10,18)",
+      muzzle: "scale(1.24,1) translate(-6,18)",
+      mag: "translate(-12,18) scale(1.08,1.02)",
+      grip: "translate(-6,12)"
+    },
+    extras: {
+      fore: ({ base, darken }) => `<path d="M360 168 L454 150 L462 176 L368 194 Z" fill="${darken(base.bodyPrimary,0.16)}" opacity="0.45"/>`
     }
   });
 
@@ -1012,6 +1782,133 @@ const MODEL_VARIANTS = (() => {
     }
   });
 
+  variants.ptr_32 = extendVariant('dmr_modern', {
+    label: "PTR-32",
+    transforms: {
+      stock: "translate(-10,4) scale(1.08,1)",
+      fore: "translate(20,-2)",
+      barrel: "translate(38,-2) scale(1.2,1)",
+      muzzle: "translate(42,-2) scale(1.16,1.04)",
+      scope: "translate(6,-10) scale(1.12)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M220 140 L340 112 L356 128 L236 162 Z" fill="${lighten(base.bodySecondary,0.2)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.mk14 = extendVariant('dmr_classic', {
+    label: "MK14",
+    transforms: {
+      stock: "translate(-2,6) scale(1.06,1.02)",
+      barrel: "translate(26,4) scale(1.18,1)",
+      muzzle: "translate(30,4) scale(1.12,1.02)",
+      scope: "translate(-4,-4)"
+    },
+    extras: {
+      body: ({ base, darken }) => `<path d="M208 150 L332 116 L352 128 L226 172 Z" fill="${darken(base.bodyPrimary,0.12)}" opacity="0.36"/>`
+    }
+  });
+
+  variants.scar_h = extendVariant('dmr_modern', {
+    label: "SCAR-H",
+    transforms: {
+      stock: "translate(-12,0) scale(1.12,0.98)",
+      body: "translate(-6,-2) scale(1.08,0.98)",
+      fore: "translate(18,-6) scale(1.08,0.96)",
+      barrel: "translate(34,-6) scale(1.2,0.96)",
+      muzzle: "translate(38,-6) scale(1.16,0.98)",
+      mag: "translate(-6,6) scale(1.12,1.12)",
+      scope: "translate(-6,-10)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M212 136 L330 106 L350 120 L230 160 Z" fill="${lighten(base.bodySecondary,0.18)}" opacity="0.36"/>`,
+      mag: ({ base, darken }) => `<path d="M306 170 L360 166 L352 232 L298 230 Z" fill="${darken(base.attachmentPrimary,0.34)}" opacity="0.64"/>`
+    }
+  });
+
+  variants.m110 = extendVariant('dmr_modern', {
+    label: "M110",
+    transforms: {
+      fore: "translate(24,-4)",
+      barrel: "translate(40,-4) scale(1.22,1)",
+      muzzle: "translate(44,-4) scale(1.18,1.04)",
+      scope: "translate(12,-10) scale(1.1)",
+      rail: "translate(-4,-10)"
+    },
+    extras: {
+      barrel: ({ base, darken }) => `<rect x="522" y="132" width="150" height="18" rx="8" fill="${darken(base.attachmentPrimary,0.3)}" opacity="0.52"/>`
+    }
+  });
+
+  variants.m7 = extendVariant('dmr_modern', {
+    label: "M7",
+    transforms: {
+      stock: "translate(-4,2) scale(1.02,1)",
+      fore: "translate(16,-4)",
+      barrel: "translate(30,-4) scale(1.18,1)",
+      muzzle: "translate(34,-4) scale(1.14,1.04)",
+      scope: "translate(8,-12) scale(1.14)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M220 142 L338 112 L354 126 L236 168 Z" fill="${lighten(base.bodySecondary,0.22)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.fn_fal = extendVariant('dmr_classic', {
+    label: "FN FAL",
+    transforms: {
+      stock: "translate(6,8) scale(1.02,1.02)",
+      fore: "translate(6,6)",
+      barrel: "translate(18,6) scale(1.16,1)",
+      muzzle: "translate(22,6) scale(1.12,1.02)",
+      scope: "translate(-6,-2)"
+    },
+    extras: {
+      stock: ({ base, lighten }) => `<path d="M58 190 L160 144 L188 150 L176 206 L90 238 Z" fill="${lighten(base.bodyPrimary,0.22)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.m14 = extendVariant('dmr_classic', {
+    label: "M14",
+    transforms: {
+      stock: "translate(2,10) scale(1.04,1.04)",
+      barrel: "translate(16,8) scale(1.12,1)",
+      muzzle: "translate(20,8) scale(1.1,1.02)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M212 150 L332 118 L350 130 L230 172 Z" fill="${lighten(base.bodySecondary,0.2)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.sks = extendVariant('dmr_classic', {
+    label: "SKS",
+    transforms: {
+      stock: "translate(8,12) scale(1.06,1.06)",
+      fore: "translate(8,10)",
+      barrel: "translate(18,10) scale(1.14,1)",
+      muzzle: "translate(22,10) scale(1.1,1.02)",
+      scope: "translate(-8,0)"
+    },
+    extras: {
+      stock: ({ base, lighten }) => `<path d="M68 200 L170 154 L198 160 L182 214 L96 246 Z" fill="${lighten(base.bodyPrimary,0.24)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.qbu_88 = extendVariant('dmr_bullpup', {
+    label: "QBU-88",
+    transforms: {
+      stock: "translate(24,6) scale(1.08,1)",
+      body: "translate(30,2) scale(1.1,0.98)",
+      fore: "translate(-18,-4) scale(1.12,0.96)",
+      barrel: "translate(-12,-4) scale(1.18,0.96)",
+      muzzle: "translate(-10,-4) scale(1.18,0.98)",
+      scope: "translate(18,-14) scale(1.14)"
+    },
+    extras: {
+      body: ({ base, lighten }) => `<path d="M210 150 L330 118 L354 130 L234 174 Z" fill="${lighten(base.bodySecondary,0.22)}" opacity="0.34"/>`
+    }
+  });
+
   variants.sniper_bolt = extendVariant('battle', {
     label: "栓动狙击枪",
     transforms: {
@@ -1043,6 +1940,60 @@ const MODEL_VARIANTS = (() => {
     }
   });
 
+  variants.svd = extendVariant('sniper_dragunov', {
+    label: "SVD",
+    transforms: {
+      stock: "translate(2,8) scale(1.04,0.98)",
+      barrel: "translate(34,0) scale(1.22,1)",
+      muzzle: "translate(38,0) scale(1.18,1)",
+      mag: "translate(-8,8) scale(1.02,1.08)"
+    },
+    extras: {
+      mag: ({ base, darken }) => `<path d="M300 178 L354 174 L344 232 L292 230 Z" fill="${darken(base.attachmentPrimary,0.36)}" opacity="0.62"/>`
+    }
+  });
+
+  variants.m24 = extendVariant('sniper_bolt', {
+    label: "M24",
+    transforms: {
+      stock: "translate(-6,6) scale(1.1,1)",
+      fore: "translate(24,-4)",
+      barrel: "translate(48,-4) scale(1.32,1)",
+      muzzle: "translate(52,-4) scale(1.28,1.04)",
+      scope: "translate(14,-12) scale(1.18)"
+    },
+    extras: {
+      stock: ({ base, lighten }) => `<path d="M40 190 L148 148 L176 156 L162 208 L84 240 Z" fill="${lighten(base.bodyPrimary,0.24)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.m700 = extendVariant('sniper_bolt', {
+    label: "M700",
+    transforms: {
+      stock: "translate(-2,8) scale(1.08,1)",
+      barrel: "translate(46,-2) scale(1.3,1)",
+      muzzle: "translate(50,-2) scale(1.26,1.04)",
+      scope: "translate(18,-12) scale(1.16)"
+    },
+    extras: {
+      body: ({ base, darken }) => `<path d="M220 142 L348 110 L364 122 L236 168 Z" fill="${darken(base.bodyPrimary,0.12)}" opacity="0.34"/>`
+    }
+  });
+
+  variants.mosin = extendVariant('sniper_bolt', {
+    label: "Mosin",
+    transforms: {
+      stock: "translate(4,12) scale(1.12,1.02)",
+      fore: "translate(18,6)",
+      barrel: "translate(34,6) scale(1.26,1)",
+      muzzle: "translate(38,6) scale(1.22,1.02)",
+      scope: "translate(-6,-2)"
+    },
+    extras: {
+      stock: ({ base, lighten }) => `<path d="M52 200 L162 154 L188 160 L176 216 L96 248 Z" fill="${lighten(base.bodyPrimary,0.26)}" opacity="0.34"/>`
+    }
+  });
+
   variants.lmg_heavy = extendVariant('battle', {
     label: "机枪",
     transforms: {
@@ -1061,6 +2012,40 @@ const MODEL_VARIANTS = (() => {
     }
   });
 
+  variants.m249 = extendVariant('lmg_heavy', {
+    label: "M249",
+    transforms: {
+      stock: "translate(-16,2) scale(1.08,1)",
+      fore: "translate(32,-2)",
+      barrel: "translate(48,-2) scale(1.28,1)",
+      muzzle: "translate(52,-2) scale(1.24,1.04)",
+      mag: "translate(-12,12) scale(1.2,1.18)",
+      rail: "translate(-6,-8)",
+      scope: "translate(-2,-8)"
+    },
+    extras: {
+      mag: ({ base, darken }) => `<path d="M300 166 L384 160 L374 240 L292 240 Z" fill="${darken(base.attachmentPrimary,0.36)}" opacity="0.68"/>`,
+      body: ({ base, lighten }) => `<path d="M236 150 L420 120 L430 150 L244 180 Z" fill="${lighten(base.bodySecondary,0.18)}" opacity="0.36"/>`
+    }
+  });
+
+  variants.pkm = extendVariant('lmg_heavy', {
+    label: "PKM",
+    transforms: {
+      stock: "translate(6,10) scale(0.98,0.98)",
+      body: "translate(2,6) scale(1.02,1)",
+      fore: "translate(10,6) scale(1.08,1)",
+      barrel: "translate(24,6) scale(1.32,1.02)",
+      muzzle: "translate(30,6) scale(1.28,1.08)",
+      mag: "translate(-4,16) scale(1.24,1.22)",
+      grip: "translate(-6,10)"
+    },
+    extras: {
+      stock: ({ base, darken }) => `<path d="M30 196 L148 144 L188 150 L170 208 L76 240 Z" fill="${darken(base.bodyPrimary,0.22)}" opacity="0.38"/>`,
+      mag: ({ base, darken }) => `<path d="M308 180 L388 176 L376 246 L296 242 Z" fill="${darken(base.attachmentPrimary,0.4)}" opacity="0.7"/>`
+    }
+  });
+
   variants.futuristic = variants.futuristic || BASE_VARIANTS.futuristic;
 
   return variants;
@@ -1072,84 +2057,84 @@ const MODEL_ALIAS_MAP = {
   vector: 'smg_vector',
   bullpup: 'bullpup',
   futuristic: 'futuristic',
-  m4a1: 'carbine_m4',
-  mcx: 'carbine_m4',
-  k416: 'carbine_m4',
-  g36: 'carbine_m4',
-  g36c: 'carbine_m4',
-  mk18: 'carbine_m4',
-  scar_l: 'carbine_m4',
-  sig_552: 'carbine_m4',
-  sg552: 'carbine_m4',
-  ptr_32: 'dmr_modern',
-  m16: 'carbine_classic',
-  aug: 'bullpup_modern',
-  famas: 'bullpup_modern',
-  tavor: 'bullpup_modern',
-  qbz_95: 'bullpup_modern',
-  qbz95_1: 'bullpup_modern',
-  fn_f2000: 'bullpup_modern',
+  m4a1: 'm4a1',
+  mcx: 'mcx',
+  k416: 'k416',
+  g36: 'g36',
+  g36c: 'g36c',
+  mk18: 'mk18',
+  scar_l: 'scar_l',
+  sig_552: 'sig_552',
+  sg552: 'sig_552',
+  ptr_32: 'ptr_32',
+  m16: 'm16',
+  aug: 'aug',
+  famas: 'famas',
+  tavor: 'tavor',
+  qbz_95: 'qbz_95',
+  qbz95_1: 'qbz95_1',
+  fn_f2000: 'fn_f2000',
   honey_badger: 'carbine_honey',
-  ak_47: 'ak_classic',
-  ak_74: 'ak_modern',
-  ak_74m: 'ak_modern',
-  ak_12: 'ak_modern',
-  ak117: 'ak_modern',
-  galil: 'ak_modern',
-  as_val: 'ak_compact',
-  aks_74u: 'ak_compact',
-  '81': 'ak_modern',
-  m249: 'lmg_heavy',
-  pkm: 'lmg_heavy',
-  mk14: 'dmr_modern',
-  scar_h: 'dmr_modern',
-  m110: 'dmr_modern',
-  m7: 'dmr_modern',
-  fn_fal: 'dmr_classic',
-  m14: 'dmr_classic',
-  sks: 'dmr_classic',
-  qbu_88: 'dmr_bullpup',
-  svd: 'sniper_dragunov',
-  m24: 'sniper_bolt',
-  m700: 'sniper_bolt',
-  mosin: 'sniper_bolt',
-  mp5: 'smg_classic',
-  mp5k: 'smg_compact',
-  mp7: 'smg_pdw',
-  mp9: 'smg_modern',
-  mp_153: 'shotgun_auto',
-  pp_2000: 'smg_compact',
-  sig_mpx: 'smg_modern',
-  uzi: 'smg_classic',
-  pp_19: 'smg_helical',
-  pp_19_01: 'smg_helical',
-  kriss: 'smg_vector',
-  vector: 'smg_vector',
-  p90: 'smg_p90',
   honeybadger: 'carbine_honey',
-  pp19: 'smg_helical',
-  mp153: 'shotgun_auto',
-  saiga: 'shotgun_mag',
-  m870: 'shotgun_pump',
-  m590: 'shotgun_pump',
-  m500: 'shotgun_pump',
-  spas_12: 'shotgun_auto',
-  usp: 'pistol_service',
-  glock: 'pistol_service',
-  p226: 'pistol_service',
-  m9: 'pistol_service',
-  m1911: 'pistol_service',
-  five_seven: 'pistol_service',
-  deserteagle: 'pistol_heavy',
-  ruger: 'pistol_compact',
-  tenglong: 'futuristic',
-  mp5pdw: 'smg_pdw',
-  ak12: 'ak_modern',
-  ak74: 'ak_modern',
-  ak74m: 'ak_modern',
-  ak47: 'ak_classic',
-  ak117: 'ak_modern',
-  deserteaglehandgun: 'pistol_heavy'
+  ak_47: 'ak_47',
+  ak47: 'ak_47',
+  ak_74: 'ak_74',
+  ak74: 'ak_74',
+  ak_74m: 'ak_74m',
+  ak74m: 'ak_74m',
+  ak_12: 'ak_12',
+  ak12: 'ak_12',
+  ak117: 'ak117',
+  galil: 'galil',
+  as_val: 'as_val',
+  aks_74u: 'aks_74u',
+  '81': 'type81',
+  type81: 'type81',
+  m249: 'm249',
+  pkm: 'pkm',
+  mk14: 'mk14',
+  scar_h: 'scar_h',
+  m110: 'm110',
+  m7: 'm7',
+  fn_fal: 'fn_fal',
+  m14: 'm14',
+  sks: 'sks',
+  qbu_88: 'qbu_88',
+  svd: 'svd',
+  m24: 'm24',
+  m700: 'm700',
+  mosin: 'mosin',
+  mp5: 'mp5',
+  mp5k: 'mp5k',
+  mp5pdw: 'mp5pdw',
+  mp7: 'mp7',
+  mp9: 'mp9',
+  mp_153: 'mp_153',
+  mp153: 'mp_153',
+  pp_2000: 'pp_2000',
+  sig_mpx: 'sig_mpx',
+  uzi: 'uzi',
+  pp_19: 'pp_19',
+  pp_19_01: 'pp_19_01',
+  pp19: 'pp_19',
+  kriss: 'kriss',
+  vector: 'vector',
+  p90: 'p90',
+  saiga: 'saiga',
+  m870: 'm870',
+  m590: 'm590',
+  m500: 'm500',
+  spas_12: 'spas_12',
+  usp: 'usp',
+  glock: 'glock',
+  p226: 'p226',
+  m9: 'm9',
+  m1911: 'm1911',
+  five_seven: 'five_seven',
+  deserteagle: 'deserteagle',
+  deserteaglehandgun: 'deserteaglehandgun',
+  ruger: 'ruger',
+  tenglong: 'futuristic'
 };
 
 function resolveModelVariant(key){
