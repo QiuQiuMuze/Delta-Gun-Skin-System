@@ -200,7 +200,11 @@ const API = {
     return API.json("/market/bricks/sell", "POST", payload);
   },
   brickCancelSell: (order_id) => API.json(`/market/bricks/cancel/${order_id}`, "POST"),
-  brickBuyOrder: (quantity, target_price) => API.json("/market/bricks/buy-order", "POST", { quantity, target_price }),
+  brickBuyOrder: (quantity, target_price, season) => {
+    const payload = { quantity, target_price };
+    if (season) payload.season = season;
+    return API.json("/market/bricks/buy-order", "POST", payload);
+  },
   brickCancelBuyOrder: (order_id) => API.json(`/market/bricks/buy-order/cancel/${order_id}`, "POST"),
 
   // ---- Cookie Factory ----

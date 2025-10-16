@@ -4,6 +4,8 @@ const ShopPage = {
   _seasonMap: {},
   _selectedSeason: null,
   _selectedBrick: null,
+  _quickBuySeason: null,
+  _buyOrderSeason: null,
   async render() {
     const catalog = await API.seasonCatalog().catch(() => ({ seasons: [], latest: null }));
     this._seasonCatalog = Array.isArray(catalog?.seasons) ? catalog.seasons : [];
@@ -36,10 +38,23 @@ const ShopPage = {
       .join("");
     const seasonPanel = this._renderSeasonCatalog(this._selectedSeason);
     const isAdmin = !!(API._me && API._me.is_admin);
-    const brickSeasonOptions = ['<option value="">自动匹配（最新赛季）</option>']
-      .concat(this._seasonCatalog.map(season => `<option value="${season.id}">${escName(season.name || season.id)}</option>`)).join("");
+    const quickSeasonSelected = this._quickBuySeason
+      || (this._selectedBrick ? this._selectedBrick.seasonId : null)
+      || this._selectedSeason
+      || (this._seasonCatalog[0]?.id ?? "");
+    const brickSeasonOptions = this._seasonCatalog.map(season => {
+      const selected = String(season.id) === String(quickSeasonSelected) ? 'selected' : '';
+      return `<option value="${season.id}" ${selected}>${escName(season.name || season.id)}</option>`;
+    }).join("");
     const sellSeasonOptions = ['<option value="">请选择赛季</option>']
       .concat(this._seasonCatalog.map(season => `<option value="${season.id}">${escName(season.name || season.id)}</option>`)).join("");
+    const buyOrderSelected = this._buyOrderSeason || "";
+    const buyOrderSeasonOptions = [
+      `<option value=""${buyOrderSelected ? "" : " selected"}>请选择赛季</option>`
+    ].concat(this._seasonCatalog.map(season => {
+      const selected = buyOrderSelected && String(season.id) === String(buyOrderSelected) ? 'selected' : '';
+      return `<option value="${season.id}" ${selected}>${escName(season.name || season.id)}</option>`;
+    })).join("");
     return `
     <div class="card shop-card">
       <h2>商店</h2>
@@ -104,6 +119,7 @@ const ShopPage = {
           <div class="input-row">
             <input id="buyorder-count" type="number" min="1" placeholder="数量（≥1）"/>
             <input id="buyorder-price" type="number" min="40" placeholder="目标单价（≥40）"/>
+            <select id="buyorder-season">${buyOrderSeasonOptions}</select>
             <button class="btn" id="place-buyorder">提交</button>
           </div>
           <div class="order-list small" id="my-buy-orders"><div class="muted">暂无委托</div></div>
@@ -306,6 +322,7 @@ const ShopPage = {
     const buyPrice = byId("buyorder-price");
     const buySeasonSelect = byId("buy-brick-season");
     const sellSeasonSelect = byId("sell-season");
+    const buyOrderSeasonSelect = byId("buyorder-season");
     const seasonSelect = byId("shop-season-select");
     const seasonCatalogBox = byId("shop-season-catalog");
     if (seasonSelect && seasonCatalogBox) {
@@ -317,7 +334,7 @@ const ShopPage = {
           this._selectedBrick = null;
         }
         seasonCatalogBox.innerHTML = this._renderSeasonCatalog(this._selectedSeason);
-        this._bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect });
+        this._bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect, buyOrderSeasonSelect });
       });
     }
 
@@ -328,12 +345,26 @@ const ShopPage = {
         if (normalized && (!this._selectedBrick || this._selectedBrick.seasonId !== normalized)) {
           this._selectedBrick = null;
         }
+        this._quickBuySeason = normalized;
         if (seasonCatalogBox) {
           seasonCatalogBox.innerHTML = this._renderSeasonCatalog(this._selectedSeason);
-          this._bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect });
+          this._bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect, buyOrderSeasonSelect });
         }
         loadBook(normalized);
       });
+    }
+
+    if (buyOrderSeasonSelect) {
+      buyOrderSeasonSelect.addEventListener('change', () => {
+        const value = buyOrderSeasonSelect.value || null;
+        this._buyOrderSeason = value ? String(value) : null;
+      });
+    }
+
+    const initialQuickSeason = buySeasonSelect ? (buySeasonSelect.value || null) : null;
+    this._quickBuySeason = initialQuickSeason ? String(initialQuickSeason) : null;
+    if (!this._state.bookSeason) {
+      this._state.bookSeason = this._quickBuySeason;
     }
 
     byId("buy-keys").onclick = async () => {
@@ -358,13 +389,14 @@ const ShopPage = {
       if (n <= 0) return alert("数量必须 ≥ 1");
       try {
         const seasonValue = buySeasonSelect ? (buySeasonSelect.value || "") : "";
+        if (!seasonValue) return alert("请先选择要购买的赛季");
         const quote = await API.brickQuote(n, seasonValue || null);
         const parts = quote?.segments?.map(seg => {
           const source = seg.source === "player" ? "玩家" : "官方";
           const seasonLabel = seg.season_name || seg.season || "默认";
           return `${source} ${seasonLabel} ${seg.price} ×${seg.quantity}`;
         }) || [];
-        const seasonLabel = seasonValue ? (this._seasonMap[seasonValue]?.name || seasonValue) : "自动匹配";
+        const seasonLabel = this._seasonMap[seasonValue]?.name || seasonValue;
         const msgLines = [`将购入 ${n} 块砖（赛季：${seasonLabel}），预计花费 ${quote?.total_cost || 0} 三角币。`];
         if (parts.length) msgLines.push(`拆分：${parts.join("，")}`);
         msgLines.push("是否继续？");
@@ -386,7 +418,7 @@ const ShopPage = {
         }).join("，");
         const extra = segmentText ? `成交明细：${segmentText}` : "";
         alert([`购砖成功，花费 ${res?.spent ?? quote?.total_cost ?? 0} 三角币。`, extra].filter(Boolean).join("\n"));
-        await Promise.all([loadPrices(), loadBook(this._state.bookSeason)]);
+        await Promise.all([loadPrices(), loadBook(seasonValue)]);
       } catch (e) {
         alert(e.message || "购买失败");
       }
@@ -422,8 +454,10 @@ const ShopPage = {
       const price = parseInt(buyPrice.value, 10) || 0;
       if (qty <= 0) return alert("数量必须 ≥ 1");
       if (price < 40) return alert("目标单价必须 ≥ 40");
+      const seasonValue = buyOrderSeasonSelect ? (buyOrderSeasonSelect.value || "") : "";
+      if (!seasonValue) return alert("请选择委托的赛季");
       try {
-        const res = await API.brickBuyOrder(qty, price);
+        const res = await API.brickBuyOrder(qty, price, seasonValue);
         let msg;
         if (res.filled) {
           const filledQty = res.filled.filled || 0;
@@ -439,6 +473,8 @@ const ShopPage = {
         alert(`委托创建成功（#${res.order_id}）。${msg}`);
         buyCount.value = "";
         buyPrice.value = "";
+        if (buyOrderSeasonSelect) buyOrderSeasonSelect.value = "";
+        this._buyOrderSeason = null;
         await Promise.all([loadPrices(), loadBook(this._state.bookSeason), API.me()]);
       } catch (e) {
         alert(e.message || "提交失败");
@@ -468,11 +504,11 @@ const ShopPage = {
 
     loadPrices();
     loadBook(this._state.bookSeason);
-    this._bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect });
+    this._bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect, buyOrderSeasonSelect });
   }
 };
 
-ShopPage._bindCatalogInteractions = function _bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect } = {}) {
+ShopPage._bindCatalogInteractions = function _bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect, buyOrderSeasonSelect } = {}) {
   const box = byId("shop-season-catalog");
   if (!box) return;
   box.querySelectorAll('li[data-skin]').forEach(node => {
@@ -485,8 +521,11 @@ ShopPage._bindCatalogInteractions = function _bindCatalogInteractions({ loadBook
       ShopPage._selectedBrick = { seasonId: season, skinId: skin, name };
       if (seasonSelect) seasonSelect.value = season;
       if (buySeasonSelect) buySeasonSelect.value = season;
+      if (buyOrderSeasonSelect) buyOrderSeasonSelect.value = season;
+      ShopPage._quickBuySeason = season;
+      ShopPage._buyOrderSeason = season;
       box.innerHTML = ShopPage._renderSeasonCatalog(ShopPage._selectedSeason);
-      ShopPage._bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect });
+      ShopPage._bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect, buyOrderSeasonSelect });
       loadBook(season);
     });
   });

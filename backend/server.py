@@ -162,6 +162,7 @@ class BrickBuyOrder(Base):
     remaining = Column(Integer, nullable=False)
     active = Column(Boolean, default=True)
     created_at = Column(Integer, default=lambda: int(time.time()))
+    season = Column(String, default="")
 
 
 class CookieFactoryProfile(Base):
@@ -307,6 +308,17 @@ def _ensure_brick_sell_columns():
     con.close()
 
 
+def _ensure_brick_buy_columns():
+    con = sqlite3.connect(DB_PATH_FS)
+    cur = con.cursor()
+    cur.execute("PRAGMA table_info(brick_buy_orders)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "season" not in cols:
+        cur.execute("ALTER TABLE brick_buy_orders ADD COLUMN season TEXT NOT NULL DEFAULT ''")
+    con.commit()
+    con.close()
+
+
 def _season_skin_entries():
     for season in SEASON_DEFINITIONS:
         sid = season.get("id", "").upper()
@@ -396,6 +408,7 @@ _ensure_inventory_visual_columns()
 _ensure_skin_extended_columns()
 _ensure_trade_log_columns()
 _ensure_brick_sell_columns()
+_ensure_brick_buy_columns()
 _ensure_user_gift_columns()
 _ensure_cookie_profile_columns()
 
@@ -2469,6 +2482,7 @@ def process_brick_buy_orders(db: Session, cfg: PoolConfig) -> List[Dict[str, Any
             order.remaining,
             max_price=order.target_price,
             exclude_user_id=order.user_id,
+            season=order.season,
         )
         total_qty = sum(item["quantity"] for item in plan)
         if total_qty < order.remaining:
@@ -3732,6 +3746,8 @@ def brick_order_book(
             "locked_coins": order.locked_coins,
             "created_at": order.created_at,
             "mine": order.user_id == user.id,
+            "season": order.season or "",
+            "season_name": _season_display_name(_brick_season_key(order.season)),
         }
         if entry["mine"]:
             my_buy.append(entry)
@@ -3811,10 +3827,13 @@ def brick_sell_cancel(order_id: int = Path(..., ge=1), user: User = Depends(user
 def brick_buy_order(inp: BrickBuyOrderIn, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     qty = int(inp.quantity or 0)
     target_price = int(inp.target_price or 0)
+    season_key = _normalize_season(inp.season)
     if qty <= 0:
         raise HTTPException(400, "数量必须大于 0")
     if target_price < 40:
         raise HTTPException(400, "价格必须大于等于 40")
+    if not season_key:
+        raise HTTPException(400, "请选择赛季")
     total_cost = target_price * qty
     if user.coins < total_cost:
         raise HTTPException(400, "三角币不足")
@@ -3830,6 +3849,7 @@ def brick_buy_order(inp: BrickBuyOrderIn, user: User = Depends(user_from_token),
         gift_coin_locked=gift_spent,
         remaining=qty,
         active=True,
+        season=season_key,
     )
     db.add(order)
     db.commit()
@@ -3837,7 +3857,13 @@ def brick_buy_order(inp: BrickBuyOrderIn, user: User = Depends(user_from_token),
     fills = process_brick_buy_orders(db, cfg)
     db.commit()
     db.refresh(order)
-    resp = {"ok": True, "order_id": order.id, "locked": total_cost}
+    resp = {
+        "ok": True,
+        "order_id": order.id,
+        "locked": total_cost,
+        "season": order.season,
+        "season_label": _season_display_name(order.season or BRICK_SEASON_FALLBACK),
+    }
     if fills:
         resp["fills"] = fills
         mine = next((f for f in fills if f.get("order_id") == order.id), None)
