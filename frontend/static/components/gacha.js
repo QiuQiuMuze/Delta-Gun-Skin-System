@@ -9,6 +9,10 @@ const GachaPage = {
   _selectedSeason: null,
   _targetSkinId: null,
   _lastOdds: null,
+  _isAdmin: false,
+  _adminButton: null,
+  _adminInput: null,
+  _adminMaxBulk: 200,
 
   async render() {
     const seasonData = await API.seasonCatalog().catch(() => ({ seasons: [], latest: null }));
@@ -30,6 +34,8 @@ const GachaPage = {
       API.odds(currentKey || null)
     ]);
     this._lastOdds = od;
+    this._isAdmin = !!me.is_admin;
+    this._adminMaxBulk = 200;
     const odds = od.odds || od;
     const lim = od.limits || { brick_pity_max:75, purple_pity_max:20 };
     const left_brick  = Math.max(0, lim.brick_pity_max  - (odds.pity_brick  + 1));
@@ -41,6 +47,19 @@ const GachaPage = {
         }).join("")
       : `<option value="">最新赛季</option>`;
     const seasonInfo = this._seasonInfoHtml(this._selectedSeason);
+
+    const adminPanel = this._isAdmin ? `
+      <div class="draw-admin card-sub">
+        <div class="input-row">
+          <label class="input-label" for="admin-bulk-count">管理员快速开砖</label>
+          <div class="admin-bulk-controls">
+            <input type="number" id="admin-bulk-count" min="1" max="${this._adminMaxCount()}" value="30" />
+            <button class="btn primary" id="admin-bulk-open">批量开砖</button>
+          </div>
+          <div class="help-text">一次最多 ${this._adminMaxCount()} 连</div>
+        </div>
+      </div>
+    ` : "";
 
     return `
     <div class="card"><h2>开砖</h2>
@@ -87,6 +106,7 @@ const GachaPage = {
           <button class="btn ghost" id="skip" style="visibility:hidden;" disabled>跳过动画</button>
         </div>
       </div>
+      ${adminPanel}
       <div id="open-stage" class="open-stage"></div>
       <div id="open-result"></div>
     </div>`;
@@ -100,9 +120,9 @@ const GachaPage = {
         ev.preventDefault();
         if (this._opening) return;
         const val = parseInt(btn.dataset.count || "0", 10);
-        if (val === 1 || val === 10) {
-          this._open(val);
-        }
+        if (Number.isNaN(val) || val <= 0) return;
+        if (!this._isAdmin && ![1, 10].includes(val)) return;
+        this._open(val);
       });
     });
     const seasonSelect = byId("gacha-season");
@@ -118,6 +138,45 @@ const GachaPage = {
       });
     }
     this._bindTargetSelector();
+
+    if (this._isAdmin) {
+      this._adminButton = byId("admin-bulk-open");
+      this._adminInput = byId("admin-bulk-count");
+      if (this._adminButton) {
+        this._drawButtons.push(this._adminButton);
+        this._adminButton.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          if (this._opening) return;
+          const raw = this._adminInput ? parseInt(this._adminInput.value || "0", 10) : NaN;
+          if (Number.isNaN(raw) || raw <= 0) return;
+          const normalized = this._normalizeCount(raw);
+          if (this._adminInput && normalized !== raw) {
+            this._adminInput.value = normalized;
+          }
+          this._open(normalized);
+        });
+      }
+      if (this._adminInput) {
+        const max = this._adminMaxCount();
+        this._adminInput.setAttribute("max", max);
+      }
+    } else {
+      this._adminButton = null;
+      this._adminInput = null;
+    }
+  },
+
+  _adminMaxCount() {
+    return Number(this._adminMaxBulk) > 0 ? Number(this._adminMaxBulk) : 200;
+  },
+
+  _normalizeCount(count) {
+    const parsed = parseInt(count, 10);
+    if (Number.isNaN(parsed) || parsed <= 0) return 1;
+    if (this._isAdmin) {
+      return Math.min(parsed, this._adminMaxCount());
+    }
+    return [1, 10].includes(parsed) ? parsed : 1;
   },
 
   // —— 抽完后刷新顶部 & 概率/保底 —— //
@@ -347,8 +406,11 @@ const GachaPage = {
 
   _setDrawDisabled(disabled) {
     (this._drawButtons || []).forEach(btn => {
-      btn.disabled = !!disabled;
+      if (btn) btn.disabled = !!disabled;
     });
+    if (this._adminInput) {
+      this._adminInput.disabled = !!disabled;
+    }
   },
 
   async _ensureResources(count, seasonKey = null) {
@@ -523,7 +585,7 @@ const GachaPage = {
   },
 
   async _open(count = 1) {
-    const c = [1, 10].includes(count) ? count : 1;
+    const c = this._normalizeCount(count);
     const seasonKey = this._currentSeasonKey();
     this._skip = false;
     this._opening = true;
