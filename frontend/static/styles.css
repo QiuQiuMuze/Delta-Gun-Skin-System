@@ -10,6 +10,42 @@ body {
   color:#e6e9ef;
   min-height:100vh;
 }
+
+.audio-toggle {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2000;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.18), rgba(148,163,184,0.2));
+  backdrop-filter: blur(8px);
+  color: #f8fafc;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.4);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.audio-toggle:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.45);
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.25), rgba(148,163,184,0.28));
+}
+
+.audio-toggle.is-muted {
+  background: radial-gradient(circle at 30% 30%, rgba(226,72,128,0.25), rgba(76,29,149,0.35));
+  box-shadow: 0 10px 24px rgba(76, 29, 149, 0.35);
+}
+
+.audio-toggle__icon {
+  font-size: 20px;
+  pointer-events: none;
+}
 a { color:#9ecbff; text-decoration: none; }
 a:hover { text-decoration: underline; }
 .topbar {
