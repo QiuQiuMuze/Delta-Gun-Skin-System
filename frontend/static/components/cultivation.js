@@ -107,6 +107,21 @@ const CultivationPage = {
       </div>
     `;
   },
+  renderTalentChips(items) {
+    const list = Array.isArray(items) ? items : [];
+    if (!list.length) return '';
+    const chips = list.map(item => {
+      if (!item) return '';
+      const name = escapeHtml((item.name != null ? item.name : item) || '');
+      if (!name) return '';
+      const tone = item.rarity_tone ? ` rarity-${escapeHtml(item.rarity_tone)}` : '';
+      const rarityLabel = item.rarity_label ? `<span class="cultivation-talent-chip__rarity">${escapeHtml(item.rarity_label)}</span>` : '';
+      const descAttr = item.desc ? ` title="${escapeHtml(item.desc)}"` : '';
+      return `<span class="cultivation-chip talent${tone}"${descAttr}>${rarityLabel}<span class="cultivation-chip__label">${name}</span></span>`;
+    }).filter(Boolean).join('');
+    if (!chips) return '';
+    return `<div class="cultivation-talent-chips">${chips}</div>`;
+  },
   renderStatsGrid(stats) {
     if (!stats || typeof stats !== 'object') return '';
     const entries = Object.entries(stats)
@@ -123,8 +138,11 @@ const CultivationPage = {
     const statsBlock = this.renderStatsGrid(last.stats);
     const coins = fmtInt(last.coins || 0);
     const coinsLine = `<div class="cultivation-summary__coins">起始铜钱 ${coins}</div>`;
-    const talents = Array.isArray(last.talents) && last.talents.length
-      ? `<div class="cultivation-summary__talents">天赋：${last.talents.map(name => `<span class="cultivation-chip"><span class="cultivation-chip__label">${escapeHtml(name || '')}</span></span>`).join('')}</div>`
+    const talentData = Array.isArray(last.talent_details) && last.talent_details.length
+      ? last.talent_details
+      : Array.isArray(last.talents) ? last.talents.map(name => ({ name })) : [];
+    const talents = talentData.length
+      ? `<div class="cultivation-summary__talents"><span class="label">天赋</span>${this.renderTalentChips(talentData)}</div>`
       : '';
     const collections = `
       <div class="cultivation-summary__collections">
@@ -159,8 +177,11 @@ const CultivationPage = {
     const statsSection = statsBlock ? `<div class="cultivation-ending__stats">${statsBlock}</div>` : '';
     const coins = fmtInt(result.coins || 0);
     const coinsLine = `<div class="cultivation-ending__coins">携带铜钱 ${coins}</div>`;
-    const talents = Array.isArray(result.talents) && result.talents.length
-      ? `<div class="cultivation-ending__talents">天赋：${result.talents.map(name => `<span class="cultivation-chip"><span class="cultivation-chip__label">${escapeHtml(name || '')}</span></span>`).join('')}</div>`
+    const talentData = Array.isArray(result.talent_details) && result.talent_details.length
+      ? result.talent_details
+      : Array.isArray(result.talents) ? result.talents.map(name => ({ name })) : [];
+    const talents = talentData.length
+      ? `<div class="cultivation-ending__talents"><span class="label">天赋</span>${this.renderTalentChips(talentData)}</div>`
       : '';
     const reward = result.reward && Number(result.reward.bricks) > 0
       ? `<div class="cultivation-ending__reward">🎁 获得 ${fmtInt(result.reward.bricks)} 块砖</div>`
@@ -425,6 +446,7 @@ const CultivationPage = {
     })() : '';
     const eventBlock = event ? this.renderEvent(event) : '<div class="muted">即将触发下一段奇遇...</div>';
     const lineageBlock = this.renderLineage(run.lineage);
+    const talentChips = this.renderTalentChips(talents);
     const collectionsBlock = `
       <div class="cultivation-run__collections">
         ${this.renderCollection('法宝', run.artifacts, '暂无法宝')}
@@ -450,7 +472,7 @@ const CultivationPage = {
         </div>
         ${lineageBlock}
         <div class="cultivation-run__talents">
-          ${talents.length ? talents.map(t => `<span class="talent-chip" title="${escapeHtml(t.desc || '')}">${escapeHtml(t.name || '')}</span>`).join('') : '<span class="muted">未选择天赋</span>'}
+          ${talentChips || '<span class="muted">未选择天赋</span>'}
         </div>
         ${collectionsBlock}
         ${outcomeBlock}
@@ -465,6 +487,13 @@ const CultivationPage = {
   renderEvent(event) {
     const hint = event.hint ? `<div class="cultivation-event__hint">${escapeHtml(event.hint)}</div>` : '';
     const theme = event.theme_label ? `<div class="cultivation-event__tag">✨ ${escapeHtml(event.theme_label)}机缘</div>` : '';
+    const trial = event.trial || null;
+    const trialStatLabel = trial?.stat_label || (trial?.stat ? this.statLabel(trial.stat) : '');
+    const trialDifficulty = trial ? this.fmtInt(trial.difficulty || 0) : '';
+    const trialDelay = trial ? Math.max(0, Number(trial.delay_ms || 5000)) : 0;
+    const trialBlock = trial
+      ? `<div class="cultivation-event__trial"><div class="headline">⚡ 特殊考验</div><div class="meta">判定属性：<span>${escapeHtml(trialStatLabel)}</span> · 难度 ${trialDifficulty}</div><div class="note">需等待天命裁决，判定时长约 ${this.fmtInt(Math.round(trialDelay / 1000))} 秒。</div></div>`
+      : '';
     const options = (event.options || []).map(opt => {
       const id = escapeHtml(opt.id || '');
       const title = escapeHtml(opt.label || '');
@@ -509,26 +538,89 @@ const CultivationPage = {
         </button>
       `;
     }).join('');
+    const spinner = trial ? `<div class="cultivation-trial-spinner" id="cultivation-trial-spinner" data-delay="${trialDelay}"><div class="cultivation-trial-spinner__inner"><div class="spinner"></div><div class="label">天命判定中...</div></div></div>` : '';
     return `
       <div class="cultivation-event">
         <div class="cultivation-event__title">${escapeHtml(event.title || '遭遇')}</div>
         <div class="cultivation-event__desc">${escapeHtml(event.description || '')}</div>
         ${theme}
         ${hint}
+        ${trialBlock}
         <div class="cultivation-event__options">${options}</div>
+        ${spinner}
       </div>
     `;
   },
+  showTrialSpinner(info) {
+    const container = this._root?.querySelector('#cultivation-trial-spinner');
+    if (!container) {
+      return { wait: Promise.resolve(), apply: () => {}, abort: () => {} };
+    }
+    const delayAttr = Number(container.dataset.delay || info?.delay_ms || 0);
+    const delay = Math.max(0, delayAttr);
+    container.classList.add('is-active');
+    container.innerHTML = `<div class="cultivation-trial-spinner__inner"><div class="spinner"></div><div class="label">天命判定中...</div></div>`;
+    let timer = null;
+    const wait = new Promise(resolve => {
+      timer = setTimeout(() => {
+        timer = null;
+        resolve();
+      }, delay);
+    });
+    return {
+      wait,
+      apply: (outcome) => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        const fortune = outcome?.fortune || (outcome?.passed ? '吉' : '凶');
+        const toneClass = outcome?.fortune_tone ? this.toneClass(outcome.fortune_tone) : outcome?.passed ? 'tone-highlight' : 'tone-danger';
+        const effective = this.fmtInt(outcome?.effective || 0);
+        const difficulty = this.fmtInt(outcome?.difficulty || info?.difficulty || 0);
+        container.innerHTML = `<div class="cultivation-trial-spinner__inner result ${toneClass}"><div class="label">${escapeHtml(fortune)} · 判定 ${effective} / ${difficulty}</div></div>`;
+        setTimeout(() => {
+          container.classList.remove('is-active');
+        }, 1400);
+      },
+      abort: () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        container.classList.remove('is-active');
+        container.innerHTML = '';
+      },
+    };
+  },
   bindRun(run) {
+    const event = run.pending_event || {};
+    const trialInfo = event.trial || null;
     const buttons = this._root.querySelectorAll('[data-choice]');
     buttons.forEach(btn => {
       btn.addEventListener('click', async () => {
         if (this._loading) return;
         const choice = btn.dataset.choice;
+        const needsTrial = !!trialInfo && choice && choice.startsWith('trial-');
+        let spinnerCtrl = null;
         try {
           this._loading = true;
           btn.classList.add('is-loading');
-          const resp = await API.cultivationAdvance({ choice });
+          const advancePromise = API.cultivationAdvance({ choice });
+          if (needsTrial) {
+            spinnerCtrl = this.showTrialSpinner(trialInfo);
+          }
+          let resp;
+          if (spinnerCtrl) {
+            const results = await Promise.all([advancePromise, spinnerCtrl.wait]);
+            resp = results[0];
+          } else {
+            resp = await advancePromise;
+          }
+          if (spinnerCtrl) {
+            spinnerCtrl.apply(resp?.outcome?.trial || resp?.result?.trial);
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
           if (resp.finished) {
             this._state.lastOutcome = null;
             this._state.run = null;
@@ -552,6 +644,9 @@ const CultivationPage = {
             window.PresenceTracker?.updateDetails?.(this.presence());
           }
         } catch (e) {
+          if (spinnerCtrl) {
+            spinnerCtrl.abort();
+          }
           alert(e.message || e);
         } finally {
           this._loading = false;
@@ -566,18 +661,30 @@ const CultivationPage = {
     const talents = Array.isArray(lobby.talents) ? lobby.talents : [];
     const baseStats = lobby.base_stats || {};
     const coinsPreview = fmtInt(this.calcStartingCoins(lobby));
+    const rarityLegend = lobby.talent_rarities || {};
+    const refreshLeft = Number(lobby.refreshes_left || 0);
     const talentCards = talents.map(t => {
       const effectText = Array.isArray(t.effects) && t.effects.length
         ? t.effects.map(e => `${escapeHtml(e.label || '')} +${fmtInt(e.value || 0)}`).join('、')
         : '无额外加成';
+      const rarityTone = t.rarity_tone ? ` rarity-${escapeHtml(t.rarity_tone)}` : '';
+      const rarityLabel = t.rarity_label ? `<span class="cultivation-talent__rarity${rarityTone}">${escapeHtml(t.rarity_label)}</span>` : '';
       return `
         <div class="cultivation-talent" data-talent="${escapeHtml(t.id || '')}">
-          <div class="cultivation-talent__name">${escapeHtml(t.name || '')}</div>
+          <div class="cultivation-talent__head">
+            <div class="cultivation-talent__name">${escapeHtml(t.name || '')}</div>
+            ${rarityLabel}
+          </div>
           <div class="cultivation-talent__desc">${escapeHtml(t.desc || '')}</div>
           <div class="cultivation-talent__effects">${effectText}</div>
         </div>
       `;
     }).join('') || '<div class="muted">暂未生成天赋，请稍候刷新。</div>';
+    const rarityLegendHtml = Object.entries(rarityLegend).map(([key, info]) => {
+      const tone = info && info.tone ? ` rarity-${escapeHtml(info.tone)}` : '';
+      const label = info && info.label ? escapeHtml(info.label) : escapeHtml(key);
+      return `<span class="cultivation-rarity-pill${tone}">${label}</span>`;
+    }).join('');
     const statsInputs = Object.entries(baseStats).map(([key, value]) => `
       <div class="cultivation-attr" data-stat="${escapeHtml(key)}">
         <label>${escapeHtml(this.statLabel(key))}</label>
@@ -639,12 +746,17 @@ const CultivationPage = {
         </div>
       `;
     }).join('') || '<div class="muted">暂无师承选项</div>';
+    const rarityLegendBlock = rarityLegendHtml
+      ? `<div class="cultivation-rarity-legend">稀有度：${rarityLegendHtml}</div>`
+      : '';
     return `
       <div class="cultivation-section">
         <div class="cultivation-lobby__meta">可分配属性点：<span id="cultivation-points-left">${points}</span> · 最多选择 ${fmtInt(lobby.max_talents || 0)} 个天赋 · 预计起始铜钱 <span id="cultivation-start-coins">${coinsPreview}</span></div>
+        <div class="cultivation-refresh__info">剩余刷新 <span class="cultivation-refresh__count">${fmtInt(refreshLeft)}</span> 次</div>
         <div class="cultivation-lobby__actions">
           <button class="btn" id="cultivation-refresh">刷新天赋</button>
         </div>
+        ${rarityLegendBlock}
         <div class="cultivation-lineage-select">
           <div class="cultivation-lineage-select__group">
             <div class="group-title">选择出身</div>
@@ -670,8 +782,13 @@ const CultivationPage = {
   bindLobby(lobby) {
     const refreshBtn = this._root.querySelector('#cultivation-refresh');
     if (refreshBtn) {
+      const refreshLeft = Number(lobby.refreshes_left || 0);
+      if (refreshLeft <= 0) {
+        refreshBtn.disabled = true;
+        refreshBtn.classList.add('is-disabled');
+      }
       refreshBtn.addEventListener('click', async () => {
-        if (this._loading) return;
+        if (this._loading || refreshBtn.disabled) return;
         try {
           this._loading = true;
           refreshBtn.classList.add('is-loading');
