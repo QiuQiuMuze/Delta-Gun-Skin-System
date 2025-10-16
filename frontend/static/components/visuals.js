@@ -9,24 +9,24 @@
     "brick_prism_spectrum": "棱镜光谱",
     "brick_medusa_relic": "蛇神遗痕",
     "brick_arcade_crystal": "水晶贪吃蛇",
-    "brick_arcade_serpent": "像素贪吃蛇",
-    "brick_arcade_blackhawk": "街机黑鹰",
+    "brick_arcade_serpent": "贪吃蛇",
+    "brick_arcade_blackhawk": "黑鹰坠落",
     "brick_arcade_champion": "拳王",
-    "brick_arcade_default": "电玩标准",
+    "brick_arcade_default": "普通模板",
     "brick_blade_royal": "王牌镶嵌",
     "brick_fate_blueberry": "蓝莓玉",
     "brick_fate_brass": "黄铜",
-    "brick_fate_default": "命运经典",
+    "brick_fate_default": "正常模板",
     "brick_fate_gold": "黄金",
     "brick_fate_goldenberry": "金莓",
-    "brick_fate_gradient": "命运渐变",
+    "brick_fate_gradient": "渐变（色彩随机）",
     "brick_fate_jade": "翡翠绿",
     "brick_fate_metal": "金属拉丝",
     "brick_fate_strawberry": "草莓金",
     "brick_fate_whitepeach": "白桃",
     "brick_prism2_flux": "棱镜攻势2",
     "brick_weather_clathrate": "可燃冰",
-    "brick_weather_default": "气象标准",
+    "brick_weather_default": "普通模板",
     "brick_weather_gradient": "气象渐变",
     "brick_weather_gundam": "高达气象",
     "brick_weather_purplebolt": "紫电",
@@ -149,6 +149,13 @@
     weather_frost: "effect-sheen",
     weather_glow: "effect-glow",
     weather_gradient: "effect-sheen"
+  };
+
+  const ATTRIBUTE_LABELS = {
+    "affinity:weather:acid_rain": "酸雨",
+    "affinity:weather:thunder": "雷电",
+    "affinity:weather:flame": "火焰",
+    "affinity:weather:frost": "冰霜"
   };
 
   const COLOR_LOOKUP = {
@@ -288,7 +295,11 @@
       return { hex, name: COLOR_LOOKUP[hex] || autoColorName(hex) };
     }
     const hex = sanitizeHex(entry.hex || entry.color || entry.value);
-    const name = entry.name || COLOR_LOOKUP[hex] || autoColorName(hex);
+    let name = entry.name || entry.label || "";
+    if (name) name = String(name).trim();
+    if (!name || /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(name)) {
+      name = COLOR_LOOKUP[hex] || autoColorName(hex);
+    }
     return { hex, name };
   }
 
@@ -1351,6 +1362,44 @@
       ? v.effect_labels.map(lbl => String(lbl || "").trim()).filter(Boolean)
       : null;
     const modelKey = v.model ? String(v.model) : "";
+    const affinityInfo = v.affinity && typeof v.affinity === "object" ? v.affinity : null;
+
+    const attrTags = [];
+    const effectTags = [];
+    effectsRaw.forEach((tag, idx) => {
+      if (typeof tag === "string" && tag.startsWith("affinity:")) {
+        attrTags.push({ tag, index: idx });
+      } else {
+        effectTags.push({ tag, index: idx });
+      }
+    });
+
+    let effectLabels = [];
+    let attributeLabels = [];
+    if (providedEffectLabels && providedEffectLabels.length === effectsRaw.length) {
+      providedEffectLabels.forEach((label, idx) => {
+        const tag = effectsRaw[idx];
+        if (tag && tag.startsWith("affinity:")) {
+          const clean = label.replace(/属性$/u, "").trim();
+          if (clean) attributeLabels.push(clean);
+        } else if (label) {
+          effectLabels.push(label);
+        }
+      });
+    } else {
+      effectTags.forEach(({ tag }) => {
+        if (!tag) return;
+        effectLabels.push(EFFECT_LABELS[tag] || tag);
+      });
+      attrTags.forEach(({ tag }) => {
+        if (!tag) return;
+        attributeLabels.push(ATTRIBUTE_LABELS[tag] || tag.split(":").pop());
+      });
+    }
+
+    if ((!attributeLabels || attributeLabels.length === 0) && affinityInfo && affinityInfo.label) {
+      attributeLabels = [String(affinityInfo.label)];
+    }
 
     return {
       bodyColors: bodyRaw.length ? bodyRaw : [DEFAULT_COLOR],
@@ -1361,12 +1410,12 @@
         : (templateKey ? (TEMPLATE_LABELS[templateKey] || templateKey) : "无模板"),
       hidden: !!v.hidden_template,
       effects: effectsRaw,
-      effectsLabel: (providedEffectLabels && providedEffectLabels.length)
-        ? providedEffectLabels.join("、")
-        : (effectsRaw.length ? effectsRaw.map(e => EFFECT_LABELS[e] || e).join("、") : "无特效"),
+      effectsLabel: effectLabels.length ? effectLabels.join("、") : "无特效",
       bodyText: (bodyRaw.length ? bodyRaw : [DEFAULT_COLOR]).map(c => c.name).join(" / "),
       attachmentText: (attachRaw.length ? attachRaw : [DEFAULT_COLOR]).map(c => c.name).join(" / "),
       model: modelKey,
+      attributes: attributeLabels,
+      attributeText: attributeLabels.length ? attributeLabels.join(" / ") : "",
     };
   }
 
@@ -1378,6 +1427,7 @@
       `模板：${info.templateLabel}`,
       `特效：${info.effectsLabel}`
     ];
+    if (info.attributeText) parts.push(`属性：${info.attributeText}`);
     if (info.hidden) parts.push("隐藏模板");
     return parts.join(" · ");
   }

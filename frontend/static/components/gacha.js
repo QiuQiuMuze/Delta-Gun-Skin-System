@@ -9,6 +9,10 @@ const GachaPage = {
   _selectedSeason: null,
   _targetSkinId: null,
   _lastOdds: null,
+  _isAdmin: false,
+  _adminButton: null,
+  _adminInput: null,
+  _adminMaxBulk: 200,
 
   async render() {
     const seasonData = await API.seasonCatalog().catch(() => ({ seasons: [], latest: null }));
@@ -30,6 +34,8 @@ const GachaPage = {
       API.odds(currentKey || null)
     ]);
     this._lastOdds = od;
+    this._isAdmin = !!me.is_admin;
+    this._adminMaxBulk = 200;
     const odds = od.odds || od;
     const lim = od.limits || { brick_pity_max:75, purple_pity_max:20 };
     const left_brick  = Math.max(0, lim.brick_pity_max  - (odds.pity_brick  + 1));
@@ -41,6 +47,19 @@ const GachaPage = {
         }).join("")
       : `<option value="">最新赛季</option>`;
     const seasonInfo = this._seasonInfoHtml(this._selectedSeason);
+
+    const adminPanel = this._isAdmin ? `
+      <div class="draw-admin card-sub">
+        <div class="input-row">
+          <label class="input-label" for="admin-bulk-count">管理员快速开砖</label>
+          <div class="admin-bulk-controls">
+            <input type="number" id="admin-bulk-count" min="1" max="${this._adminMaxCount()}" value="30" />
+            <button class="btn primary" id="admin-bulk-open">批量开砖</button>
+          </div>
+          <div class="help-text">一次最多 ${this._adminMaxCount()} 连</div>
+        </div>
+      </div>
+    ` : "";
 
     return `
     <div class="card"><h2>开砖</h2>
@@ -87,6 +106,7 @@ const GachaPage = {
           <button class="btn ghost" id="skip" style="visibility:hidden;" disabled>跳过动画</button>
         </div>
       </div>
+      ${adminPanel}
       <div id="open-stage" class="open-stage"></div>
       <div id="open-result"></div>
     </div>`;
@@ -100,9 +120,9 @@ const GachaPage = {
         ev.preventDefault();
         if (this._opening) return;
         const val = parseInt(btn.dataset.count || "0", 10);
-        if (val === 1 || val === 10) {
-          this._open(val);
-        }
+        if (Number.isNaN(val) || val <= 0) return;
+        if (!this._isAdmin && ![1, 10].includes(val)) return;
+        this._open(val);
       });
     });
     const seasonSelect = byId("gacha-season");
@@ -118,6 +138,45 @@ const GachaPage = {
       });
     }
     this._bindTargetSelector();
+
+    if (this._isAdmin) {
+      this._adminButton = byId("admin-bulk-open");
+      this._adminInput = byId("admin-bulk-count");
+      if (this._adminButton) {
+        this._drawButtons.push(this._adminButton);
+        this._adminButton.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          if (this._opening) return;
+          const raw = this._adminInput ? parseInt(this._adminInput.value || "0", 10) : NaN;
+          if (Number.isNaN(raw) || raw <= 0) return;
+          const normalized = this._normalizeCount(raw);
+          if (this._adminInput && normalized !== raw) {
+            this._adminInput.value = normalized;
+          }
+          this._open(normalized);
+        });
+      }
+      if (this._adminInput) {
+        const max = this._adminMaxCount();
+        this._adminInput.setAttribute("max", max);
+      }
+    } else {
+      this._adminButton = null;
+      this._adminInput = null;
+    }
+  },
+
+  _adminMaxCount() {
+    return Number(this._adminMaxBulk) > 0 ? Number(this._adminMaxBulk) : 200;
+  },
+
+  _normalizeCount(count) {
+    const parsed = parseInt(count, 10);
+    if (Number.isNaN(parsed) || parsed <= 0) return 1;
+    if (this._isAdmin) {
+      return Math.min(parsed, this._adminMaxCount());
+    }
+    return [1, 10].includes(parsed) ? parsed : 1;
   },
 
   // —— 抽完后刷新顶部 & 概率/保底 —— //
@@ -347,8 +406,11 @@ const GachaPage = {
 
   _setDrawDisabled(disabled) {
     (this._drawButtons || []).forEach(btn => {
-      btn.disabled = !!disabled;
+      if (btn) btn.disabled = !!disabled;
     });
+    if (this._adminInput) {
+      this._adminInput.disabled = !!disabled;
+    }
   },
 
   async _ensureResources(count, seasonKey = null) {
@@ -361,6 +423,7 @@ const GachaPage = {
     }
     const normalizedSeason = this._normalizeSeasonKey(seasonKey || this._currentSeasonKey());
     const latestKey = this._latestSeasonKey();
+    const primarySeason = normalizedSeason || latestKey || null;
     const detailList = Array.isArray(me.unopened_bricks_detail) ? me.unopened_bricks_detail : [];
     let seasonAvailable = 0;
     if (detailList.length) {
@@ -393,6 +456,8 @@ const GachaPage = {
     let keyCost = 0;
     let keyUnit = 0;
     let brickQuote = null;
+    let brickPurchaseSeason = primarySeason;
+    let brickSourceLabel = this._seasonLabel(primarySeason) || "最新赛季";
     if (needs.keys > 0) {
       try {
         const prices = await API.shopPrices();
@@ -404,16 +469,68 @@ const GachaPage = {
       }
     }
     if (needs.bricks > 0) {
-      brickQuote = await API.brickQuote(needs.bricks, normalizedSeason || latestKey || null);
-      if ((brickQuote?.missing || 0) > 0) {
-        const seasonName = this._seasonLabel(normalizedSeason || latestKey);
-        alert(`当前赛季（${seasonName}）可用的未开砖不足，仅能提供 ${brickQuote.available || 0} 块，请稍后再试。`);
+      const seenSeasons = new Set();
+      const attemptOrder = [];
+      const pushSeason = (candidate) => {
+        const normalized = candidate ? this._normalizeSeasonKey(candidate) : "";
+        const token = normalized || "__NULL__";
+        if (seenSeasons.has(token)) return;
+        seenSeasons.add(token);
+        attemptOrder.push(normalized || null);
+      };
+      if (primarySeason) pushSeason(primarySeason);
+      if (normalizedSeason && latestKey && normalizedSeason !== latestKey) {
+        pushSeason(latestKey);
+      }
+      pushSeason(null);
+
+      let bestQuote = null;
+      let bestSeason = primarySeason;
+      for (const candidate of attemptOrder) {
+        const quote = await API.brickQuote(needs.bricks, candidate || null);
+        if (!bestQuote || (quote?.available || 0) > (bestQuote?.available || 0)) {
+          bestQuote = quote;
+          bestSeason = candidate;
+        }
+        if ((quote?.missing || 0) <= 0 && (quote?.available || 0) >= needs.bricks) {
+          bestQuote = quote;
+          bestSeason = candidate;
+          break;
+        }
+      }
+
+      brickQuote = bestQuote;
+      brickPurchaseSeason = bestSeason || null;
+
+      const fallbackLabel = this._seasonLabel(brickPurchaseSeason || primarySeason) || "系统库存";
+      const segmentLabels = [];
+      if (brickQuote?.segments?.length) {
+        brickQuote.segments.forEach(seg => {
+          const segLabel = seg.season_name || this._seasonLabel(seg.season) || "";
+          if (segLabel && !segmentLabels.includes(segLabel)) segmentLabels.push(segLabel);
+        });
+      }
+      if (segmentLabels.length > 0) {
+        brickSourceLabel = segmentLabels.length === 1 ? segmentLabels[0] : segmentLabels.join(" / ");
+      } else {
+        brickSourceLabel = fallbackLabel;
+      }
+      if (!brickSourceLabel) brickSourceLabel = "系统库存";
+
+      const availableQty = Math.max(0, brickQuote?.available || 0);
+      if (!brickQuote || availableQty <= 0) {
+        alert(`当前暂无可供补齐的 ${brickSourceLabel} 未开砖，请稍后再试或前往商店购买。`);
+        throw { message: "" };
+      }
+      const missingQty = Math.max(0, brickQuote?.missing || 0);
+      if (missingQty > 0) {
+        alert(`当前仅能补齐 ${availableQty} 块 ${brickSourceLabel} 未开砖，请调整抽取数量或稍后再试。`);
         throw { message: "" };
       }
     }
 
     const parts = [];
-    const seasonLabel = this._seasonLabel(normalizedSeason || latestKey);
+    const defaultSeasonLabel = this._seasonLabel(primarySeason);
     if (needs.keys > 0) {
       const unit = keyUnit ? `（单价 ${keyUnit} 三角币，共 ${keyCost}）` : "";
       parts.push(`钥匙 ×${needs.keys}${unit}`);
@@ -421,13 +538,13 @@ const GachaPage = {
     if (needs.bricks > 0) {
       const brickCost = brickQuote?.total_cost || 0;
       const unit = brickCost > 0 ? `（共 ${brickCost} 三角币）` : "";
-      parts.push(`${seasonLabel} 未开砖 ×${needs.bricks}${unit}`);
+      parts.push(`${brickSourceLabel} 未开砖 ×${needs.bricks}${unit}`);
     }
     const detail = [];
     if (brickQuote?.segments?.length) {
       brickQuote.segments.forEach(seg => {
         const label = seg.source === "player" ? "玩家" : "官方";
-        const segSeasonRaw = seg.season_name || this._seasonLabel(seg.season) || seasonLabel || "最新赛季";
+        const segSeasonRaw = seg.season_name || this._seasonLabel(seg.season) || brickSourceLabel || defaultSeasonLabel || "最新赛季";
         const segSeason = segSeasonRaw || "最新赛季";
         detail.push(`${label} ${segSeason} ${seg.price} ×${seg.quantity}`);
       });
@@ -462,13 +579,13 @@ const GachaPage = {
       await API.buyKeys(needs.keys);
     }
     if (needs.bricks > 0) {
-      await API.buyBricks(needs.bricks, normalizedSeason || latestKey || null);
+      await API.buyBricks(needs.bricks, brickPurchaseSeason || null);
     }
     await this._refreshStats();
   },
 
   async _open(count = 1) {
-    const c = [1, 10].includes(count) ? count : 1;
+    const c = this._normalizeCount(count);
     const seasonKey = this._currentSeasonKey();
     this._skip = false;
     this._opening = true;

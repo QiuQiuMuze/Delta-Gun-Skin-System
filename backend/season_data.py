@@ -14,17 +14,23 @@ SEASON_DEFINITIONS = [
                 "rarity": "BRICK",
                 "model_key": "assault",
                 "meta": {
-                    "description": "通体透明的枪身配以棱镜折射，高度还原机匣内部结构，曳光呈多色随机。",
-                    "tracer": "多色棱镜曳光",
+                    "description": "采用通体透明的枪身，内部构造一目了然并带有磨砂质感，搭配帅气的曳光弹，色彩随机涵盖蓝红、紫黄、炽橙、白镶金、荧光粉与耀眼蓝等组合，覆盖所有配件，无论如何搭配都能呈现完美状态。没有特殊模板，极品特效比优品多 2 个。",
+                    "tracer": "棱镜随机曳光",
                     "body_colors": [
-                        ["#9de1ff", "#f8fbff"],
-                        ["#d6c1ff", "#ffffff"],
-                        ["#ffb7e2", "#ffffff"]
+                        ["#4a6dff", "#ff4a57"],
+                        ["#7e3cff", "#ffd95f"],
+                        ["#ff7b32", "#ffc46a"],
+                        ["#ffffff", "#f5e9c8"],
+                        ["#ff6ad6", "#ffe5f7"],
+                        ["#3d9dff", "#c8f2ff"]
                     ],
                     "attachment_colors": [
-                        ["#ffd166", "#ffffff"],
-                        ["#7ee2ff", "#ffffff"],
-                        ["#f7ff7d", "#ffffff"]
+                        ["#ffd166", "#ffeab0"],
+                        ["#82e7ff", "#f1fcff"],
+                        ["#f8ff84", "#fffbd6"],
+                        ["#f7ebd6", "#ffe9a3"],
+                        ["#ffb4ec", "#fff1fa"],
+                        ["#73b6ff", "#e4f3ff"]
                     ],
                     "template_rules": [
                         {
@@ -39,7 +45,7 @@ SEASON_DEFINITIONS = [
                         }
                     ],
                     "extra_effects": {
-                        "premium": ["sheen", "refraction"],
+                        "premium": ["sheen"],
                         "exquisite": ["sheen", "refraction", "sparkle"]
                     }
                 }
@@ -320,10 +326,18 @@ SEASON_DEFINITIONS = [
                 "rarity": "BRICK",
                 "model_key": "vector",
                 "meta": {
-                    "description": "蛇纹浮雕缠绕枪身，击中目标时喷薄彩焰。",
-                    "tracer": "彩色蛇焰曳光",
-                    "body_colors": [["#2f2a38", "#5e725f"]],
-                    "attachment_colors": [["#d9f067", "#9bc49f"]],
+                    "description": "以希腊神话美杜莎为原型，枪身仿佛出土文物，遍布蟒纹、浮雕与盘绕灵蛇，宝石质感熠熠生辉，击中目标时喷薄彩色火焰特效。没有特殊模板，极品外观比优品更丰满。",
+                    "tracer": "彩焰蛇瞳曳光",
+                    "body_colors": [
+                        ["#2f2a38", "#5e725f"],
+                        ["#3d2f2f", "#8a6c4b"],
+                        ["#2a3731", "#5f8a6f"]
+                    ],
+                    "attachment_colors": [
+                        ["#d9f067", "#9bc49f"],
+                        ["#c8b07c", "#8f7a4f"],
+                        ["#9bcfb2", "#567962"]
+                    ],
                     "template_rules": [
                         {
                             "key": "brick_medusa_relic",
@@ -338,8 +352,8 @@ SEASON_DEFINITIONS = [
                         }
                     ],
                     "extra_effects": {
-                        "premium": ["sheen", "trail"],
-                        "exquisite": ["sheen", "trail", "sparkle", "chromatic_flame"]
+                        "premium": ["sheen"],
+                        "exquisite": ["sheen", "trail", "chromatic_flame"]
                     }
                 }
             }
@@ -614,12 +628,12 @@ SEASON_DEFINITIONS = [
         "bricks": [
             {
                 "skin_id": "BRK_SCARH_ARCADE",
-                "name": "SCAR-H战斗步枪-电玩高手",
+                "name": "SCAR-H战斗步枪-电玩高手[__LINK_ICON]",
                 "weapon": "SCAR-H战斗步枪",
                 "rarity": "BRICK",
                 "model_key": "battle",
                 "meta": {
-                    "description": "集成手柄按键、散热风扇与内置小游戏的重火力平台。",
+                    "description": "枪身融入手把按键、散热风扇与USB接口等电玩细节，RGB效果随不同主题改变，还附带专属检视动作与内置小游戏，每一次扣动扳机都有彩光绚烂、随机字母跳动的专属开火效果。只有极品会出现特殊模板，模板不同但特效一致。",
                     "tracer": "霓虹像素曳光",
                     "body_colors": [["#302743", "#704bff"]],
                     "attachment_colors": [["#00f0ff", "#ff00d4"]],
@@ -628,11 +642,11 @@ SEASON_DEFINITIONS = [
                         {"key": "brick_arcade_serpent", "label": "贪吃蛇", "weight": 5, "allow_premium": False, "allow_exquisite": True, "effects": ["arcade_trail"], "body": ["#532bff", "#150050"], "attachments": ["#00ffbf", "#80ffe3"]},
                         {"key": "brick_arcade_blackhawk", "label": "黑鹰坠落", "weight": 5, "allow_premium": False, "allow_exquisite": True, "effects": ["arcade_glow"], "body": ["#161921", "#2f4f7a"], "attachments": ["#ff004c", "#f8f8f8"]},
                         {"key": "brick_arcade_champion", "label": "拳王", "weight": 5, "allow_premium": False, "allow_exquisite": True, "effects": ["arcade_pulse"], "body": ["#4c1f1f", "#ff0040"], "attachments": ["#ffd800", "#ffe8a0"]},
-                        {"key": "brick_arcade_default", "label": "电玩标准", "weight": 84, "allow_premium": True, "allow_exquisite": True, "effects": ["arcade_core"], "body": ["#2d2552", "#6f49ff"], "attachments": ["#00f6ff", "#ff5af1"]}
+                        {"key": "brick_arcade_default", "label": "普通模板", "weight": 84, "allow_premium": True, "allow_exquisite": True, "effects": ["arcade_core"], "body": ["#2d2552", "#6f49ff"], "attachments": ["#00f6ff", "#ff5af1"]}
                     ],
                     "extra_effects": {
-                        "premium": ["sheen", "trail"],
-                        "exquisite": ["sheen", "trail", "sparkle"]
+                        "premium": ["sheen", "trail", "arcade_core"],
+                        "exquisite": ["sheen", "trail", "arcade_core"]
                     }
                 }
             }
@@ -912,7 +926,7 @@ SEASON_DEFINITIONS = [
                 "rarity": "BRICK",
                 "model_key": "assault",
                 "meta": {
-                    "description": "玉石光泽浮雕与命运女神纹章，附带曳光光效。",
+                    "description": "全枪覆盖精致的浮雕花纹，玉石般的光彩在枪身流动，枪身中央绘有命运女神高悬权杖的图案，配有专属曳光弹与枪身光效。极品有 25% 概率在模板名称后追加“鬼头”刻字。",
                     "tracer": "命运流光曳光",
                     "body_colors": [["#d0c6b3", "#f8f4ea"]],
                     "attachment_colors": [["#ba9c5b", "#f8d67e"]],
@@ -925,23 +939,23 @@ SEASON_DEFINITIONS = [
                         {"key": "brick_fate_gold", "label": "黄金", "weight": 1, "allow_premium": False, "allow_exquisite": True, "effects": ["fate_glow"], "body": ["#f2ca62", "#fff0b3"], "attachments": ["#ffeccd", "#f9c755"]},
                         {"key": "brick_fate_jade", "label": "翡翠绿", "weight": 1, "allow_premium": False, "allow_exquisite": True, "effects": ["fate_glow"], "body": ["#3bbd89", "#b6f2d6"], "attachments": ["#e5fff4", "#7ad7ae"]},
                         {"key": "brick_fate_whitepeach", "label": "白桃", "weight": 1, "allow_premium": False, "allow_exquisite": True, "effects": ["fate_glow"], "body": ["#ffd9d9", "#fff3f3"], "attachments": ["#fffaf6", "#ffc9c9"]},
-                        {"key": "brick_fate_gradient", "label": "命运渐变", "weight": 5, "allow_premium": True, "allow_exquisite": True, "effects": ["fate_gradient"], "body": ["#f1e2c6", "#e5c797"], "attachments": ["#f4dba6", "#fff1ce"]},
-                        {"key": "brick_fate_default", "label": "命运经典", "weight": 84, "allow_premium": True, "allow_exquisite": True, "effects": ["fate_glow"], "body": ["#d6cdb7", "#f0e6d2"], "attachments": ["#dcb67a", "#f5d99a"]}
+                        {"key": "brick_fate_gradient", "label": "渐变（色彩随机）", "weight": 5, "allow_premium": True, "allow_exquisite": True, "effects": ["fate_gradient"], "body": ["#f1e2c6", "#e5c797"], "attachments": ["#f4dba6", "#fff1ce"]},
+                        {"key": "brick_fate_default", "label": "正常模板", "weight": 87, "allow_premium": True, "allow_exquisite": True, "effects": ["fate_glow"], "body": ["#d6cdb7", "#f0e6d2"], "attachments": ["#dcb67a", "#f5d99a"]}
                     ],
                     "extra_effects": {
-                        "premium": ["sheen"],
-                        "exquisite": ["sheen", "sparkle"]
+                        "premium": ["sheen", "fate_glow"],
+                        "exquisite": ["sheen", "fate_glow", "bold_tracer", "sparkle"]
                     }
                 }
             },
             {
                 "skin_id": "BRK_QBZ95_ROYALBLADE",
-                "name": "QBZ95-1突击步枪-王牌之剑",
+                "name": "QBZ95-1突击步枪-王牌之剑[__LINK_ICON]",
                 "weapon": "QBZ95-1突击步枪",
                 "rarity": "BRICK",
                 "model_key": "bullpup",
                 "meta": {
-                    "description": "扑克魔术主题的东方风格，牌面切割纹在机匣闪耀。",
+                    "description": "以扑克魔术为主题的东方雅致设计，与“命运”皮肤相呼应，机匣上雕刻牌面切割纹路并散发柔和高光，官方未公开更多细节。",
                     "tracer": "扑克幻影曳光",
                     "body_colors": [["#f5e9df", "#ffffff"]],
                     "attachment_colors": [["#c53a4b", "#f7b35f"]],
@@ -1230,21 +1244,34 @@ SEASON_DEFINITIONS = [
                 "rarity": "BRICK",
                 "model_key": "futuristic",
                 "meta": {
-                    "description": "四种天气形态与动态曳光，龙鳞导轨感应温度。",
+                    "description": "拥有极寒、酸雨、炎热、雷暴四种气象主题，不同外观对应不同颜色的曳光弹（如酸雨为绿色、雷暴呈闪电形），龙鳞导轨会随温度变化亮度。",
                     "tracer": "气象脉冲曳光",
                     "body_colors": [["#1f2c4f", "#45a0ff"], ["#3c2e55", "#ff7f4f"], ["#1a3c31", "#39ffb0"], ["#2b294f", "#b18cff"]],
                     "attachment_colors": [["#7dd0ff", "#1f79ff"], ["#ffd27d", "#ff924f"], ["#b1ffe7", "#38ff9f"], ["#d0afff", "#7549ff"]],
+                    "weather_attributes": {
+                        "type": "weather",
+                        "pool": [
+                            {"key": "acid_rain", "label": "酸雨"},
+                            {"key": "thunder", "label": "雷电"},
+                            {"key": "flame", "label": "火焰"},
+                            {"key": "frost", "label": "冰霜"}
+                        ],
+                        "template_overrides": {
+                            "brick_weather_redbolt": "thunder",
+                            "brick_weather_purplebolt": "thunder"
+                        }
+                    },
                     "template_rules": [
                         {"key": "brick_weather_gundam", "label": "高达气象", "weight": 1, "allow_premium": False, "allow_exquisite": True, "effects": ["weather_glow"], "body": ["#ffffff", "#3d6bff"], "attachments": ["#ffcc00", "#ff3535"]},
                         {"key": "brick_weather_clathrate", "label": "可燃冰", "weight": 1, "allow_premium": False, "allow_exquisite": True, "effects": ["weather_frost"], "body": ["#b5f4ff", "#f8ffff"], "attachments": ["#6fdfff", "#d3f9ff"]},
                         {"key": "brick_weather_redbolt", "label": "红电", "weight": 1, "allow_premium": False, "allow_exquisite": True, "effects": ["weather_bolt"], "body": ["#2b1a34", "#ff5b5b"], "attachments": ["#ffca6a", "#ff8340"]},
                         {"key": "brick_weather_purplebolt", "label": "紫电", "weight": 1, "allow_premium": False, "allow_exquisite": True, "effects": ["weather_bolt"], "body": ["#281a4f", "#a064ff"], "attachments": ["#cfa8ff", "#5f38ff"]},
                         {"key": "brick_weather_gradient", "label": "气象渐变", "weight": 5, "allow_premium": True, "allow_exquisite": True, "effects": ["weather_gradient"], "body": ["#2f4d7a", "#5ec1ff"], "attachments": ["#5bf0ff", "#ffe76c"]},
-                        {"key": "brick_weather_default", "label": "气象标准", "weight": 91, "allow_premium": True, "allow_exquisite": True, "effects": ["weather_glow"], "body": ["#25355c", "#4aa7ff"], "attachments": ["#6be0ff", "#ffe980"]}
+                        {"key": "brick_weather_default", "label": "普通模板", "weight": 91, "allow_premium": True, "allow_exquisite": True, "effects": ["weather_glow"], "body": ["#25355c", "#4aa7ff"], "attachments": ["#6be0ff", "#ffe980"]}
                     ],
                     "extra_effects": {
-                        "premium": ["sheen", "trail"],
-                        "exquisite": ["sheen", "trail", "sparkle"]
+                        "premium": ["sheen", "trail", "weather_glow"],
+                        "exquisite": ["sheen", "trail", "weather_glow", "sparkle", "weather_gradient"]
                     }
                 }
             },
@@ -1255,17 +1282,30 @@ SEASON_DEFINITIONS = [
                 "rarity": "BRICK",
                 "model_key": "bullpup",
                 "meta": {
-                    "description": "AUG机体搭载气象换肤模块，随天气变换光效。",
+                    "description": "同样具备极寒、酸雨、炎热与雷暴四种气象主题，模块化外壳会根据天气切换纹理，火焰主题伴随火焰特效。",
                     "tracer": "天气折射曳光",
                     "body_colors": [["#243656", "#4f86ff"], ["#3c2f5f", "#ff9966"], ["#193f33", "#45ffbc"], ["#302a57", "#c79dff"]],
                     "attachment_colors": [["#70c5ff", "#2a6dff"], ["#ffc771", "#ff7a45"], ["#a9ffe3", "#36ff98"], ["#d4b0ff", "#6f48ff"]],
+                    "weather_attributes": {
+                        "type": "weather",
+                        "pool": [
+                            {"key": "acid_rain", "label": "酸雨"},
+                            {"key": "thunder", "label": "雷电"},
+                            {"key": "flame", "label": "火焰"},
+                            {"key": "frost", "label": "冰霜"}
+                        ],
+                        "template_overrides": {
+                            "brick_weather_redbolt": "thunder",
+                            "brick_weather_purplebolt": "thunder"
+                        }
+                    },
                     "template_rules": [
                         {"key": "brick_weather_gradient", "label": "气象渐变", "weight": 5, "allow_premium": True, "allow_exquisite": True, "effects": ["weather_gradient"], "body": ["#2f4d7a", "#5ec1ff"], "attachments": ["#5bf0ff", "#ffe76c"]},
-                        {"key": "brick_weather_default", "label": "气象标准", "weight": 95, "allow_premium": True, "allow_exquisite": True, "effects": ["weather_glow"], "body": ["#2a3960", "#4f8dff"], "attachments": ["#6fe1ff", "#ffd261"]}
+                        {"key": "brick_weather_default", "label": "普通模板", "weight": 95, "allow_premium": True, "allow_exquisite": True, "effects": ["weather_glow"], "body": ["#2a3960", "#4f8dff"], "attachments": ["#6fe1ff", "#ffd261"]}
                     ],
                     "extra_effects": {
-                        "premium": ["sheen", "trail"],
-                        "exquisite": ["sheen", "trail", "sparkle"]
+                        "premium": ["sheen", "trail", "weather_glow"],
+                        "exquisite": ["sheen", "trail", "weather_glow", "sparkle"]
                     }
                 }
             }
