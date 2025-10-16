@@ -10,6 +10,7 @@ const CraftPage = {
   _skip: false,
   _seasonCatalog: [],
   _seasonMap: {},
+  _latestSeasonId: "",
   _seasonFilter: "ALL",
 
   async render() {
@@ -22,6 +23,8 @@ const CraftPage = {
       this._seasonMap[season.id] = season;
       this._seasonMap[String(season.id).toUpperCase()] = season;
     });
+    const latestRaw = catalog?.latest || (seasons.length ? seasons[seasons.length - 1].id : "");
+    this._latestSeasonId = String(latestRaw || "").toUpperCase();
     if (this._seasonFilter && this._seasonFilter !== "ALL") {
       const exists = seasons.some(season => String(season.id) === String(this._seasonFilter));
       if (!exists) this._seasonFilter = "ALL";
@@ -41,9 +44,13 @@ const CraftPage = {
       <div class="card">
         <h2>合成</h2>
         <div class="input-row">
-          <button class="btn" data-r="GREEN">GREEN → BLUE</button>
-          <button class="btn" data-r="BLUE">BLUE → PURPLE</button>
-          <button class="btn" data-r="PURPLE">PURPLE → BRICK</button>
+          <button class="btn" data-r="GREEN">绿皮 → 蓝皮</button>
+          <button class="btn" data-r="BLUE">蓝皮 → 紫皮</button>
+          <button class="btn" data-r="PURPLE">紫皮 → 砖皮</button>
+        </div>
+        <div class="input-row" style="gap:12px; flex-wrap:wrap;">
+          <label class="input-label" for="craft-season-filter">赛季筛选</label>
+          <select id="craft-season-filter">${seasonOptions}</select>
         </div>
         <div class="input-row" style="gap:12px; flex-wrap:wrap;">
           <label class="input-label" for="craft-season-filter">赛季筛选</label>
@@ -105,6 +112,26 @@ const CraftPage = {
   },
 
   _groupClientSide(list){ const g={GREEN:[],BLUE:[],PURPLE:[],BRICK:[]}; for(const it of list){const r=(it.rarity||it.color||"").toUpperCase(); (g[r]||(g[r]=[])).push(it);} return g; },
+  _normalizeSeasonKey(value) {
+    const raw = value == null ? "" : String(value).trim();
+    if (!raw || raw.toUpperCase() === "UNASSIGNED") {
+      return this._latestSeasonKey();
+    }
+    const up = raw.toUpperCase();
+    if (this._seasonMap[up]) return up;
+    const fallback = (this._seasonCatalog || []).find(season => String(season.id).toUpperCase() === up);
+    if (fallback) return String(fallback.id).toUpperCase();
+    return up;
+  },
+  _latestSeasonKey() {
+    if (this._latestSeasonId) return this._latestSeasonId;
+    if (this._seasonCatalog && this._seasonCatalog.length) {
+      const id = String(this._seasonCatalog[this._seasonCatalog.length - 1].id || "").toUpperCase();
+      this._latestSeasonId = id;
+      return id;
+    }
+    return "";
+  },
   _norm(x){
     const inv_id = x.inv_id ?? x.id ?? x.inventory_id ?? "";
     const name   = x.name ?? x.skin_name ?? "";
@@ -113,14 +140,13 @@ const CraftPage = {
                  : (typeof x.wear_bp==="number" ? Number((x.wear_bp/100).toFixed(2)) : NaN);
     const grade  = x.grade ?? x.quality ?? "";
     const serial = x.serial ?? x.sn ?? "";
-    const season = (x.season || x.season_id || "").toUpperCase();
+    const season = this._normalizeSeasonKey(x.season || x.season_id || "");
     return { inv_id, name, rarity, wear, grade, serial, season };
   },
 
   _seasonLabel(id){
-    const keyRaw = id === "ALL" ? "" : id;
-    const key = String(keyRaw == null ? "" : keyRaw).toUpperCase();
-    if (!key || key === "UNASSIGNED") {
+    const key = this._normalizeSeasonKey(id === "ALL" ? "" : id);
+    if (!key) {
       if (this._seasonCatalog && this._seasonCatalog.length) {
         const latest = this._seasonCatalog[this._seasonCatalog.length - 1];
         return latest?.name || latest?.id || "最新赛季";
@@ -129,11 +155,12 @@ const CraftPage = {
     }
     const entry = this._seasonMap[key] || this._seasonMap[key.toUpperCase()];
     if (entry && entry.name) return entry.name;
-    return String(id);
+    return key;
   },
 
   _rarityToTarget(r){ return { GREEN:"BLUE", BLUE:"PURPLE", PURPLE:"BRICK" }[r] || ""; },
   _rarityClass(r){ if(r==="BRICK")return"hl-orange"; if(r==="PURPLE")return"hl-purple"; if(r==="BLUE")return"hl-blue"; return"hl-green"; },
+  _rarityLabel(r){ const map={BRICK:"砖皮",PURPLE:"紫皮",BLUE:"蓝皮",GREEN:"绿皮"}; const key=String(r||"").toUpperCase(); return map[key]||key||"-"; },
   _gradeClass(g){ return {S:"grade-s",A:"grade-a",B:"grade-b",C:"grade-c"}[g] || ""; },
 
   _renderPreviewCell(x, opts = {}) {
@@ -216,12 +243,14 @@ const CraftPage = {
 
   _renderToolbar(){
     const target = this._rarityToTarget(this._rarity);
+    const rarityLabel = this._rarityLabel(this._rarity);
+    const targetLabel = this._rarityLabel(target);
     const box = byId("craft-toolbar");
     box.style.display = "block";
     box.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
         <div>
-          <strong>从 <span class="${this._rarityClass(this._rarity)}">${this._rarity}</span> 合成 → <span class="${this._rarityClass(target)}">${target}</span></strong>
+          <strong>从 <span class="${this._rarityClass(this._rarity)}">${rarityLabel}</span> 合成 → <span class="${this._rarityClass(target)}">${targetLabel}</span></strong>
           <div class="muted small">赛季筛选：${this._seasonFilter === "ALL" ? "全部" : this._seasonLabel(this._seasonFilter)}</div>
         </div>
         <div class="input-row" style="margin:0;">
@@ -288,13 +317,14 @@ const CraftPage = {
       const seasonLabel = this._seasonLabel(x.season || "");
       const indicator = selected ? "已选" : "双击";
       const rowCls = selected ? "is-selected" : "";
+      const rarityLabel = this._rarityLabel(x.rarity);
       return `<tr class="${rowCls}" data-inv="${key}">
         <td><span class="craft-indicator ${selected?"is-active":""}">${indicator}</span></td>
         <td>${start + i + 1}</td>
         <td>${x.inv_id}</td>
         <td class="${rc} craft-name" data-name="${key}">${this._esc(x.name)}</td>
         <td>${seasonLabel}</td>
-        <td class="${rc}">${x.rarity}</td>
+        <td class="${rc}">${rarityLabel}</td>
         <td>${isNaN(x.wear)?"-":x.wear.toFixed(2)}</td>
         <td>${x.grade||"-"}</td>
         <td>${x.serial||"-"}</td>
@@ -449,6 +479,7 @@ const CraftPage = {
       : "-";
     const previewMeta = this._visualMeta(r);
     const preview = this._renderPreviewCell(r, { metaText: previewMeta });
+    const rarityText = this._rarityLabel(r.rarity);
 
     const wrap = document.createElement("div");
     wrap.className = "card fade-in";
@@ -460,7 +491,7 @@ const CraftPage = {
           <tr>
             <td class="${rc}">${r.name}</td>
             <td>${preview}</td>
-            <td class="${rc}">${r.rarity}</td>
+            <td class="${rc}">${rarityText}</td>
             <td>${exBadge}</td>
             <td>${r.wear}</td>
             <td class="${gc}">${r.grade||"-"}</td>

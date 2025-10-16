@@ -1009,10 +1009,11 @@ def brick_balance_detail(db: Session, user_id: int) -> List[Dict[str, Any]]:
             continue
         if int(info.get("quantity", 0)) <= 0 and int(info.get("gift_locked", 0)) <= 0:
             continue
+        display_key = _brick_season_key(season)
         detail.append({
-            "season": "" if season == BRICK_SEASON_FALLBACK else season,
-            "season_key": season,
-            "name": _season_display_name(season),
+            "season": "" if display_key == BRICK_SEASON_FALLBACK else display_key,
+            "season_key": display_key,
+            "name": _season_display_name(display_key),
             "count": info["quantity"],
             "gift_locked": info["gift_locked"],
         })
@@ -1022,10 +1023,11 @@ def brick_balance_detail(db: Session, user_id: int) -> List[Dict[str, Any]]:
             continue
         if int(info.get("quantity", 0)) <= 0 and int(info.get("gift_locked", 0)) <= 0:
             continue
+        display_key = _brick_season_key(season)
         detail.append({
-            "season": "" if season == BRICK_SEASON_FALLBACK else season,
-            "season_key": season,
-            "name": _season_display_name(season),
+            "season": "" if display_key == BRICK_SEASON_FALLBACK else display_key,
+            "season_key": display_key,
+            "name": _season_display_name(display_key),
             "count": info["quantity"],
             "gift_locked": info["gift_locked"],
         })
@@ -1044,7 +1046,7 @@ def season_pity_detail(db: Session, user_id: int) -> List[Dict[str, Any]]:
     detail: List[Dict[str, Any]] = []
 
     def _append(row: UserSeasonPity):
-        key = row.season or BRICK_SEASON_FALLBACK
+        key = _brick_season_key(row.season)
         detail.append({
             "season": "" if key == BRICK_SEASON_FALLBACK else key,
             "season_key": key,
@@ -1056,13 +1058,13 @@ def season_pity_detail(db: Session, user_id: int) -> List[Dict[str, Any]]:
 
     for key in ordered:
         for row in rows:
-            row_key = row.season or BRICK_SEASON_FALLBACK
+            row_key = _brick_season_key(row.season)
             if row_key == key and row_key not in seen:
                 _append(row)
                 break
 
     for row in rows:
-        row_key = row.season or BRICK_SEASON_FALLBACK
+        row_key = _brick_season_key(row.season)
         if row_key in seen:
             continue
         _append(row)
@@ -2429,7 +2431,7 @@ def brick_purchase_plan(
         layers = official_sell_layers(cfg, state)
         for layer in layers:
             price = int(layer["price"])
-            layer_season = layer.get("season") or BRICK_SEASON_FALLBACK
+            layer_season = _brick_season_key(layer.get("season"))
             if season_key and _brick_season_key(season_key) != layer_season:
                 continue
             if max_price is not None and price > max_price:
@@ -2483,7 +2485,7 @@ def process_brick_buy_orders(db: Session, cfg: PoolConfig) -> List[Dict[str, Any
             qty = int(item["quantity"])
             if qty <= 0:
                 continue
-            season_key = item.get("season") or BRICK_SEASON_FALLBACK
+            season_key = _brick_season_key(item.get("season"))
             stats = season_stats.setdefault(season_key, {"qty": 0, "cost": 0, "gift": 0})
             stats["qty"] += qty
             stats["cost"] += price * qty
@@ -3394,6 +3396,7 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
         grade = grade_from_wear_bp(wear_bp)
         profile = generate_visual_profile(skin.rarity, exquisite, model_key=skin.model_key, skin=skin)
 
+        result_season = _brick_season_key(skin.season or season_key)
         inv = Inventory(
             user_id=user.id, skin_id=skin.skin_id, name=skin.name, rarity=skin.rarity,
             exquisite=exquisite, wear_bp=wear_bp, grade=grade, serial="",
@@ -3403,7 +3406,7 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
             template_name=profile["template"],
             effect_tags=json.dumps(profile["effects"], ensure_ascii=False),
             hidden_template=profile["hidden_template"],
-            season=skin.season or season_key,
+            season=result_season,
             model_key=profile.get("model", skin.model_key or ""),
         )
         if int(user.gift_brick_quota or 0) > 0:
@@ -3422,7 +3425,7 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
             "hidden_template": profile["hidden_template"],
             "effects": profile["effects"],
             "effect_labels": profile.get("effect_labels", []),
-            "season": skin.season or season_key,
+            "season": result_season,
             "model": profile.get("model", skin.model_key or ""),
             "sell_locked": bool(inv.sell_locked),
             "lock_reason": inv.lock_reason or "",
@@ -3481,6 +3484,11 @@ def inventory(
             "model": vis.get("model", ""),
         }
 
+        season_source = x.season or (skin_map.get(x.skin_id).season if skin_map.get(x.skin_id) else "")
+        season_key = _brick_season_key(season_source)
+        if season_key and (x.season or "") != season_key:
+            x.season = season_key
+            changed = True
         items.append({
             "inv_id": x.id,
             "skin_id": x.skin_id, "name": x.name, "rarity": x.rarity,
@@ -3497,7 +3505,7 @@ def inventory(
             "effects": vis["effects"],
             "effect_labels": vis.get("effect_labels", []),
             "model": vis.get("model", ""),
-            "season": x.season or (skin_map.get(x.skin_id).season if skin_map.get(x.skin_id) else ""),
+            "season": season_key,
             "visual": visual_payload,
             "sell_locked": bool(getattr(x, "sell_locked", False)),
             "lock_reason": x.lock_reason or "",
@@ -3540,6 +3548,11 @@ def inventory_by_color(
             "model": vis.get("model", ""),
         }
 
+        season_source = x.season or (skin_map.get(x.skin_id).season if skin_map.get(x.skin_id) else "")
+        season_key = _brick_season_key(season_source)
+        if season_key and (x.season or "") != season_key:
+            x.season = season_key
+            changed = True
         grouped[x.rarity].append({
             "inv_id": x.id,
             "skin_id": x.skin_id, "name": x.name, "rarity": x.rarity,
@@ -3556,7 +3569,7 @@ def inventory_by_color(
             "effects": vis["effects"],
             "effect_labels": vis.get("effect_labels", []),
             "model": vis.get("model", ""),
-            "season": x.season or (skin_map.get(x.skin_id).season if skin_map.get(x.skin_id) else ""),
+            "season": season_key,
             "visual": visual_payload,
             "sell_locked": bool(getattr(x, "sell_locked", False)),
             "lock_reason": x.lock_reason or "",
