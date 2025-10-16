@@ -3,21 +3,54 @@ const CraftPage = {
   _rarity: "GREEN",
   _data: { GREEN:[], BLUE:[], PURPLE:[] },
   _selected: new Set(),
-  _indexMap: [],            // 当前“页内”序号 → inv_id
+  _selectedMeta: new Map(),
+  _indexMap: [],            // 当前页条目（含 inv_id & 数据）
   _page: 1,
   _pageSize: 50,
   _skip: false,
+  _seasonCatalog: [],
+  _seasonMap: {},
+  _latestSeasonId: "",
+  _seasonFilter: "ALL",
 
   async render() {
+    const catalog = await API.seasonCatalog().catch(() => ({ seasons: [], latest: null }));
+    const seasons = Array.isArray(catalog?.seasons) ? catalog.seasons : [];
+    this._seasonCatalog = seasons;
+    this._seasonMap = {};
+    seasons.forEach(season => {
+      if (!season?.id) return;
+      this._seasonMap[season.id] = season;
+      this._seasonMap[String(season.id).toUpperCase()] = season;
+    });
+    const latestRaw = catalog?.latest || (seasons.length ? seasons[seasons.length - 1].id : "");
+    this._latestSeasonId = String(latestRaw || "").toUpperCase();
+    if (this._seasonFilter && this._seasonFilter !== "ALL") {
+      const exists = seasons.some(season => String(season.id) === String(this._seasonFilter));
+      if (!exists) this._seasonFilter = "ALL";
+    }
+    const seasonOptions = ['<option value="ALL">全部赛季</option>']
+      .concat(seasons.map(season => {
+        const value = season.id;
+        const selected = this._seasonFilter === value ? 'selected' : '';
+        const label = season.name || value;
+        return `<option value="${value}" ${selected}>${label}</option>`;
+      }))
+      .join("");
+
     // 先渲染骨架，异步加载数据
     setTimeout(()=>this._load(false), 0);
     return `
       <div class="card">
         <h2>合成</h2>
         <div class="input-row">
-          <button class="btn" data-r="GREEN">GREEN → BLUE</button>
-          <button class="btn" data-r="BLUE">BLUE → PURPLE</button>
-          <button class="btn" data-r="PURPLE">PURPLE → BRICK</button>
+          <button class="btn" data-r="GREEN">绿皮 → 蓝皮</button>
+          <button class="btn" data-r="BLUE">蓝皮 → 紫皮</button>
+          <button class="btn" data-r="PURPLE">紫皮 → 砖皮</button>
+        </div>
+        <div class="input-row" style="gap:12px; flex-wrap:wrap;">
+          <label class="input-label" for="craft-season-filter">赛季筛选</label>
+          <select id="craft-season-filter">${seasonOptions}</select>
         </div>
 
         <!-- 顶部：合成摘要 + 合成按钮 + 跳过动画 -->
@@ -41,6 +74,17 @@ const CraftPage = {
     document.querySelectorAll('[data-r]').forEach(b=>{
       b.onclick = ()=> this._switchRarity(b.dataset.r);
     });
+    const seasonSel = document.getElementById("craft-season-filter");
+    if (seasonSel) {
+      seasonSel.addEventListener("change", () => {
+        const value = seasonSel.value || "ALL";
+        this._seasonFilter = value === "ALL" ? "ALL" : value;
+        this._page = 1;
+        this._renderSummary();
+        this._renderToolbar();
+        this._renderListAndPager();
+      });
+    }
   },
 
   // —— 加载库存：updateOnly=true 时仅更新数据，不重置顶部结果UI —— //
@@ -64,6 +108,26 @@ const CraftPage = {
   },
 
   _groupClientSide(list){ const g={GREEN:[],BLUE:[],PURPLE:[],BRICK:[]}; for(const it of list){const r=(it.rarity||it.color||"").toUpperCase(); (g[r]||(g[r]=[])).push(it);} return g; },
+  _normalizeSeasonKey(value) {
+    const raw = value == null ? "" : String(value).trim();
+    if (!raw || raw.toUpperCase() === "UNASSIGNED") {
+      return this._latestSeasonKey();
+    }
+    const up = raw.toUpperCase();
+    if (this._seasonMap[up]) return up;
+    const fallback = (this._seasonCatalog || []).find(season => String(season.id).toUpperCase() === up);
+    if (fallback) return String(fallback.id).toUpperCase();
+    return up;
+  },
+  _latestSeasonKey() {
+    if (this._latestSeasonId) return this._latestSeasonId;
+    if (this._seasonCatalog && this._seasonCatalog.length) {
+      const id = String(this._seasonCatalog[this._seasonCatalog.length - 1].id || "").toUpperCase();
+      this._latestSeasonId = id;
+      return id;
+    }
+    return "";
+  },
   _norm(x){
     const inv_id = x.inv_id ?? x.id ?? x.inventory_id ?? "";
     const name   = x.name ?? x.skin_name ?? "";
@@ -72,11 +136,27 @@ const CraftPage = {
                  : (typeof x.wear_bp==="number" ? Number((x.wear_bp/100).toFixed(2)) : NaN);
     const grade  = x.grade ?? x.quality ?? "";
     const serial = x.serial ?? x.sn ?? "";
-    return { inv_id, name, rarity, wear, grade, serial };
+    const season = this._normalizeSeasonKey(x.season || x.season_id || "");
+    return { inv_id, name, rarity, wear, grade, serial, season };
+  },
+
+  _seasonLabel(id){
+    const key = this._normalizeSeasonKey(id === "ALL" ? "" : id);
+    if (!key) {
+      if (this._seasonCatalog && this._seasonCatalog.length) {
+        const latest = this._seasonCatalog[this._seasonCatalog.length - 1];
+        return latest?.name || latest?.id || "最新赛季";
+      }
+      return "最新赛季";
+    }
+    const entry = this._seasonMap[key] || this._seasonMap[key.toUpperCase()];
+    if (entry && entry.name) return entry.name;
+    return key;
   },
 
   _rarityToTarget(r){ return { GREEN:"BLUE", BLUE:"PURPLE", PURPLE:"BRICK" }[r] || ""; },
   _rarityClass(r){ if(r==="BRICK")return"hl-orange"; if(r==="PURPLE")return"hl-purple"; if(r==="BLUE")return"hl-blue"; return"hl-green"; },
+  _rarityLabel(r){ const map={BRICK:"砖皮",PURPLE:"紫皮",BLUE:"蓝皮",GREEN:"绿皮"}; const key=String(r||"").toUpperCase(); return map[key]||key||"-"; },
   _gradeClass(g){ return {S:"grade-s",A:"grade-a",B:"grade-b",C:"grade-c"}[g] || ""; },
 
   _renderPreviewCell(x, opts = {}) {
@@ -106,6 +186,7 @@ const CraftPage = {
     this._rarity = r;
     this._page = 1;                // 切换时回到第 1 页
     this._selected.clear();        // 切换时清空已选
+    this._selectedMeta.clear();
     document.querySelectorAll('[data-r]').forEach(b=> b.classList.toggle("active", b.dataset.r===r));
 
     // 清空顶部动画/结果（只在切换稀有度时清）
@@ -122,11 +203,21 @@ const CraftPage = {
     const sel = Array.from(this._selected);
     const box = byId("craft-summary");
     box.style.display = "block";
+    const entries = sel.map(id => this._resolveMeta(id));
+    const chipsHtml = entries.length
+      ? entries.map(entry => {
+          const key = this._id(entry?.inv_id);
+          const name = this._esc(entry?.name || key || "");
+          const seasonText = this._esc(this._seasonLabel(entry?.season || ""));
+          const extra = seasonText ? `（${seasonText}）` : "";
+          return `<span class="badge craft-selected-item" data-selected="${key}" title="双击移除">${name}${extra}</span>`;
+        }).join("")
+      : `<span class="badge">（空）</span>`;
     box.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
         <div>已选：<strong>${sel.length}</strong> / ${need}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;max-height:100px;overflow:auto;">
-          ${sel.map(id=>`<span class="badge">${id}</span>`).join("") || `<span class="badge">（空）</span>`}
+        <div class="craft-selected-list" style="display:flex;gap:6px;flex-wrap:wrap;max-height:100px;overflow:auto;">
+          ${chipsHtml}
         </div>
         <div>
           <button class="btn" id="do-craft" ${sel.length===need?"":"disabled"}>合成</button>
@@ -136,16 +227,27 @@ const CraftPage = {
     `;
     byId("do-craft").onclick = ()=> this._doCraft(sel, need);
     const sk = byId("skip"); if (sk) sk.onclick = ()=> this._skip = true;
+    box.querySelectorAll('[data-selected]').forEach(chip => {
+      chip.addEventListener('dblclick', () => {
+        const key = chip.getAttribute('data-selected');
+        this._removeSelection(key);
+        this._renderSummary();
+        this._renderListAndPager();
+      });
+    });
   },
 
   _renderToolbar(){
     const target = this._rarityToTarget(this._rarity);
+    const rarityLabel = this._rarityLabel(this._rarity);
+    const targetLabel = this._rarityLabel(target);
     const box = byId("craft-toolbar");
     box.style.display = "block";
     box.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
         <div>
-          <strong>从 <span class="${this._rarityClass(this._rarity)}">${this._rarity}</span> 合成 → <span class="${this._rarityClass(target)}">${target}</span></strong>
+          <strong>从 <span class="${this._rarityClass(this._rarity)}">${rarityLabel}</span> 合成 → <span class="${this._rarityClass(target)}">${targetLabel}</span></strong>
+          <div class="muted small">赛季筛选：${this._seasonFilter === "ALL" ? "全部" : this._seasonLabel(this._seasonFilter)}</div>
         </div>
         <div class="input-row" style="margin:0;">
           <input id="seq-input" placeholder="按序号（当前页）：如 1,3,5-12,20" style="min-width:280px"/>
@@ -158,17 +260,29 @@ const CraftPage = {
       </div>
     `;
     byId("seq-apply").onclick = ()=>{ const txt=(byId("seq-input").value||"").trim(); if(!txt)return;
-      const idxs=this._parseSeq(txt,this._indexMap.length); idxs.forEach(i=>{const inv=this._indexMap[i-1]; if(inv)this._selected.add(inv);});
+      const idxs=this._parseSeq(txt,this._indexMap.length); idxs.forEach(i=>{
+        const entry=this._indexMap[i-1];
+        if(entry && entry.item){ this._trackSelection(entry.item); }
+      });
       this._renderListAndPager(); this._renderSummary(); };
     byId("auto-low").onclick = ()=>{ this._autoPick("low");  this._renderListAndPager(); this._renderSummary(); };
     byId("auto-high").onclick= ()=>{ this._autoPick("high"); this._renderListAndPager(); this._renderSummary(); };
     byId("auto-rand").onclick= ()=>{ this._autoPick("rand"); this._renderListAndPager(); this._renderSummary(); };
-    byId("sel-clear").onclick = ()=>{ this._selected.clear(); this._renderListAndPager(); this._renderSummary(); };
+    byId("sel-clear").onclick = ()=>{
+      this._selected.clear();
+      this._selectedMeta.clear();
+      this._renderListAndPager();
+      this._renderSummary();
+    };
   },
 
   _sortedAll() {
     // 全量排序（S>A>B>C，磨损升序）
-    const arr = (this._data[this._rarity] || []).slice();
+    let arr = (this._data[this._rarity] || []).slice();
+    if (this._seasonFilter && this._seasonFilter !== "ALL") {
+      const key = String(this._seasonFilter).toUpperCase();
+      arr = arr.filter(item => String(item.season || "").toUpperCase() === key);
+    }
     const gradeOrder={S:0,A:1,B:2,C:3};
     arr.sort((a,b)=> (gradeOrder[a.grade]??9)-(gradeOrder[b.grade]??9) || ((isNaN(a.wear)?999:a.wear)-(isNaN(b.wear)?999:b.wear)));
     return arr;
@@ -179,26 +293,34 @@ const CraftPage = {
     const pager = byId("craft-pagination");
 
     const all = this._sortedAll();
-    const total = all.length;
+    const selectedKeys = new Set(Array.from(this._selected));
+    const available = all.filter(item => !selectedKeys.has(this._id(item)));
+    const total = available.length;
     const totalPages = Math.max(1, Math.ceil(total / this._pageSize));
     this._page = Math.min(Math.max(1, this._page), totalPages);
 
     const start = (this._page - 1) * this._pageSize;
-    const pageArr = all.slice(start, start + this._pageSize);
+    const pageArr = available.slice(start, start + this._pageSize);
 
     // 页内索引
-    this._indexMap = pageArr.map(x=>x.inv_id);
+    this._indexMap = pageArr.map(x=>({ id: this._id(x), item: x }));
 
     // 表格
     const rows = pageArr.map((x,i)=>{
-      const checked=this._selected.has(x.inv_id)?"checked":"";
+      const key=this._id(x);
+      const selected=this._selected.has(key);
       const rc=this._rarityClass(x.rarity);
-      return `<tr>
-        <td><input type="checkbox" data-inv="${x.inv_id}" ${checked}/></td>
+      const seasonLabel = this._seasonLabel(x.season || "");
+      const indicator = selected ? "已选" : "双击";
+      const rowCls = selected ? "is-selected" : "";
+      const rarityLabel = this._rarityLabel(x.rarity);
+      return `<tr class="${rowCls}" data-inv="${key}">
+        <td><span class="craft-indicator ${selected?"is-active":""}">${indicator}</span></td>
         <td>${start + i + 1}</td>
         <td>${x.inv_id}</td>
-        <td class="${rc}">${x.name}</td>
-        <td class="${rc}">${x.rarity}</td>
+        <td class="${rc} craft-name" data-name="${key}">${this._esc(x.name)}</td>
+        <td>${seasonLabel}</td>
+        <td class="${rc}">${rarityLabel}</td>
         <td>${isNaN(x.wear)?"-":x.wear.toFixed(2)}</td>
         <td>${x.grade||"-"}</td>
         <td>${x.serial||"-"}</td>
@@ -208,12 +330,20 @@ const CraftPage = {
     listBox.innerHTML = `
       <h3>可选列表（共 ${total} 件，当前第 ${this._page}/${totalPages} 页；每页 ${this._pageSize}）</h3>
       <table class="table">
-        <thead><tr><th>选</th><th>#</th><th>inv_id</th><th>名称</th><th>稀有度</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
+        <thead><tr><th>选</th><th>#</th><th>inv_id</th><th>名称</th><th>赛季</th><th>稀有度</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      <div class="muted small">提示：双击枪械名称即可加入合成槽位，切换赛季将保留已选项目。</div>
     `;
-    listBox.querySelectorAll('input[type="checkbox"][data-inv]').forEach(cb=>{
-      cb.onchange = ()=>{ const id=cb.dataset.inv; if(cb.checked)this._selected.add(id); else this._selected.delete(id); this._renderSummary(); };
+    listBox.querySelectorAll('tbody td.craft-name[data-name]').forEach(cell => {
+      cell.addEventListener('dblclick', () => {
+        const key = cell.getAttribute('data-name');
+        const entry = this._indexMap.find(it => it.id === key);
+        if (!entry || !entry.item) return;
+        this._trackSelection(entry.item);
+        this._renderSummary();
+        this._renderListAndPager();
+      });
     });
 
     // 单一分页条（底部）
@@ -345,6 +475,7 @@ const CraftPage = {
       : "-";
     const previewMeta = this._visualMeta(r);
     const preview = this._renderPreviewCell(r, { metaText: previewMeta });
+    const rarityText = this._rarityLabel(r.rarity);
 
     const wrap = document.createElement("div");
     wrap.className = "card fade-in";
@@ -356,7 +487,7 @@ const CraftPage = {
           <tr>
             <td class="${rc}">${r.name}</td>
             <td>${preview}</td>
-            <td class="${rc}">${r.rarity}</td>
+            <td class="${rc}">${rarityText}</td>
             <td>${exBadge}</td>
             <td>${r.wear}</td>
             <td class="${gc}">${r.grade||"-"}</td>
@@ -417,12 +548,15 @@ const CraftPage = {
 
   _autoPick(mode){
     const arr = this._sortedAll();
-    const valid = arr.filter(x=>!isNaN(x.wear));
+    const used = new Set(Array.from(this._selected));
+    const valid = arr.filter(x=>!isNaN(x.wear) && !used.has(this._id(x)));
     if(mode==="low")  valid.sort((a,b)=>a.wear-b.wear);
     if(mode==="high") valid.sort((a,b)=>b.wear-a.wear);
     if(mode==="rand") valid.sort(()=>Math.random()-0.5);
-    const pick = valid.slice(0,20).map(x=>String(x.inv_id));
-    this._selected = new Set(pick);
+    for (const item of valid) {
+      if (this._selected.size >= 20) break;
+      this._trackSelection(item);
+    }
   },
 
   _parseSeq(text,maxN){
@@ -435,5 +569,55 @@ const CraftPage = {
     return Array.from(out).sort((a,b)=>a-b);
   },
 
-  _sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+  _sleep(ms){ return new Promise(r=>setTimeout(r, ms)); },
+
+  _trackSelection(item) {
+    if (!item) return;
+    const key = this._id(item);
+    if (!key) return;
+    if (this._selected.size >= 20) return;
+    if (this._selected.has(key)) return;
+    this._selected.add(key);
+    this._selectedMeta.set(key, item);
+  },
+
+  _removeSelection(key) {
+    const id = this._id(key);
+    if (!id) return;
+    this._selected.delete(id);
+    this._selectedMeta.delete(id);
+  },
+
+  _resolveMeta(key) {
+    const id = this._id(key);
+    if (!id) return null;
+    if (this._selectedMeta.has(id)) return this._selectedMeta.get(id);
+    for (const rarity of ["GREEN", "BLUE", "PURPLE"]) {
+      const found = (this._data[rarity] || []).find(item => this._id(item) === id);
+      if (found) {
+        this._selectedMeta.set(id, found);
+        return found;
+      }
+    }
+    return null;
+  },
+
+  _id(item) {
+    if (item == null) return "";
+    if (typeof item === "string" || typeof item === "number") return String(item);
+    if (typeof item === "object") {
+      if (item.inv_id != null) return String(item.inv_id);
+      if (item.id != null) return String(item.id);
+    }
+    return "";
+  },
+
+  _esc(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
 };
