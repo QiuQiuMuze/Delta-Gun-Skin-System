@@ -1248,6 +1248,19 @@ SEASON_DEFINITIONS = [
                     "tracer": "气象脉冲曳光",
                     "body_colors": [["#1f2c4f", "#45a0ff"], ["#3c2e55", "#ff7f4f"], ["#1a3c31", "#39ffb0"], ["#2b294f", "#b18cff"]],
                     "attachment_colors": [["#7dd0ff", "#1f79ff"], ["#ffd27d", "#ff924f"], ["#b1ffe7", "#38ff9f"], ["#d0afff", "#7549ff"]],
+                    "weather_attributes": {
+                        "type": "weather",
+                        "pool": [
+                            {"key": "acid_rain", "label": "酸雨"},
+                            {"key": "thunder", "label": "雷电"},
+                            {"key": "flame", "label": "火焰"},
+                            {"key": "frost", "label": "冰霜"}
+                        ],
+                        "template_overrides": {
+                            "brick_weather_redbolt": "thunder",
+                            "brick_weather_purplebolt": "thunder"
+                        }
+                    },
                     "template_rules": [
                         {"key": "brick_weather_gundam", "label": "高达气象", "weight": 1, "allow_premium": False, "allow_exquisite": True, "effects": ["weather_glow"], "body": ["#ffffff", "#3d6bff"], "attachments": ["#ffcc00", "#ff3535"]},
                         {"key": "brick_weather_clathrate", "label": "可燃冰", "weight": 1, "allow_premium": False, "allow_exquisite": True, "effects": ["weather_frost"], "body": ["#b5f4ff", "#f8ffff"], "attachments": ["#6fdfff", "#d3f9ff"]},
@@ -1273,6 +1286,19 @@ SEASON_DEFINITIONS = [
                     "tracer": "天气折射曳光",
                     "body_colors": [["#243656", "#4f86ff"], ["#3c2f5f", "#ff9966"], ["#193f33", "#45ffbc"], ["#302a57", "#c79dff"]],
                     "attachment_colors": [["#70c5ff", "#2a6dff"], ["#ffc771", "#ff7a45"], ["#a9ffe3", "#36ff98"], ["#d4b0ff", "#6f48ff"]],
+                    "weather_attributes": {
+                        "type": "weather",
+                        "pool": [
+                            {"key": "acid_rain", "label": "酸雨"},
+                            {"key": "thunder", "label": "雷电"},
+                            {"key": "flame", "label": "火焰"},
+                            {"key": "frost", "label": "冰霜"}
+                        ],
+                        "template_overrides": {
+                            "brick_weather_redbolt": "thunder",
+                            "brick_weather_purplebolt": "thunder"
+                        }
+                    },
                     "template_rules": [
                         {"key": "brick_weather_gradient", "label": "气象渐变", "weight": 5, "allow_premium": True, "allow_exquisite": True, "effects": ["weather_gradient"], "body": ["#2f4d7a", "#5ec1ff"], "attachments": ["#5bf0ff", "#ffe76c"]},
                         {"key": "brick_weather_default", "label": "普通模板", "weight": 95, "allow_premium": True, "allow_exquisite": True, "effects": ["weather_glow"], "body": ["#2a3960", "#4f8dff"], "attachments": ["#6fe1ff", "#ffd261"]}

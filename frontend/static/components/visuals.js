@@ -151,6 +151,13 @@
     weather_gradient: "effect-sheen"
   };
 
+  const ATTRIBUTE_LABELS = {
+    "affinity:weather:acid_rain": "酸雨",
+    "affinity:weather:thunder": "雷电",
+    "affinity:weather:flame": "火焰",
+    "affinity:weather:frost": "冰霜"
+  };
+
   const COLOR_LOOKUP = {
     "#f06449": "熔岩橙",
     "#f9a620": "流金黄",
@@ -1355,6 +1362,44 @@
       ? v.effect_labels.map(lbl => String(lbl || "").trim()).filter(Boolean)
       : null;
     const modelKey = v.model ? String(v.model) : "";
+    const affinityInfo = v.affinity && typeof v.affinity === "object" ? v.affinity : null;
+
+    const attrTags = [];
+    const effectTags = [];
+    effectsRaw.forEach((tag, idx) => {
+      if (typeof tag === "string" && tag.startsWith("affinity:")) {
+        attrTags.push({ tag, index: idx });
+      } else {
+        effectTags.push({ tag, index: idx });
+      }
+    });
+
+    let effectLabels = [];
+    let attributeLabels = [];
+    if (providedEffectLabels && providedEffectLabels.length === effectsRaw.length) {
+      providedEffectLabels.forEach((label, idx) => {
+        const tag = effectsRaw[idx];
+        if (tag && tag.startsWith("affinity:")) {
+          const clean = label.replace(/属性$/u, "").trim();
+          if (clean) attributeLabels.push(clean);
+        } else if (label) {
+          effectLabels.push(label);
+        }
+      });
+    } else {
+      effectTags.forEach(({ tag }) => {
+        if (!tag) return;
+        effectLabels.push(EFFECT_LABELS[tag] || tag);
+      });
+      attrTags.forEach(({ tag }) => {
+        if (!tag) return;
+        attributeLabels.push(ATTRIBUTE_LABELS[tag] || tag.split(":").pop());
+      });
+    }
+
+    if ((!attributeLabels || attributeLabels.length === 0) && affinityInfo && affinityInfo.label) {
+      attributeLabels = [String(affinityInfo.label)];
+    }
 
     return {
       bodyColors: bodyRaw.length ? bodyRaw : [DEFAULT_COLOR],
@@ -1365,12 +1410,12 @@
         : (templateKey ? (TEMPLATE_LABELS[templateKey] || templateKey) : "无模板"),
       hidden: !!v.hidden_template,
       effects: effectsRaw,
-      effectsLabel: (providedEffectLabels && providedEffectLabels.length)
-        ? providedEffectLabels.join("、")
-        : (effectsRaw.length ? effectsRaw.map(e => EFFECT_LABELS[e] || e).join("、") : "无特效"),
+      effectsLabel: effectLabels.length ? effectLabels.join("、") : "无特效",
       bodyText: (bodyRaw.length ? bodyRaw : [DEFAULT_COLOR]).map(c => c.name).join(" / "),
       attachmentText: (attachRaw.length ? attachRaw : [DEFAULT_COLOR]).map(c => c.name).join(" / "),
       model: modelKey,
+      attributes: attributeLabels,
+      attributeText: attributeLabels.length ? attributeLabels.join(" / ") : "",
     };
   }
 
@@ -1382,6 +1427,7 @@
       `模板：${info.templateLabel}`,
       `特效：${info.effectsLabel}`
     ];
+    if (info.attributeText) parts.push(`属性：${info.attributeText}`);
     if (info.hidden) parts.push("隐藏模板");
     return parts.join(" · ");
   }

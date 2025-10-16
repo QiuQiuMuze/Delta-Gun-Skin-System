@@ -11,7 +11,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional, Literal, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
-import time, os, secrets, jwt, re, json, random, math
+import time, os, secrets, jwt, re, json, random, math, hashlib
 
 from passlib.context import CryptContext
 from sqlalchemy import (
@@ -519,6 +519,9 @@ class MarketBrowseOut(BaseModel):
     hidden_template: bool
     effects: List[str]
     effect_labels: List[str] = []
+    affinity: Dict[str, Any] = {}
+    affinity_label: str = ""
+    affinity_tag: str = ""
     visual: Dict[str, Any]
     season: str = ""
     model: str = ""
@@ -771,6 +774,10 @@ EFFECT_LABEL_LOOKUP: Dict[str, str] = {
     "weather_frost": "气象霜华",
     "weather_glow": "气象辉光",
     "weather_gradient": "气象渐变",
+    "affinity:weather:acid_rain": "酸雨属性",
+    "affinity:weather:thunder": "雷电属性",
+    "affinity:weather:flame": "火焰属性",
+    "affinity:weather:frost": "冰霜属性",
 }
 
 
@@ -1345,6 +1352,89 @@ def _pick_color() -> Dict[str, str]:
     base = secrets.choice(COLOR_PALETTE)
     return {"hex": base["hex"], "name": base["name"]}
 
+def _normalize_affinity_config(meta: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    conf = meta.get("weather_attributes") if isinstance(meta, dict) else None
+    if not isinstance(conf, dict):
+        return None
+    type_key = str(conf.get("type") or "weather").strip().lower() or "weather"
+    pool_raw = conf.get("pool") or []
+    pool: List[Tuple[str, str]] = []
+    for entry in pool_raw:
+        if isinstance(entry, dict):
+            key = str(entry.get("key") or "").strip().lower()
+            label = str(entry.get("label") or "").strip() or key
+        else:
+            key = str(entry or "").strip().lower()
+            label = key
+        if key:
+            pool.append((key, label))
+    if not pool:
+        return None
+    overrides: Dict[str, str] = {}
+    raw_overrides = conf.get("template_overrides") or {}
+    if isinstance(raw_overrides, dict):
+        for tpl, value in raw_overrides.items():
+            tpl_key = str(tpl or "").strip().lower()
+            val_key = str(value or "").strip().lower()
+            if tpl_key and val_key:
+                overrides[tpl_key] = val_key
+    return {"type": type_key, "pool": pool, "overrides": overrides}
+
+def _affinity_info_from_key(config: Dict[str, Any], key: str) -> Dict[str, str]:
+    for pool_key, label in config.get("pool", []):
+        if pool_key == key:
+            return {"type": config.get("type", "weather"), "key": key, "label": label}
+    return {"type": config.get("type", "weather"), "key": key, "label": key}
+
+def _parse_affinity_tag(tag: str) -> Optional[Tuple[str, str]]:
+    if not tag:
+        return None
+    parts = str(tag).split(":")
+    if len(parts) < 3:
+        return None
+    head = parts[0].strip().lower()
+    if head != "affinity":
+        return None
+    return parts[1].strip().lower(), parts[2].strip().lower()
+
+def _affinity_tag(info: Dict[str, str]) -> str:
+    return f"affinity:{info.get('type', 'weather')}:{info.get('key', '')}"
+
+def _pick_affinity(
+    config: Optional[Dict[str, Any]],
+    template_key: str = "",
+    *,
+    deterministic_seed: Optional[int] = None,
+) -> Optional[Dict[str, str]]:
+    if not config:
+        return None
+    tpl = str(template_key or "").strip().lower()
+    if tpl and tpl in config.get("overrides", {}):
+        key = config["overrides"][tpl]
+        return _affinity_info_from_key(config, key)
+    pool = config.get("pool", [])
+    if not pool:
+        return None
+    if deterministic_seed is not None:
+        idx = int(abs(deterministic_seed)) % len(pool)
+        key = pool[idx][0]
+        return _affinity_info_from_key(config, key)
+    key, _label = secrets.choice(pool)
+    return _affinity_info_from_key(config, key)
+
+def _affinity_info_from_tag(
+    config: Optional[Dict[str, Any]],
+    tag: str,
+) -> Optional[Dict[str, str]]:
+    parsed = _parse_affinity_tag(tag)
+    if not parsed:
+        return None
+    tag_type, tag_key = parsed
+    if config and tag_type == config.get("type"):
+        return _affinity_info_from_key(config, tag_key)
+    label = tag_key
+    return {"type": tag_type or "weather", "key": tag_key, "label": label}
+
 def generate_visual_profile(
     rarity: str,
     exquisite: bool,
@@ -1355,6 +1445,8 @@ def generate_visual_profile(
     rarity = (rarity or "").upper()
     meta = skin_meta_dict(skin)
     model = model_key or (skin.model_key if skin else "") or "assault"
+    affinity_config = _normalize_affinity_config(meta)
+    affinity_payload: Optional[Dict[str, str]] = None
 
     body = _resolve_palette(meta.get("body_colors"))
     if not body:
@@ -1415,6 +1507,11 @@ def generate_visual_profile(
             effects.extend(extra.get("exquisite", []))
         else:
             effects.extend(extra.get("premium", []))
+        if affinity_config:
+            picked_affinity = _pick_affinity(affinity_config, template_key)
+            if picked_affinity:
+                affinity_payload = picked_affinity
+                effects.append(_affinity_tag(picked_affinity))
     else:
         eff_conf = meta.get("effects")
         if isinstance(eff_conf, dict):
@@ -1424,6 +1521,12 @@ def generate_visual_profile(
             effects.extend(eff_conf)
 
     effects = _unique_list(effects)
+    if affinity_config:
+        for tag in effects:
+            info = _affinity_info_from_tag(affinity_config, tag)
+            if info:
+                affinity_payload = info
+                break
     if not template_label and template_key:
         template_label = TEMPLATE_LABEL_LOOKUP.get(str(template_key).lower(), "")
     effect_labels = [
@@ -1431,7 +1534,7 @@ def generate_visual_profile(
         for tag in effects
     ]
 
-    return {
+    payload = {
         "body": body,
         "attachments": attachments,
         "template": template_key,
@@ -1441,6 +1544,11 @@ def generate_visual_profile(
         "template_label": template_label,
         "effect_labels": effect_labels,
     }
+    if affinity_payload:
+        payload["affinity"] = affinity_payload
+        payload["affinity_tag"] = _affinity_tag(affinity_payload)
+        payload["affinity_label"] = affinity_payload.get("label", "")
+    return payload
 
 
 @app.get("/seasons/catalog")
@@ -1486,6 +1594,13 @@ def ensure_visual(inv: Inventory, skin: Optional[Skin] = None) -> Dict[str, obje
     body = _load_json_field(inv.body_colors, [])
     attachments = _load_json_field(inv.attachment_colors, [])
     effects = _load_json_field(inv.effect_tags, [])
+    if not isinstance(effects, list):
+        if isinstance(effects, (tuple, set)):
+            effects = list(effects)
+        elif effects:
+            effects = [effects]
+        else:
+            effects = []
     template = inv.template_name or ""
     hidden_template = bool(inv.hidden_template)
     changed = False
@@ -1494,6 +1609,17 @@ def ensure_visual(inv: Inventory, skin: Optional[Skin] = None) -> Dict[str, obje
     model_key = inv.model_key or ""
     if not model_key and skin:
         model_key = skin.model_key or ""
+    meta = skin_meta_dict(skin)
+    affinity_config = _normalize_affinity_config(meta)
+    affinity_info: Optional[Dict[str, str]] = None
+    affinity_tag = None
+    if affinity_config:
+        for tag in effects:
+            info = _affinity_info_from_tag(affinity_config, tag)
+            if info:
+                affinity_info = info
+                affinity_tag = _affinity_tag(info)
+                break
 
     if rarity == "BRICK":
         if not body or not attachments or template not in BRICK_TEMPLATES:
@@ -1503,6 +1629,8 @@ def ensure_visual(inv: Inventory, skin: Optional[Skin] = None) -> Dict[str, obje
             template = profile["template"]
             effects = profile["effects"]
             hidden_template = False
+            affinity_info = profile.get("affinity") if isinstance(profile, dict) else None
+            affinity_tag = profile.get("affinity_tag") if isinstance(profile, dict) else None
             inv.body_colors = json.dumps(body, ensure_ascii=False)
             inv.attachment_colors = json.dumps(attachments, ensure_ascii=False)
             inv.template_name = template
@@ -1518,6 +1646,8 @@ def ensure_visual(inv: Inventory, skin: Optional[Skin] = None) -> Dict[str, obje
             template = profile["template"]
             effects = profile["effects"]
             hidden_template = False
+            affinity_info = profile.get("affinity") if isinstance(profile, dict) else affinity_info
+            affinity_tag = profile.get("affinity_tag") if isinstance(profile, dict) else affinity_tag
             inv.body_colors = json.dumps(body, ensure_ascii=False)
             inv.attachment_colors = json.dumps(attachments, ensure_ascii=False)
             inv.template_name = template
@@ -1526,13 +1656,36 @@ def ensure_visual(inv: Inventory, skin: Optional[Skin] = None) -> Dict[str, obje
             inv.model_key = profile.get("model", model_key)
             model_key = inv.model_key
             changed = True
+        if affinity_config and not affinity_info:
+            deterministic_seed = None
+            try:
+                raw = f"{inv.id}:{inv.user_id}:{inv.skin_id}:{template}"
+                digest = hashlib.sha256(raw.encode()).hexdigest()
+                deterministic_seed = int(digest[:16], 16)
+            except Exception:
+                deterministic_seed = None
+            picked = _pick_affinity(affinity_config, template, deterministic_seed=deterministic_seed)
+            if picked:
+                affinity_info = picked
+                affinity_tag = _affinity_tag(picked)
         desired_effects = ["sheen"]
         if bool(inv.exquisite):
             desired_effects.extend(["bold_tracer", "kill_counter"])
+        if affinity_tag:
+            desired_attrs = [affinity_tag]
+        else:
+            desired_attrs = []
         if effects != desired_effects:
-            effects = desired_effects
-            inv.effect_tags = json.dumps(desired_effects, ensure_ascii=False)
+            existing_attrs = [tag for tag in effects if _parse_affinity_tag(tag)]
+            effects = desired_effects + (existing_attrs or desired_attrs)
+            inv.effect_tags = json.dumps(effects, ensure_ascii=False)
             changed = True
+        else:
+            extra_attrs = [tag for tag in effects if _parse_affinity_tag(tag)]
+            if not extra_attrs and affinity_tag:
+                effects = desired_effects + [affinity_tag]
+                inv.effect_tags = json.dumps(effects, ensure_ascii=False)
+                changed = True
         if hidden_template:
             inv.hidden_template = 0
             hidden_template = False
@@ -1564,6 +1717,14 @@ def ensure_visual(inv: Inventory, skin: Optional[Skin] = None) -> Dict[str, obje
             model_key = inv.model_key
             changed = True
 
+    if affinity_config and not affinity_info:
+        for tag in effects:
+            info = _affinity_info_from_tag(affinity_config, tag)
+            if info:
+                affinity_info = info
+                affinity_tag = _affinity_tag(info)
+                break
+
     template_label = TEMPLATE_LABEL_LOOKUP.get(str(template).lower(), "") if template else ""
     effect_labels = [
         EFFECT_LABEL_LOOKUP.get(str(tag).lower(), str(tag))
@@ -1578,6 +1739,9 @@ def ensure_visual(inv: Inventory, skin: Optional[Skin] = None) -> Dict[str, obje
         "effects": effects,
         "effect_labels": effect_labels,
         "model": model_key,
+        "affinity": affinity_info,
+        "affinity_tag": affinity_tag,
+        "affinity_label": affinity_info.get("label") if affinity_info else "",
         "changed": changed,
     }
 
@@ -3360,8 +3524,13 @@ def odds(
 
 @app.post("/gacha/open")
 def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session = Depends(get_db)):
-    if inp.count <= 0: raise HTTPException(400, "数量必须大于 0")
-    if inp.count not in (1, 10):
+    if inp.count <= 0:
+        raise HTTPException(400, "数量必须大于 0")
+    admin_max = 200
+    if user.is_admin:
+        if inp.count > admin_max:
+            raise HTTPException(400, f"管理员批量开砖一次最多 {admin_max} 连")
+    elif inp.count not in (1, 10):
         raise HTTPException(400, "当前仅支持单抽或十连")
     if user.unopened_bricks < inp.count: raise HTTPException(400, "未开砖数量不足")
     if user.keys < inp.count: raise HTTPException(400, "钥匙不足")
@@ -3439,6 +3608,9 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
             "hidden_template": profile["hidden_template"],
             "effects": profile["effects"],
             "effect_labels": profile.get("effect_labels", []),
+            "affinity": profile.get("affinity", {}),
+            "affinity_label": profile.get("affinity_label", ""),
+            "affinity_tag": profile.get("affinity_tag", ""),
             "season": result_season,
             "model": profile.get("model", skin.model_key or ""),
             "sell_locked": bool(inv.sell_locked),
@@ -3451,6 +3623,9 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
                 "hidden_template": profile["hidden_template"],
                 "effects": profile["effects"],
                 "effect_labels": profile.get("effect_labels", []),
+                "affinity": profile.get("affinity", {}),
+                "affinity_label": profile.get("affinity_label", ""),
+                "affinity_tag": profile.get("affinity_tag", ""),
                 "model": profile.get("model", skin.model_key or ""),
             },
         })
@@ -3495,6 +3670,9 @@ def inventory(
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
             "effect_labels": vis.get("effect_labels", []),
+            "affinity": vis.get("affinity", {}),
+            "affinity_label": vis.get("affinity_label", ""),
+            "affinity_tag": vis.get("affinity_tag", ""),
             "model": vis.get("model", ""),
         }
 
@@ -3518,6 +3696,9 @@ def inventory(
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
             "effect_labels": vis.get("effect_labels", []),
+            "affinity": vis.get("affinity", {}),
+            "affinity_label": vis.get("affinity_label", ""),
+            "affinity_tag": vis.get("affinity_tag", ""),
             "model": vis.get("model", ""),
             "season": season_key,
             "visual": visual_payload,
@@ -3559,6 +3740,9 @@ def inventory_by_color(
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
             "effect_labels": vis.get("effect_labels", []),
+            "affinity": vis.get("affinity", {}),
+            "affinity_label": vis.get("affinity_label", ""),
+            "affinity_tag": vis.get("affinity_tag", ""),
             "model": vis.get("model", ""),
         }
 
@@ -3582,6 +3766,9 @@ def inventory_by_color(
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
             "effect_labels": vis.get("effect_labels", []),
+            "affinity": vis.get("affinity", {}),
+            "affinity_label": vis.get("affinity_label", ""),
+            "affinity_tag": vis.get("affinity_tag", ""),
             "model": vis.get("model", ""),
             "season": season_key,
             "visual": visual_payload,
@@ -3961,6 +4148,9 @@ def market_my(user: User = Depends(user_from_token), db: Session = Depends(get_d
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
             "effect_labels": vis.get("effect_labels", []),
+            "affinity": vis.get("affinity", {}),
+            "affinity_label": vis.get("affinity_label", ""),
+            "affinity_tag": vis.get("affinity_tag", ""),
             "model": vis.get("model", ""),
         }
 
@@ -3973,6 +4163,9 @@ def market_my(user: User = Depends(user_from_token), db: Session = Depends(get_d
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
             "effect_labels": vis.get("effect_labels", []),
+            "affinity": vis.get("affinity", {}),
+            "affinity_label": vis.get("affinity_label", ""),
+            "affinity_tag": vis.get("affinity_tag", ""),
             "model": vis.get("model", ""),
             "season": inv.season or (skin_map.get(inv.skin_id).season if skin_map.get(inv.skin_id) else ""),
             "visual": visual_payload,
@@ -4048,6 +4241,9 @@ def market_browse(rarity: Optional[RarityT] = None,
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
             "effect_labels": vis.get("effect_labels", []),
+            "affinity": vis.get("affinity", {}),
+            "affinity_label": vis.get("affinity_label", ""),
+            "affinity_tag": vis.get("affinity_tag", ""),
             "model": vis.get("model", ""),
         }
 
@@ -4059,7 +4255,8 @@ def market_browse(rarity: Optional[RarityT] = None,
             template=vis["template"], template_label=vis.get("template_label", ""),
             hidden_template=vis["hidden_template"],
             effects=vis["effects"], effect_labels=vis.get("effect_labels", []),
-            visual=visual_payload,
+            affinity=vis.get("affinity", {}), affinity_label=vis.get("affinity_label", ""),
+            affinity_tag=vis.get("affinity_tag", ""), visual=visual_payload,
             season=inv.season or (skin_map.get(inv.skin_id).season if skin_map.get(inv.skin_id) else ""),
             model=vis.get("model", ""),
         ))
@@ -4543,6 +4740,9 @@ def admin_user_inventory(username: str, admin=_Depends(_require_admin)):
                 "hidden_template": vis["hidden_template"],
                 "effects": vis["effects"],
                 "effect_labels": vis.get("effect_labels", []),
+                "affinity": vis.get("affinity", {}),
+                "affinity_label": vis.get("affinity_label", ""),
+                "affinity_tag": vis.get("affinity_tag", ""),
             }
             items.append({
                 "inv_id": inv.id,
@@ -4554,6 +4754,9 @@ def admin_user_inventory(username: str, admin=_Depends(_require_admin)):
                 "template": vis["template"],
                 "template_label": BRICK_TEMPLATE_LABELS.get(vis["template"], vis["template"] or "无模板"),
                 "effects": vis["effects"],
+                "affinity": vis.get("affinity", {}),
+                "affinity_label": vis.get("affinity_label", ""),
+                "affinity_tag": vis.get("affinity_tag", ""),
                 "visual": visual_payload,
             })
         if changed:
