@@ -179,6 +179,12 @@ const GachaPage = {
     if (r === "BLUE") return "hl-blue";
     return "hl-green";
   },
+  _rarityLabel(r) {
+    const key = String(r || "").toUpperCase();
+    const map = { BRICK: "砖皮", PURPLE: "紫皮", BLUE: "蓝皮", GREEN: "绿皮" };
+    if (map[key]) return map[key];
+    return key || "-";
+  },
   _gradeClass(g) { return { "S":"grade-s", "A":"grade-a", "B":"grade-b", "C":"grade-c" }[g] || ""; },
   _glowClass(maxR) { return maxR==="BRICK" ? "orange" : maxR==="PURPLE" ? "purple" : maxR==="BLUE" ? "blue" : "green"; },
   _glowCN(maxR)    { return maxR==="BRICK" ? "橙色"  : maxR==="PURPLE" ? "紫色"   : maxR==="BLUE" ? "蓝色"   : "绿色"; },
@@ -331,12 +337,13 @@ const GachaPage = {
     const preview = this._renderPreviewCell(x, { metaText: previewMeta });
     const seasonLabel = this._seasonLabel(x.season);
     const modelLabel = this._modelLabel(x.model);
+    const rarityLabel = this._rarityLabel(x.rarity);
     return `
       <td class="${rc}">${x.name}</td>
       <td>${seasonLabel}</td>
       <td>${modelLabel}</td>
       <td>${preview}</td>
-      <td class="${rc}">${x.rarity}</td>
+      <td class="${rc}">${rarityLabel}</td>
       <td>${exBadge}</td>
       <td>${x.wear}</td>
       <td class="${gc}">${x.grade}</td>
