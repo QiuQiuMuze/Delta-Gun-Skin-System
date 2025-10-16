@@ -41,6 +41,18 @@
   <!-- odds 路由守卫：如访问 #/odds，重定向到首页 -->
   <script>
   (function(){
+    var path = location.pathname || "";
+    if (path.startsWith("/web/")) {
+      var tail = path.slice(5);
+      if (tail && !tail.includes('.') && !location.hash) {
+        tail = tail.replace(/^\/+/, "").replace(/\/+$/, "");
+        location.replace("/web/#/" + tail);
+        return;
+      }
+    }
+  })();
+
+  (function(){
     function guard() {
       if (location.hash === '#/odds') {
         // 你的首页路由：若首页是 '#/' 就改成 '#/'
