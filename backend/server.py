@@ -38,6 +38,36 @@ Base = declarative_base()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 http_bearer = HTTPBearer()
 
+WEAPON_NAME_ALIASES = {
+    "沙漠之鹰手枪": "deserteagle",
+    "腾龙突击步枪": "tenglong",
+    "莫辛纳甘步枪": "mosin",
+}
+
+
+def _slug_weapon_name(name: str) -> str:
+    if not name:
+        return ""
+    name = name.strip()
+    if not name:
+        return ""
+    alias = WEAPON_NAME_ALIASES.get(name)
+    if alias:
+        return alias
+    lowered = name.lower()
+    slug = re.sub(r"[^a-z0-9]+", "_", lowered).strip("_")
+    slug = re.sub(r"_+", "_", slug)
+    return slug
+
+
+def _resolve_model_key(provided: str, skin: Optional[Skin]) -> str:
+    if skin and skin.weapon:
+        slug = _slug_weapon_name(skin.weapon)
+        if slug:
+            return slug
+    normalized = (provided or "").strip().lower()
+    return normalized
+
 # ------------------ ORM ------------------
 class User(Base):
     __tablename__ = "users"
@@ -1444,7 +1474,10 @@ def generate_visual_profile(
 ) -> Dict[str, object]:
     rarity = (rarity or "").upper()
     meta = skin_meta_dict(skin)
-    model = model_key or (skin.model_key if skin else "") or "assault"
+    base_model_key = model_key or (skin.model_key if skin else "")
+    model = _resolve_model_key(base_model_key, skin)
+    if not model:
+        model = "assault"
     affinity_config = _normalize_affinity_config(meta)
     affinity_payload: Optional[Dict[str, str]] = None
 
