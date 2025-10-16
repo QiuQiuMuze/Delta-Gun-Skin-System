@@ -1,7 +1,7 @@
 const CultivationPage = {
   _root: null,
   _state: null,
-  _selection: { talents: new Set(), allocations: {} },
+  _selection: { talents: new Set(), allocations: {}, originId: null, sectId: null, masterId: null },
   _loading: false,
   fmtInt(value) {
     const n = Number(value || 0);
@@ -17,10 +17,47 @@ const CultivationPage = {
     const safe = String(tone).toLowerCase().replace(/[^a-z0-9_-]/g, '');
     return safe ? `tone-${safe}` : '';
   },
+  getOrigin(lobby, id) {
+    const list = Array.isArray(lobby?.origins) ? lobby.origins : [];
+    return list.find(item => item && item.id === id) || null;
+  },
+  getSect(lobby, id) {
+    const list = Array.isArray(lobby?.sects) ? lobby.sects : [];
+    return list.find(item => item && item.id === id) || null;
+  },
+  getMaster(lobby, id) {
+    const list = Array.isArray(lobby?.masters) ? lobby.masters : [];
+    return list.find(item => item && item.id === id) || null;
+  },
+  calcStartingCoins(lobby) {
+    const origin = this.getOrigin(lobby, this._selection.originId);
+    const sect = this.getSect(lobby, this._selection.sectId);
+    const master = this.getMaster(lobby, this._selection.masterId);
+    let total = 0;
+    if (origin && Number.isFinite(Number(origin.coins))) total += Number(origin.coins);
+    if (sect && Number.isFinite(Number(sect.coins))) total += Number(sect.coins);
+    if (master && Number.isFinite(Number(master.coins))) total += Number(master.coins);
+    return total;
+  },
+  renderEffectPills(effects) {
+    if (!Array.isArray(effects) || !effects.length) {
+      return '<span class="cultivation-effect-pill muted">无额外加成</span>';
+    }
+    return effects.map(effect => {
+      if (!effect || effect.value == null) return '';
+      const label = escapeHtml(effect.label || effect.stat || '属性');
+      const value = this.fmtInt(effect.value || 0);
+      return `<span class="cultivation-effect-pill">${label} +${value}</span>`;
+    }).filter(Boolean).join('');
+  },
   renderLineage(lineage) {
     const info = lineage || {};
+    const origin = info.origin || {};
     const sect = info.sect || {};
     const master = info.master || {};
+    const originName = origin.name ? escapeHtml(origin.name) : '未知出身';
+    const originLabel = origin.status_label ? `<span class="tag">${escapeHtml(origin.status_label)}</span>` : '';
+    const originDesc = origin.desc ? `<div class="meta">${escapeHtml(origin.desc)}</div>` : '';
     const sectName = sect.name ? escapeHtml(sect.name) : '散修';
     const sectMotto = sect.motto ? `<div class="meta">${escapeHtml(sect.motto)}</div>` : '';
     const masterName = master.name ? escapeHtml(master.name) : '无名前辈';
@@ -28,6 +65,12 @@ const CultivationPage = {
     const masterMotto = master.motto ? `<div class="meta">${escapeHtml(master.motto)}</div>` : '';
     return `
       <div class="cultivation-lineage">
+        <div class="cultivation-lineage__item">
+          <span class="label">出身</span>
+          <strong>${originName}</strong>
+          ${originLabel}
+          ${originDesc}
+        </div>
         <div class="cultivation-lineage__item">
           <span class="label">宗门</span>
           <strong>${sectName}</strong>
@@ -78,6 +121,8 @@ const CultivationPage = {
     }
     const lineage = this.renderLineage(last.lineage);
     const statsBlock = this.renderStatsGrid(last.stats);
+    const coins = fmtInt(last.coins || 0);
+    const coinsLine = `<div class="cultivation-summary__coins">起始铜钱 ${coins}</div>`;
     const talents = Array.isArray(last.talents) && last.talents.length
       ? `<div class="cultivation-summary__talents">天赋：${last.talents.map(name => `<span class="cultivation-chip"><span class="cultivation-chip__label">${escapeHtml(name || '')}</span></span>`).join('')}</div>`
       : '';
@@ -92,6 +137,7 @@ const CultivationPage = {
     return `
       <div class="cultivation-summary__last">
         <div class="cultivation-summary__headline">最近一次：得分 ${fmtInt(last.score || 0)} · ${escapeHtml(last.ending || '')}</div>
+        ${coinsLine}
         ${lineage}
         ${statsSection}
         ${talents}
@@ -111,6 +157,8 @@ const CultivationPage = {
     const lineage = this.renderLineage(result.lineage);
     const statsBlock = this.renderStatsGrid(result.stats);
     const statsSection = statsBlock ? `<div class="cultivation-ending__stats">${statsBlock}</div>` : '';
+    const coins = fmtInt(result.coins || 0);
+    const coinsLine = `<div class="cultivation-ending__coins">携带铜钱 ${coins}</div>`;
     const talents = Array.isArray(result.talents) && result.talents.length
       ? `<div class="cultivation-ending__talents">天赋：${result.talents.map(name => `<span class="cultivation-chip"><span class="cultivation-chip__label">${escapeHtml(name || '')}</span></span>`).join('')}</div>`
       : '';
@@ -147,6 +195,7 @@ const CultivationPage = {
             <div class="cultivation-ending__meta">境界 ${stage || '未知'} · ${age} 岁 · 得分 ${score}</div>
             <div class="cultivation-ending__best">历史最佳 ${best} 分</div>
           </div>
+          ${coinsLine}
           ${reward}
           ${lineage}
           ${statsSection}
@@ -183,7 +232,7 @@ const CultivationPage = {
   },
   async bind() {
     this._root = document.getElementById('cultivation-root');
-    this._selection = { talents: new Set(), allocations: {} };
+    this._selection = { talents: new Set(), allocations: {}, originId: null, sectId: null, masterId: null };
     await this.refresh();
   },
   presence() {
@@ -221,12 +270,68 @@ const CultivationPage = {
     }
   },
   resetSelection() {
-    this._selection = { talents: new Set(), allocations: {} };
+    this._selection = { talents: new Set(), allocations: {}, originId: null, sectId: null, masterId: null };
     const lobby = this._state?.lobby;
     if (lobby && lobby.base_stats) {
       Object.keys(lobby.base_stats).forEach(key => {
         this._selection.allocations[key] = 0;
       });
+    }
+  },
+  updateStartingCoins(lobby) {
+    const coinsNode = this._root?.querySelector('#cultivation-start-coins');
+    if (coinsNode) {
+      coinsNode.textContent = this.fmtInt(this.calcStartingCoins(lobby));
+    }
+  },
+  updateLineageAvailability(lobby) {
+    const origin = this.getOrigin(lobby, this._selection.originId);
+    const hasOrigin = !!origin;
+    const originStatus = hasOrigin
+      ? Number(origin.status || origin.min_status || origin.minStatus || origin.required_status || 0)
+      : 0;
+    const originCards = this._root?.querySelectorAll('.cultivation-origin');
+    originCards?.forEach(card => {
+      const id = card.dataset.id;
+      card.classList.toggle('selected', !!id && id === this._selection.originId);
+    });
+    const sectCards = this._root?.querySelectorAll('.cultivation-sect');
+    let selectionChanged = false;
+    sectCards?.forEach(card => {
+      const required = Number(card.dataset.minStatus || 1);
+      const allowed = hasOrigin && originStatus >= required;
+      const id = card.dataset.id;
+      const isSelected = !!id && id === this._selection.sectId;
+      card.classList.toggle('is-locked', !allowed);
+      card.classList.toggle('selected', isSelected);
+      if (isSelected && !allowed) {
+        this._selection.sectId = null;
+        this._selection.masterId = null;
+        selectionChanged = true;
+      }
+    });
+    const activeSectId = this._selection.sectId;
+    const hasSect = !!this.getSect(lobby, activeSectId);
+    const masterCards = this._root?.querySelectorAll('.cultivation-master');
+    masterCards?.forEach(card => {
+      const cardSect = card.dataset.sect;
+      const required = Number(card.dataset.minStatus || 1);
+      const allowedOrigin = hasOrigin && originStatus >= required;
+      const matchesSect = hasSect && (!cardSect || cardSect === activeSectId);
+      const allowed = allowedOrigin && matchesSect;
+      const id = card.dataset.id;
+      const isSelected = !!id && id === this._selection.masterId;
+      card.classList.toggle('is-hidden', hasSect && cardSect && cardSect !== activeSectId);
+      card.classList.toggle('is-locked', !allowed);
+      card.classList.toggle('selected', isSelected);
+      if (isSelected && !allowed) {
+        this._selection.masterId = null;
+        selectionChanged = true;
+      }
+    });
+    this.updateStartingCoins(lobby);
+    if (selectionChanged) {
+      this.updateStartButton();
     }
   },
   renderStatus() {
@@ -285,6 +390,7 @@ const CultivationPage = {
     const talents = Array.isArray(run.talents) ? run.talents : [];
     const event = run.pending_event || null;
     const fmtInt = (v) => this.fmtInt(v);
+    const coins = fmtInt(run.coins || 0);
     const logs = Array.isArray(run.log) ? run.log.slice(-20).reverse() : [];
     const logEntries = logs.length
       ? logs.map(entry => {
@@ -331,7 +437,8 @@ const CultivationPage = {
         <div class="cultivation-run__header">
           <div>
             <div class="cultivation-run__stage">当前境界：${escapeHtml(run.stage || '')}</div>
-        <div class="cultivation-run__meta">${fmtInt(run.age || 0)} 岁 · 寿元 ${fmtInt(run.lifespan || 0)} · 积分 ${fmtInt(run.score || 0)}</div>
+            <div class="cultivation-run__meta">${fmtInt(run.age || 0)} 岁 · 寿元 ${fmtInt(run.lifespan || 0)} · 积分 ${fmtInt(run.score || 0)}</div>
+            <div class="cultivation-run__coins">铜钱 ${coins}</div>
           </div>
           <div class="cultivation-run__health" title="生命值 ${run.health} / ${run.max_health}">
             <span>生命值</span>
@@ -358,12 +465,50 @@ const CultivationPage = {
   renderEvent(event) {
     const hint = event.hint ? `<div class="cultivation-event__hint">${escapeHtml(event.hint)}</div>` : '';
     const theme = event.theme_label ? `<div class="cultivation-event__tag">✨ ${escapeHtml(event.theme_label)}机缘</div>` : '';
-    const options = (event.options || []).map(opt => `
-      <button class="btn" data-choice="${escapeHtml(opt.id || '')}">
-        <div class="btn-title">${escapeHtml(opt.label || '')}</div>
-        <div class="btn-desc">${escapeHtml(opt.detail || '')}</div>
-      </button>
-    `).join('');
+    const options = (event.options || []).map(opt => {
+      const id = escapeHtml(opt.id || '');
+      const title = escapeHtml(opt.label || '');
+      const detail = escapeHtml(opt.detail || '');
+      let metaLine = '';
+      const meta = opt.meta || {};
+      const tags = [];
+      if (meta.cost) {
+        const cost = this.fmtInt(meta.cost);
+        tags.push(`<span class="cultivation-option-pill negative">-${cost} 铜钱</span>`);
+      }
+      if (meta.gain_coins) {
+        const gain = this.fmtInt(meta.gain_coins);
+        tags.push(`<span class="cultivation-option-pill positive">+${gain} 铜钱</span>`);
+      }
+      if (Array.isArray(meta.sacrifice) && meta.sacrifice.length) {
+        const parts = meta.sacrifice
+          .map(item => {
+            if (!item || !item.stat) return '';
+            const label = this.statLabel(item.stat);
+            const amount = this.fmtInt(item.amount || 0);
+            return `${label}-${amount}`;
+          })
+          .filter(Boolean)
+          .join('、');
+        if (parts) tags.push(`<span class="cultivation-option-pill warning">献祭 ${escapeHtml(parts)}</span>`);
+      }
+      if (meta.loot_name) {
+        tags.push(`<span class="cultivation-option-pill highlight">${escapeHtml(meta.loot_name)}</span>`);
+      }
+      if (meta.note) {
+        tags.push(`<span class="cultivation-option-pill note">${escapeHtml(meta.note)}</span>`);
+      }
+      if (tags.length) {
+        metaLine = `<div class="btn-meta">${tags.join('')}</div>`;
+      }
+      return `
+        <button class="btn" data-choice="${id}">
+          <div class="btn-title">${title}</div>
+          <div class="btn-desc">${detail}</div>
+          ${metaLine}
+        </button>
+      `;
+    }).join('');
     return `
       <div class="cultivation-event">
         <div class="cultivation-event__title">${escapeHtml(event.title || '遭遇')}</div>
@@ -420,6 +565,7 @@ const CultivationPage = {
     const points = fmtInt(lobby.points || 0);
     const talents = Array.isArray(lobby.talents) ? lobby.talents : [];
     const baseStats = lobby.base_stats || {};
+    const coinsPreview = fmtInt(this.calcStartingCoins(lobby));
     const talentCards = talents.map(t => {
       const effectText = Array.isArray(t.effects) && t.effects.length
         ? t.effects.map(e => `${escapeHtml(e.label || '')} +${fmtInt(e.value || 0)}`).join('、')
@@ -438,11 +584,80 @@ const CultivationPage = {
         <div class="cultivation-attr__value">基础 ${fmtInt(value)} + <input type="number" min="0" value="0" data-alloc="${escapeHtml(key)}" /></div>
       </div>
     `).join('');
+    const originsList = Array.isArray(lobby.origins) ? lobby.origins : [];
+    const sectsList = Array.isArray(lobby.sects) ? lobby.sects : [];
+    const mastersList = Array.isArray(lobby.masters) ? lobby.masters : [];
+    const originCards = originsList.map(origin => {
+      const id = escapeHtml(origin.id || '');
+      const selected = origin.id === this._selection.originId ? ' selected' : '';
+      const tag = origin.status_label ? `<span class="cultivation-lineage-card__tag">${escapeHtml(origin.status_label)}</span>` : '';
+      const desc = origin.desc ? `<div class="cultivation-lineage-card__desc">${escapeHtml(origin.desc)}</div>` : '';
+      const effects = this.renderEffectPills(origin.effects);
+      const coins = fmtInt(origin.coins || 0);
+      return `
+        <div class="cultivation-lineage-card cultivation-origin${selected}" data-id="${id}" data-min-status="${escapeHtml(String(origin.status || 0))}">
+          <div class="cultivation-lineage-card__title">${escapeHtml(origin.name || '')}</div>
+          ${tag}
+          ${desc}
+          <div class="cultivation-lineage-card__effects">${effects}</div>
+          <div class="cultivation-lineage-card__coins">铜钱 +${coins}</div>
+        </div>
+      `;
+    }).join('') || '<div class="muted">暂无出身选项</div>';
+    const sectCards = sectsList.map(sect => {
+      const id = escapeHtml(sect.id || '');
+      const selected = sect.id === this._selection.sectId ? ' selected' : '';
+      const effects = this.renderEffectPills(sect.effects);
+      const coins = fmtInt(sect.coins || 0);
+      const motto = sect.motto ? `<div class="cultivation-lineage-card__desc">${escapeHtml(sect.motto)}</div>` : '';
+      return `
+        <div class="cultivation-lineage-card cultivation-sect${selected}" data-id="${id}" data-min-status="${escapeHtml(String(sect.min_status || 0))}">
+          <div class="cultivation-lineage-card__title">${escapeHtml(sect.name || '')}</div>
+          ${motto}
+          <div class="cultivation-lineage-card__effects">${effects}</div>
+          <div class="cultivation-lineage-card__coins">铜钱 +${coins}</div>
+        </div>
+      `;
+    }).join('') || '<div class="muted">暂无宗门选项</div>';
+    const masterCards = mastersList.map(master => {
+      const id = escapeHtml(master.id || '');
+      const selected = master.id === this._selection.masterId ? ' selected' : '';
+      const title = master.title ? ` · ${escapeHtml(master.title)}` : '';
+      const motto = master.motto ? `<div class="cultivation-lineage-card__desc">${escapeHtml(master.motto)}</div>` : '';
+      const effects = this.renderEffectPills(master.effects);
+      const coins = fmtInt(master.coins || 0);
+      const traits = Array.isArray(master.traits) && master.traits.length
+        ? `<div class="cultivation-lineage-card__traits">${master.traits.map(t => `<span>${escapeHtml(t || '')}</span>`).join('')}</div>`
+        : '';
+      return `
+        <div class="cultivation-lineage-card cultivation-master${selected}" data-id="${id}" data-sect="${escapeHtml(master.sect || '')}" data-min-status="${escapeHtml(String(master.min_status || 0))}">
+          <div class="cultivation-lineage-card__title">${escapeHtml(master.name || '')}${title}</div>
+          ${motto}
+          ${traits}
+          <div class="cultivation-lineage-card__effects">${effects}</div>
+          <div class="cultivation-lineage-card__coins">铜钱 +${coins}</div>
+        </div>
+      `;
+    }).join('') || '<div class="muted">暂无师承选项</div>';
     return `
       <div class="cultivation-section">
-        <div class="cultivation-lobby__meta">可分配属性点：<span id="cultivation-points-left">${points}</span> · 最多选择 ${fmtInt(lobby.max_talents || 0)} 个天赋</div>
+        <div class="cultivation-lobby__meta">可分配属性点：<span id="cultivation-points-left">${points}</span> · 最多选择 ${fmtInt(lobby.max_talents || 0)} 个天赋 · 预计起始铜钱 <span id="cultivation-start-coins">${coinsPreview}</span></div>
         <div class="cultivation-lobby__actions">
           <button class="btn" id="cultivation-refresh">刷新天赋</button>
+        </div>
+        <div class="cultivation-lineage-select">
+          <div class="cultivation-lineage-select__group">
+            <div class="group-title">选择出身</div>
+            <div class="group-body">${originCards}</div>
+          </div>
+          <div class="cultivation-lineage-select__group">
+            <div class="group-title">选择宗门</div>
+            <div class="group-body">${sectCards}</div>
+          </div>
+          <div class="cultivation-lineage-select__group">
+            <div class="group-title">选择师承</div>
+            <div class="group-body">${masterCards}</div>
+          </div>
         </div>
         <div class="cultivation-talent-list">${talentCards}</div>
         <div class="cultivation-attr-list">${statsInputs}</div>
@@ -495,6 +710,46 @@ const CultivationPage = {
         this.updateStartButton();
       });
     });
+    const originCards = this._root.querySelectorAll('.cultivation-origin');
+    originCards.forEach(card => {
+      card.addEventListener('click', () => {
+        if (card.classList.contains('is-locked')) return;
+        const id = card.dataset.id;
+        if (!id) return;
+        if (this._selection.originId !== id) {
+          this._selection.originId = id;
+          this._selection.sectId = null;
+          this._selection.masterId = null;
+        }
+        this.updateLineageAvailability(lobby);
+        this.updateStartButton();
+      });
+    });
+    const sectCards = this._root.querySelectorAll('.cultivation-sect');
+    sectCards.forEach(card => {
+      card.addEventListener('click', () => {
+        if (card.classList.contains('is-locked')) return;
+        const id = card.dataset.id;
+        if (!id) return;
+        if (this._selection.sectId !== id) {
+          this._selection.sectId = id;
+          this._selection.masterId = null;
+        }
+        this.updateLineageAvailability(lobby);
+        this.updateStartButton();
+      });
+    });
+    const masterCards = this._root.querySelectorAll('.cultivation-master');
+    masterCards.forEach(card => {
+      card.addEventListener('click', () => {
+        if (card.classList.contains('is-locked') || card.classList.contains('is-hidden')) return;
+        const id = card.dataset.id;
+        if (!id) return;
+        this._selection.masterId = id;
+        this.updateLineageAvailability(lobby);
+        this.updateStartButton();
+      });
+    });
     const inputs = this._root.querySelectorAll('input[data-alloc]');
     inputs.forEach(input => {
       input.addEventListener('change', () => {
@@ -533,7 +788,14 @@ const CultivationPage = {
         try {
           this._loading = true;
           startBtn.classList.add('is-loading');
-          const resp = await API.cultivationBegin({ talents: selected, attributes: this._selection.allocations });
+          const payload = {
+            talents: selected,
+            attributes: this._selection.allocations,
+            origin: this._selection.originId,
+            sect: this._selection.sectId,
+            master: this._selection.masterId,
+          };
+          const resp = await API.cultivationBegin(payload);
           if (resp && resp.run) {
             this._state.run = resp.run;
             this._state.lobby = null;
@@ -553,6 +815,7 @@ const CultivationPage = {
     }
     this.updatePointsRemaining(Number(lobby.points || 0));
     this.updateStartButton();
+    this.updateLineageAvailability(lobby);
   },
   updatePointsRemaining(points) {
     const total = Object.values(this._selection.allocations).reduce((sum, v) => sum + Number(v || 0), 0);
@@ -570,8 +833,10 @@ const CultivationPage = {
     const points = Number(lobby.points || 0);
     const total = Object.values(this._selection.allocations).reduce((sum, v) => sum + Number(v || 0), 0);
     const talents = this._selection.talents.size;
-    startBtn.disabled = (total !== points);
-    startBtn.classList.toggle('is-disabled', total !== points);
+    const lineageReady = !!(this._selection.originId && this._selection.sectId && this._selection.masterId);
+    const ready = (total === points) && lineageReady;
+    startBtn.disabled = !ready;
+    startBtn.classList.toggle('is-disabled', !ready);
     const info = this._root.querySelector('.cultivation-lobby__meta');
     if (info) {
       info.dataset.selectedTalents = talents;
