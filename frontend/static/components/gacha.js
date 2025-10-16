@@ -7,6 +7,7 @@ const GachaPage = {
   _seasonCatalog: [],
   _seasonMap: {},
   _selectedSeason: null,
+  _targetSkinId: null,
 
   async render() {
     const [me, od, seasonData] = await Promise.all([
@@ -24,6 +25,7 @@ const GachaPage = {
     });
     if (!this._selectedSeason) {
       this._selectedSeason = seasonData?.latest || (seasons[0]?.id ?? null);
+      this._targetSkinId = null;
     }
     const odds = od.odds || od;
     const lim = od.limits || { brick_pity_max:75, purple_pity_max:20 };
@@ -105,8 +107,21 @@ const GachaPage = {
       seasonSelect.addEventListener("change", () => {
         const value = seasonSelect.value || null;
         this._selectedSeason = value || null;
+        this._targetSkinId = null;
         const infoBox = byId("gacha-season-info");
         if (infoBox) infoBox.innerHTML = this._seasonInfoHtml(this._selectedSeason);
+        const targetSelect = byId("gacha-target");
+        if (targetSelect) {
+          targetSelect.addEventListener("change", () => {
+            this._targetSkinId = targetSelect.value || null;
+          });
+        }
+      });
+    }
+    const targetSelect = byId("gacha-target");
+    if (targetSelect) {
+      targetSelect.addEventListener("change", () => {
+        this._targetSkinId = targetSelect.value || null;
       });
     }
   },
@@ -161,6 +176,11 @@ const GachaPage = {
   },
   _seasonLabel(id) {
     if (!id) {
+      if (this._seasonCatalog && this._seasonCatalog.length) {
+        const latest = this._seasonCatalog[this._seasonCatalog.length - 1];
+        const label = latest?.name || latest?.id || "最新赛季";
+        return `${label}（默认）`;
+      }
       return this._seasonCatalog && this._seasonCatalog.length
         ? `${this._seasonCatalog[0].name || "最新赛季"}（默认）`
         : "默认奖池";
@@ -201,6 +221,30 @@ const GachaPage = {
     ];
     const tagline = entry.tagline ? `<div class="gacha-season__tagline">主题：${this._esc(entry.tagline)}</div>` : "";
     const desc = entry.description ? `<div class="gacha-season__desc">${this._esc(entry.description)}</div>` : "";
+    const bricks = entry.bricks || [];
+    let targetHtml = "";
+    if (bricks.length >= 2) {
+      const current = bricks.find(b => String(b.skin_id) === String(this._targetSkinId));
+      const defaultTarget = current ? current.skin_id : bricks[0].skin_id;
+      this._targetSkinId = defaultTarget;
+      const options = bricks.map(brick => {
+        const value = brick.skin_id;
+        const label = this._esc(brick.name || brick.skin_id || "未知砖皮");
+        const selected = String(value) === String(defaultTarget) ? "selected" : "";
+        return `<option value="${value}" ${selected}>${label}</option>`;
+      }).join("");
+      targetHtml = `
+        <div class="gacha-season__target">
+          <label class="input-label" for="gacha-target">砖皮定轨</label>
+          <select id="gacha-target">${options}</select>
+          <div class="muted small">抽取砖皮时将优先获得所选皮肤。</div>
+        </div>`;
+    } else if (bricks.length === 1) {
+      this._targetSkinId = bricks[0].skin_id;
+      targetHtml = `<div class="muted small">当前赛季仅有一款砖皮：${this._esc(bricks[0].name || bricks[0].skin_id)}。</div>`;
+    } else {
+      this._targetSkinId = null;
+    }
     const listHtml = groups.map(group => {
       const items = (group.list || []).map(item => {
         const name = this._esc(item?.name || item?.skin_id || "未知皮肤");
@@ -212,7 +256,7 @@ const GachaPage = {
         + `</div>`;
     }).join("");
     return `
-      <div class="gacha-season__meta">${tagline}${desc}</div>
+      <div class="gacha-season__meta">${tagline}${desc}${targetHtml}</div>
       <div class="gacha-season__groups">${listHtml}</div>
     `;
   },
@@ -303,43 +347,66 @@ const GachaPage = {
       }
     }
     if (needs.bricks > 0) {
-      brickQuote = await API.brickQuote(needs.bricks);
+      brickQuote = await API.brickQuote(needs.bricks, this._selectedSeason || null);
+      if ((brickQuote?.missing || 0) > 0) {
+        const seasonName = this._seasonLabel(this._selectedSeason);
+        alert(`当前赛季（${seasonName}）可用的未开砖不足，仅能提供 ${brickQuote.available || 0} 块，请稍后再试。`);
+        throw { message: "" };
+      }
     }
 
     const parts = [];
+    const seasonLabelRaw = this._seasonLabel(this._selectedSeason);
+    const seasonLabel = seasonLabelRaw ? seasonLabelRaw.replace(/（默认）$/, "") : "默认赛季";
     if (needs.keys > 0) {
       const unit = keyUnit ? `（单价 ${keyUnit} 三角币，共 ${keyCost}）` : "";
       parts.push(`钥匙 ×${needs.keys}${unit}`);
     }
     if (needs.bricks > 0) {
       const brickCost = brickQuote?.total_cost || 0;
-      const unit = needs.bricks > 0 ? `（预计 ${brickCost} 三角币）` : "";
-      parts.push(`未开砖 ×${needs.bricks}${unit}`);
+      const unit = brickCost > 0 ? `（共 ${brickCost} 三角币）` : "";
+      parts.push(`${seasonLabel} 未开砖 ×${needs.bricks}${unit}`);
     }
     const detail = [];
     if (brickQuote?.segments?.length) {
       brickQuote.segments.forEach(seg => {
         const label = seg.source === "player" ? "玩家" : "官方";
-        detail.push(`${label} ${seg.price} ×${seg.quantity}`);
+        const segSeasonRaw = seg.season_name || this._seasonLabel(seg.season) || seasonLabel || "默认赛季";
+        const segSeason = segSeasonRaw ? segSeasonRaw.replace(/（默认）$/, "") : "默认赛季";
+        detail.push(`${label} ${segSeason} ${seg.price} ×${seg.quantity}`);
       });
     }
     const totalCost = keyCost + (brickQuote?.total_cost || 0);
-    const intro = totalCost > 0
-      ? `当前钥匙/砖不足，将自动购入所需资源，预计额外花费 ${totalCost} 三角币：`
-      : "当前钥匙/砖不足，将自动购买：";
-    const lines = [intro, ...parts];
+    const lines = [];
+    if (parts.length) {
+      lines.push(`当前钥匙/砖不足，将为本次抽取补齐资源：`);
+      lines.push(...parts);
+    } else {
+      lines.push(`当前钥匙/砖不足，将为本次抽取补齐资源。`);
+    }
+    if (totalCost > 0) {
+      lines.push(`预计总花费：${totalCost} 三角币`);
+    }
     if (detail.length) {
-      lines.push(`预计拆分：${detail.join("，")}`);
+      lines.push(`拆分明细：${detail.join("，")}`);
     }
     lines.push("是否继续？");
     if (!confirm(lines.join("\n"))) {
+      throw { message: "" };
+    }
+    if (totalCost > (me.coins ?? 0)) {
+      const diff = totalCost - (me.coins ?? 0);
+      const ask = confirm(`三角币余额不足，还差 ${diff}。是否前往钱包充值？`);
+      if (ask) {
+        location.hash = "#/wallet";
+      }
       throw { message: "" };
     }
     if (needs.keys > 0) {
       await API.buyKeys(needs.keys);
     }
     if (needs.bricks > 0) {
-      await API.buyBricks(needs.bricks);
+      await API.buyBricks(needs.bricks, this._selectedSeason || null);
     }
     await this._refreshStats();
   },
@@ -371,7 +438,7 @@ const GachaPage = {
 
     // ② 调用后端
     let data;
-    try { data = await API.open(c, this._selectedSeason || null); }
+    try { data = await API.open(c, this._selectedSeason || null, this._targetSkinId || null); }
     catch (e) {
       alert(e.message);
       this._setDrawDisabled(false);

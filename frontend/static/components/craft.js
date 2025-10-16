@@ -7,8 +7,33 @@ const CraftPage = {
   _page: 1,
   _pageSize: 50,
   _skip: false,
+  _seasonCatalog: [],
+  _seasonMap: {},
+  _seasonFilter: "ALL",
 
   async render() {
+    const catalog = await API.seasonCatalog().catch(() => ({ seasons: [], latest: null }));
+    const seasons = Array.isArray(catalog?.seasons) ? catalog.seasons : [];
+    this._seasonCatalog = seasons;
+    this._seasonMap = {};
+    seasons.forEach(season => {
+      if (!season?.id) return;
+      this._seasonMap[season.id] = season;
+      this._seasonMap[String(season.id).toUpperCase()] = season;
+    });
+    if (this._seasonFilter && this._seasonFilter !== "ALL") {
+      const exists = seasons.some(season => String(season.id) === String(this._seasonFilter));
+      if (!exists) this._seasonFilter = "ALL";
+    }
+    const seasonOptions = ['<option value="ALL">全部赛季</option>']
+      .concat(seasons.map(season => {
+        const value = season.id;
+        const selected = this._seasonFilter === value ? 'selected' : '';
+        const label = season.name || value;
+        return `<option value="${value}" ${selected}>${label}</option>`;
+      }))
+      .join("");
+
     // 先渲染骨架，异步加载数据
     setTimeout(()=>this._load(false), 0);
     return `
@@ -18,6 +43,10 @@ const CraftPage = {
           <button class="btn" data-r="GREEN">GREEN → BLUE</button>
           <button class="btn" data-r="BLUE">BLUE → PURPLE</button>
           <button class="btn" data-r="PURPLE">PURPLE → BRICK</button>
+        </div>
+        <div class="input-row" style="gap:12px; flex-wrap:wrap;">
+          <label class="input-label" for="craft-season-filter">赛季筛选</label>
+          <select id="craft-season-filter">${seasonOptions}</select>
         </div>
 
         <!-- 顶部：合成摘要 + 合成按钮 + 跳过动画 -->
@@ -41,6 +70,17 @@ const CraftPage = {
     document.querySelectorAll('[data-r]').forEach(b=>{
       b.onclick = ()=> this._switchRarity(b.dataset.r);
     });
+    const seasonSel = document.getElementById("craft-season-filter");
+    if (seasonSel) {
+      seasonSel.addEventListener("change", () => {
+        const value = seasonSel.value || "ALL";
+        this._seasonFilter = value === "ALL" ? "ALL" : value;
+        this._page = 1;
+        this._renderSummary();
+        this._renderToolbar();
+        this._renderListAndPager();
+      });
+    }
   },
 
   // —— 加载库存：updateOnly=true 时仅更新数据，不重置顶部结果UI —— //
@@ -72,7 +112,21 @@ const CraftPage = {
                  : (typeof x.wear_bp==="number" ? Number((x.wear_bp/100).toFixed(2)) : NaN);
     const grade  = x.grade ?? x.quality ?? "";
     const serial = x.serial ?? x.sn ?? "";
-    return { inv_id, name, rarity, wear, grade, serial };
+    const season = (x.season || x.season_id || "").toUpperCase();
+    return { inv_id, name, rarity, wear, grade, serial, season };
+  },
+
+  _seasonLabel(id){
+    if (!id || id === "ALL") {
+      if (this._seasonCatalog && this._seasonCatalog.length) {
+        const latest = this._seasonCatalog[this._seasonCatalog.length - 1];
+        return latest ? `${latest.name}` : "默认赛季";
+      }
+      return "默认赛季";
+    }
+    const entry = this._seasonMap[id] || this._seasonMap[String(id).toUpperCase()];
+    if (entry && entry.name) return entry.name;
+    return String(id);
   },
 
   _rarityToTarget(r){ return { GREEN:"BLUE", BLUE:"PURPLE", PURPLE:"BRICK" }[r] || ""; },
@@ -146,6 +200,7 @@ const CraftPage = {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
         <div>
           <strong>从 <span class="${this._rarityClass(this._rarity)}">${this._rarity}</span> 合成 → <span class="${this._rarityClass(target)}">${target}</span></strong>
+          <div class="muted small">赛季筛选：${this._seasonFilter === "ALL" ? "全部" : this._seasonLabel(this._seasonFilter)}</div>
         </div>
         <div class="input-row" style="margin:0;">
           <input id="seq-input" placeholder="按序号（当前页）：如 1,3,5-12,20" style="min-width:280px"/>
@@ -168,7 +223,11 @@ const CraftPage = {
 
   _sortedAll() {
     // 全量排序（S>A>B>C，磨损升序）
-    const arr = (this._data[this._rarity] || []).slice();
+    let arr = (this._data[this._rarity] || []).slice();
+    if (this._seasonFilter && this._seasonFilter !== "ALL") {
+      const key = String(this._seasonFilter).toUpperCase();
+      arr = arr.filter(item => String(item.season || "").toUpperCase() === key);
+    }
     const gradeOrder={S:0,A:1,B:2,C:3};
     arr.sort((a,b)=> (gradeOrder[a.grade]??9)-(gradeOrder[b.grade]??9) || ((isNaN(a.wear)?999:a.wear)-(isNaN(b.wear)?999:b.wear)));
     return arr;
@@ -191,13 +250,17 @@ const CraftPage = {
 
     // 表格
     const rows = pageArr.map((x,i)=>{
-      const checked=this._selected.has(x.inv_id)?"checked":"";
+      const selected=this._selected.has(x.inv_id);
       const rc=this._rarityClass(x.rarity);
-      return `<tr>
-        <td><input type="checkbox" data-inv="${x.inv_id}" ${checked}/></td>
+      const seasonLabel = this._seasonLabel(x.season || "");
+      const indicator = selected ? "已选" : "双击";
+      const rowCls = selected ? "is-selected" : "";
+      return `<tr class="${rowCls}" data-inv="${x.inv_id}">
+        <td><span class="craft-indicator ${selected?"is-active":""}">${indicator}</span></td>
         <td>${start + i + 1}</td>
         <td>${x.inv_id}</td>
         <td class="${rc}">${x.name}</td>
+        <td>${seasonLabel}</td>
         <td class="${rc}">${x.rarity}</td>
         <td>${isNaN(x.wear)?"-":x.wear.toFixed(2)}</td>
         <td>${x.grade||"-"}</td>
@@ -208,12 +271,22 @@ const CraftPage = {
     listBox.innerHTML = `
       <h3>可选列表（共 ${total} 件，当前第 ${this._page}/${totalPages} 页；每页 ${this._pageSize}）</h3>
       <table class="table">
-        <thead><tr><th>选</th><th>#</th><th>inv_id</th><th>名称</th><th>稀有度</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
+        <thead><tr><th>选</th><th>#</th><th>inv_id</th><th>名称</th><th>赛季</th><th>稀有度</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      <div class="muted small">提示：双击表格行即可加入/移除合成槽位，切换赛季将保留已选项目。</div>
     `;
-    listBox.querySelectorAll('input[type="checkbox"][data-inv]').forEach(cb=>{
-      cb.onchange = ()=>{ const id=cb.dataset.inv; if(cb.checked)this._selected.add(id); else this._selected.delete(id); this._renderSummary(); };
+    const toggleSelect = (id) => {
+      if (!id) return;
+      if (this._selected.has(id)) this._selected.delete(id);
+      else this._selected.add(id);
+      this._renderSummary();
+      this._renderListAndPager();
+    };
+    listBox.querySelectorAll('tbody tr[data-inv]').forEach(row => {
+      row.addEventListener('dblclick', () => {
+        toggleSelect(row.getAttribute('data-inv'));
+      });
     });
 
     // 单一分页条（底部）

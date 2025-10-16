@@ -6,6 +6,31 @@
     "brick_pink_diamond": "粉钻切面",
     "brick_brushed_metal": "金属拉丝",
     "brick_laser_gradient": "镭射渐变",
+    "brick_prism_spectrum": "棱镜光谱",
+    "brick_medusa_relic": "蛇神遗痕",
+    "brick_arcade_crystal": "水晶贪吃蛇",
+    "brick_arcade_serpent": "像素贪吃蛇",
+    "brick_arcade_blackhawk": "街机黑鹰",
+    "brick_arcade_champion": "拳王",
+    "brick_arcade_default": "电玩标准",
+    "brick_blade_royal": "王牌镶嵌",
+    "brick_fate_blueberry": "蓝莓玉",
+    "brick_fate_brass": "黄铜",
+    "brick_fate_default": "命运经典",
+    "brick_fate_gold": "黄金",
+    "brick_fate_goldenberry": "金莓",
+    "brick_fate_gradient": "命运渐变",
+    "brick_fate_jade": "翡翠绿",
+    "brick_fate_metal": "金属拉丝",
+    "brick_fate_strawberry": "草莓金",
+    "brick_fate_whitepeach": "白桃",
+    "brick_prism2_flux": "棱镜攻势2",
+    "brick_weather_clathrate": "可燃冰",
+    "brick_weather_default": "气象标准",
+    "brick_weather_gradient": "气象渐变",
+    "brick_weather_gundam": "高达气象",
+    "brick_weather_purplebolt": "紫电",
+    "brick_weather_redbolt": "红电",
     // 兼容旧数据
     "prism_flux": "棱镜流光",
     "ember_strata": "余烬分层",
@@ -32,8 +57,23 @@
     trail: "残影拖尾",
     refraction: "晶体折射",
     flux: "相位流动",
+    prism_flux: "棱镜流光",
     bold_tracer: "显眼曳光",
-    kill_counter: "击杀字数"
+    kill_counter: "击杀字数",
+    arcade_core: "街机核心",
+    arcade_glass: "街机玻璃",
+    arcade_glow: "街机辉光",
+    arcade_pulse: "街机脉冲",
+    arcade_trail: "街机拖尾",
+    blade_glow: "王牌辉光",
+    chromatic_flame: "彩焰",
+    fate_glow: "命运辉光",
+    fate_gradient: "命运渐变",
+    medusa_glare: "美杜莎凝视",
+    weather_bolt: "天气闪电",
+    weather_frost: "气象霜华",
+    weather_glow: "气象辉光",
+    weather_gradient: "气象渐变"
   };
 
   const TEMPLATE_CLASS_MAP = {
@@ -43,6 +83,31 @@
     brick_pink_diamond: "tmpl-brick-pink",
     brick_brushed_metal: "tmpl-brick-brushed",
     brick_laser_gradient: "tmpl-brick-laser",
+    brick_prism_spectrum: "tmpl-prism",
+    brick_medusa_relic: "tmpl-urban",
+    brick_arcade_crystal: "tmpl-aurora",
+    brick_arcade_serpent: "tmpl-aurora",
+    brick_arcade_blackhawk: "tmpl-urban",
+    brick_arcade_champion: "tmpl-prism",
+    brick_arcade_default: "tmpl-prism",
+    brick_blade_royal: "tmpl-field",
+    brick_fate_blueberry: "tmpl-field",
+    brick_fate_brass: "tmpl-field",
+    brick_fate_default: "tmpl-field",
+    brick_fate_gold: "tmpl-field",
+    brick_fate_goldenberry: "tmpl-field",
+    brick_fate_gradient: "tmpl-laser",
+    brick_fate_jade: "tmpl-field",
+    brick_fate_metal: "tmpl-brick-brushed",
+    brick_fate_strawberry: "tmpl-laser",
+    brick_fate_whitepeach: "tmpl-prism",
+    brick_prism2_flux: "tmpl-prism",
+    brick_weather_clathrate: "tmpl-aurora",
+    brick_weather_default: "tmpl-prism",
+    brick_weather_gradient: "tmpl-laser",
+    brick_weather_gundam: "tmpl-prism",
+    brick_weather_purplebolt: "tmpl-prism",
+    brick_weather_redbolt: "tmpl-ember",
     prism_flux: "tmpl-prism",
     ember_strata: "tmpl-ember",
     ion_tessellate: "tmpl-ion",
@@ -69,7 +134,21 @@
     refraction: "effect-refraction",
     flux: "effect-flux",
     bold_tracer: "effect-bold-tracer",
-    kill_counter: "effect-kill-counter"
+    kill_counter: "effect-kill-counter",
+    arcade_core: "effect-glow",
+    arcade_glass: "effect-sheen",
+    arcade_glow: "effect-glow",
+    arcade_pulse: "effect-pulse",
+    arcade_trail: "effect-trail",
+    blade_glow: "effect-glow",
+    chromatic_flame: "effect-sparkle",
+    fate_glow: "effect-glow",
+    fate_gradient: "effect-sheen",
+    medusa_glare: "effect-glow",
+    weather_bolt: "effect-trail",
+    weather_frost: "effect-sheen",
+    weather_glow: "effect-glow",
+    weather_gradient: "effect-sheen"
   };
 
   const COLOR_LOOKUP = {
@@ -95,6 +174,88 @@
   };
 
   const DEFAULT_COLOR = { hex: "#889199", name: "军械灰" };
+
+  function rgbToHsl(r, g, b){
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h = 0, s = 0;
+    const l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h *= 60;
+    }
+    return { h, s, l };
+  }
+
+  function resolveHueName(h){
+    const table = [
+      { max: 15, name: "猩红" },
+      { max: 45, name: "暮橙" },
+      { max: 75, name: "琥金" },
+      { max: 105, name: "嫩绿" },
+      { max: 135, name: "翠绿" },
+      { max: 165, name: "青翠" },
+      { max: 195, name: "湖蓝" },
+      { max: 225, name: "霁蓝" },
+      { max: 255, name: "靛青" },
+      { max: 285, name: "暮紫" },
+      { max: 315, name: "绛紫" },
+      { max: 345, name: "玫红" },
+      { max: 360, name: "猩红" }
+    ];
+    const hue = ((h % 360) + 360) % 360;
+    for (const entry of table) {
+      if (hue <= entry.max) return entry.name;
+    }
+    return "多彩";
+  }
+
+  function buildTonePrefix(s, l){
+    if (s < 0.12) {
+      if (l < 0.12) return "深邃";
+      if (l < 0.25) return "玄";
+      if (l < 0.4) return "暗";
+      if (l < 0.6) return "中性";
+      if (l < 0.78) return "浅";
+      return "莹";
+    }
+    if (l < 0.2) return "深";
+    if (l < 0.35) return "暗";
+    if (l > 0.82) return "极浅";
+    if (l > 0.65) return "浅";
+    if (s > 0.65 && l > 0.5) return "亮";
+    return "";
+  }
+
+  function grayscaleName(l){
+    if (l < 0.08) return "墨黑";
+    if (l < 0.18) return "夜黑";
+    if (l < 0.32) return "玄灰";
+    if (l < 0.5) return "石墨灰";
+    if (l < 0.68) return "钛银";
+    if (l < 0.82) return "月白";
+    return "雪白";
+  }
+
+  function autoColorName(hex){
+    const { r, g, b } = hexToRgb(hex);
+    const { h, s, l } = rgbToHsl(r, g, b);
+    const light = Math.max(0, Math.min(1, l));
+    const sat = Math.max(0, Math.min(1, s));
+    if (sat < 0.12) {
+      return grayscaleName(light);
+    }
+    const tone = buildTonePrefix(sat, light);
+    const base = resolveHueName(h);
+    return `${tone ? tone : ""}${base}`;
+  }
 
   function esc(str){
     return String(str == null ? "" : str)
@@ -124,10 +285,10 @@
     if (!entry) return DEFAULT_COLOR;
     if (typeof entry === "string" || typeof entry === "number") {
       const hex = sanitizeHex(entry);
-      return { hex, name: COLOR_LOOKUP[hex] || hex };
+      return { hex, name: COLOR_LOOKUP[hex] || autoColorName(hex) };
     }
     const hex = sanitizeHex(entry.hex || entry.color || entry.value);
-    const name = entry.name || COLOR_LOOKUP[hex] || hex;
+    const name = entry.name || COLOR_LOOKUP[hex] || autoColorName(hex);
     return { hex, name };
   }
 
