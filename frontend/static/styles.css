@@ -544,7 +544,11 @@ h3 + .muted.small { margin-top:-6px; }
 .cultivation-summary__header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
 .cultivation-summary__title { font-size:20px; font-weight:600; }
 .cultivation-summary__stats { font-size:14px; color:#94a3b8; }
-.cultivation-summary__last { font-size:14px; margin-bottom:6px; }
+.cultivation-summary__last { font-size:14px; margin-bottom:6px; display:flex; flex-direction:column; gap:10px; }
+.cultivation-summary__headline { font-size:15px; font-weight:600; color:#f8fafc; }
+.cultivation-summary__stats-grid { margin-top:8px; }
+.cultivation-summary__talents { display:flex; flex-wrap:wrap; gap:8px; font-size:13px; color:#cbd5f5; }
+.cultivation-summary__collections { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
 .cultivation-summary__reward { color:#facc15; margin-bottom:6px; font-weight:600; }
 .cultivation-summary__history { margin-top:12px; }
 .cultivation-summary__history .label { font-size:13px; color:#94a3b8; margin-bottom:4px; display:block; }
@@ -565,7 +569,24 @@ h3 + .muted.small { margin-top:-6px; }
 .cultivation-run__stats .stat span { display:block; font-size:12px; color:#94a3b8; }
 .cultivation-run__stats .stat strong { font-size:18px; font-weight:600; color:#f8fafc; }
 .cultivation-run__talents { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.cultivation-run__collections { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:12px; }
 .talent-chip { background:rgba(59,130,246,0.15); color:#bfdbfe; padding:6px 12px; border-radius:999px; font-size:13px; }
+.cultivation-lineage { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin:8px 0; }
+.cultivation-lineage__item { background:rgba(148,163,184,0.08); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:4px; }
+.cultivation-lineage__item .label { font-size:12px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.08em; }
+.cultivation-lineage__item strong { font-size:15px; color:#e2e8f0; }
+.cultivation-lineage__item .meta { font-size:12px; color:#94a3b8; }
+.cultivation-collection { background:rgba(148,163,184,0.05); border:1px solid rgba(148,163,184,0.18); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:6px; }
+.cultivation-collection__title { font-size:12px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.08em; }
+.cultivation-collection__list { display:flex; flex-wrap:wrap; gap:6px; }
+.cultivation-collection__empty { font-size:12px; color:#64748b; }
+.cultivation-chip { background:rgba(59,130,246,0.15); color:#bfdbfe; border-radius:999px; display:inline-flex; align-items:center; gap:6px; padding:4px 10px; font-size:12px; }
+.cultivation-chip__label { font-weight:600; }
+.cultivation-chip__note { font-size:11px; color:#f8fafc; opacity:0.8; }
+.cultivation-stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; }
+.cultivation-stat-pill { background:rgba(148,163,184,0.08); border-radius:10px; padding:8px 10px; display:flex; justify-content:space-between; align-items:center; font-size:13px; color:#e2e8f0; }
+.cultivation-stat-pill span { color:#94a3b8; }
+.cultivation-stat-pill strong { font-size:15px; }
 .cultivation-outcome { margin-bottom:12px; padding:12px; background:rgba(56,189,248,0.12); border-radius:10px; font-size:13px; color:#cbd5f5; border:1px solid rgba(148,163,184,0.18); display:flex; flex-direction:column; gap:4px; }
 .cultivation-outcome__narrative { font-weight:600; line-height:1.5; }
 .cultivation-outcome__stats { font-size:12px; color:#bae6fd; }
@@ -595,6 +616,28 @@ h3 + .muted.small { margin-top:-6px; }
 .cultivation-log li.tone-highlight { color:#facc15; }
 .cultivation-log li.tone-chance { color:#c084fc; }
 .cultivation-log li.tone-warning { color:#fbbf24; }
+
+.cultivation-ending__log li.tone-info { color:#cbd5f5; }
+.cultivation-ending__log li.tone-success { color:#4ade80; }
+.cultivation-ending__log li.tone-danger { color:#f87171; }
+.cultivation-ending__log li.tone-highlight { color:#facc15; }
+.cultivation-ending__log li.tone-chance { color:#c084fc; }
+.cultivation-ending__log li.tone-warning { color:#fbbf24; }
+
+.cultivation-ending { display:flex; justify-content:center; }
+.cultivation-ending__card { background:#0f172a; border:1px solid rgba(148,163,184,0.35); border-radius:16px; padding:24px; color:#e2e8f0; display:flex; flex-direction:column; gap:16px; width:100%; max-width:760px; margin:0 auto; }
+.cultivation-ending__header { display:flex; flex-direction:column; gap:6px; }
+.cultivation-ending__title { font-size:22px; font-weight:700; }
+.cultivation-ending__meta { font-size:14px; color:#94a3b8; }
+.cultivation-ending__best { font-size:13px; color:#facc15; font-weight:600; }
+.cultivation-ending__reward { color:#facc15; font-weight:600; margin-top:-4px; }
+.cultivation-ending__stats { }
+.cultivation-ending__talents { display:flex; flex-wrap:wrap; gap:8px; font-size:13px; color:#cbd5f5; }
+.cultivation-ending__collections { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
+.cultivation-ending__log-wrap { display:flex; flex-direction:column; gap:6px; }
+.cultivation-ending__log-wrap .label { font-size:13px; color:#94a3b8; }
+.cultivation-ending__log { list-style:none; margin:0; padding:10px 14px; max-height:200px; overflow:auto; background:rgba(148,163,184,0.06); border-radius:10px; display:flex; flex-direction:column; gap:6px; }
+.cultivation-ending__actions { display:flex; justify-content:flex-end; }
 
 .cultivation-lobby__meta { font-size:13px; color:#94a3b8; margin-bottom:12px; }
 .cultivation-lobby__actions { margin-bottom:12px; }
