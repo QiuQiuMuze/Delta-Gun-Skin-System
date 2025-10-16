@@ -243,6 +243,7 @@ const CookieFactoryPage = {
   },
   showError(msg) {
     this._lastError = msg;
+    window.AudioEngine?.playSfx?.('error');
     if (this._errorTimer) {
       clearTimeout(this._errorTimer);
       this._errorTimer = null;
@@ -634,7 +635,10 @@ const CookieFactoryPage = {
     if (!root) return;
     const big = document.getElementById("cookie-big");
     if (big) {
-      big.onclick = () => this.handleAction({ type: "click", amount: 1 });
+      big.onclick = () => {
+        window.AudioEngine?.playSfx?.('cookie-click');
+        this.handleAction({ type: 'click', amount: 1 });
+      };
     }
     const goldenBtn = document.getElementById("cookie-golden");
     if (goldenBtn) {
@@ -644,7 +648,8 @@ const CookieFactoryPage = {
           this.showError(`黄金饼干还在酝酿，大约 ${mins} 分钟后再来试试。`);
           return;
         }
-        this.handleAction({ type: "golden" });
+        window.AudioEngine?.playSfx?.('cookie-bonus');
+        this.handleAction({ type: 'golden' });
       };
     }
     const loginBtn = document.getElementById("cookie-login");
@@ -659,12 +664,16 @@ const CookieFactoryPage = {
           this.showError(`糖块尚未成熟，还需约 ${hours} 小时。`);
           return;
         }
-        this.handleAction({ type: "sugar" });
+        window.AudioEngine?.playSfx?.('cookie-bonus');
+        this.handleAction({ type: 'sugar' });
       };
     }
     const prestigeBtn = document.getElementById("cookie-prestige");
     if (prestigeBtn) {
-      prestigeBtn.onclick = () => this.handleAction({ type: "prestige" });
+      prestigeBtn.onclick = () => {
+        window.AudioEngine?.playSfx?.('cookie-prestige');
+        this.handleAction({ type: 'prestige' });
+      };
     }
     root.querySelectorAll('[data-build]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -678,6 +687,7 @@ const CookieFactoryPage = {
           this.showError(`饼干不足，还差 ${this.formatNumber(shortage)} 枚才能购入该建筑。`);
           return;
         }
+        window.AudioEngine?.playSfx?.('cookie-upgrade');
         this.handleAction({ type: 'buy_building', building: key });
       });
     });
@@ -691,6 +701,7 @@ const CookieFactoryPage = {
           this.showError(`糖块不足，需要 ${sugarCost} 颗糖块才能开展该小游戏。`);
           return;
         }
+        window.AudioEngine?.playSfx?.('cookie-upgrade');
         this.handleAction({ type: 'mini', mini: key });
       });
     });
@@ -702,6 +713,7 @@ const CookieFactoryPage = {
           this.showError('暂无可领取的砖奖励，继续生产或签到即可累积。');
           return;
         }
+        window.AudioEngine?.playSfx?.('reward');
         this.handleAction({ type: 'claim' });
       });
     }
@@ -714,6 +726,7 @@ const CookieFactoryPage = {
         this.updateView();
       });
     });
+    window.AudioEngine?.decorateArea?.(root);
   },
   async handleLogin() {
     if (this._loading) return;
@@ -722,10 +735,49 @@ const CookieFactoryPage = {
       this._data = await API.cookieLogin();
       this.clearError();
       this.updateView();
+      window.AudioEngine?.playSfx?.('reward');
     } catch (e) {
       this.showError(e.message || '签到失败');
     } finally {
       this._loading = false;
+    }
+  },
+  playActionResultSound(payload, result) {
+    if (!window.AudioEngine) return;
+    const type = payload?.type;
+    if (type === 'click') {
+      return;
+    }
+    if (result?.claimed != null) {
+      window.AudioEngine.playSfx('reward');
+      return;
+    }
+    if (type === 'golden' || result?.bonus != null) {
+      window.AudioEngine.playSfx('cookie-bonus');
+      return;
+    }
+    if (type === 'buy_building') {
+      window.AudioEngine.playSfx('cookie-upgrade');
+      return;
+    }
+    if (type === 'mini') {
+      window.AudioEngine.playSfx('cookie-upgrade');
+      return;
+    }
+    if (type === 'prestige') {
+      window.AudioEngine.playSfx('cookie-prestige');
+      return;
+    }
+    if (type === 'sugar') {
+      window.AudioEngine.playSfx('cookie-bonus');
+      return;
+    }
+    if (type === 'claim') {
+      window.AudioEngine.playSfx('reward');
+      return;
+    }
+    if (result?.gained != null) {
+      window.AudioEngine.playSfx('cookie-click');
     }
   },
   async handleAction(payload) {
@@ -735,6 +787,7 @@ const CookieFactoryPage = {
       this._data = await API.cookieAct(payload);
       this.clearError();
       this.updateView();
+      this.playActionResultSound(payload, this._data?.action_result);
     } catch (e) {
       this.showError(e.message || '操作失败');
     } finally {
