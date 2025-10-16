@@ -22,6 +22,10 @@ const AdminPage = {
           <label><input type="checkbox" id="cookie-toggle"/> 对玩家开放饼干工厂</label>
         </div>
         <div class="muted" id="cookie-toggle-desc">加载中...</div>
+        <div class="input-row" style="margin-top:8px;">
+          <label><input type="checkbox" id="cultivation-toggle"/> 开启“模拟修仙”随机剧情玩法</label>
+        </div>
+        <div class="muted" id="cultivation-toggle-desc">加载中...</div>
       </div>
 
       <div class="card">
@@ -120,6 +124,8 @@ const AdminPage = {
     const modeDesc = byId("auth-mode-desc");
     const cookieSwitch = byId("cookie-toggle");
     const cookieDesc = byId("cookie-toggle-desc");
+    const cultivationSwitch = byId("cultivation-toggle");
+    const cultivationDesc = byId("cultivation-toggle-desc");
     modeDesc.textContent = "加载中...";
     if (cookieDesc) cookieDesc.textContent = "加载中...";
 
@@ -164,7 +170,17 @@ const AdminPage = {
       const total = info.total_bricks != null ? info.total_bricks : "-";
       cookieDesc.innerHTML = enabled
         ? `当前已向玩家开放。参与玩家：<b>${profiles}</b> · 累计产出砖：<b>${total}</b>`
-        : `当前为关闭状态，普通玩家无法看到该页面。`; 
+        : `当前为关闭状态，普通玩家无法看到该页面。`;
+    };
+
+    const updateCultivationDesc = (info = {}) => {
+      if (!cultivationDesc) return;
+      const enabled = !!info.cultivation_enabled;
+      const runs = info.cultivation_runs != null ? info.cultivation_runs : "-";
+      const best = info.cultivation_best != null ? info.cultivation_best : "-";
+      cultivationDesc.innerHTML = enabled
+        ? `模拟修仙已开启，累计开局 <b>${runs}</b> 次 · 服务器最高得分 <b>${best}</b>`
+        : `关闭状态，玩家将看不到修仙小游戏入口。`;
     };
 
     const loadCookie = async () => {
@@ -174,12 +190,18 @@ const AdminPage = {
         const info = await API.cookieAdminStatus();
         cookieSwitch.checked = !!info.enabled;
         updateCookieDesc(info);
+        if (cultivationSwitch) cultivationSwitch.checked = !!info.cultivation_enabled;
+        updateCultivationDesc(info);
         API._features = {
           ...(API._features || {}),
           cookie_factory: {
             enabled: !!info.enabled,
             available: !!info.enabled || !!API._me?.is_admin,
-          }
+          },
+          cultivation: {
+            enabled: !!info.cultivation_enabled,
+            available: !!info.cultivation_enabled || !!API._me?.is_admin,
+          },
         };
         if (typeof renderNav === 'function') renderNav();
       } catch (e) {
@@ -206,8 +228,25 @@ const AdminPage = {
           cookieSwitch.disabled = false;
         }
       };
-      await loadCookie();
     }
+
+    if (cultivationSwitch) {
+      cultivationSwitch.onchange = async () => {
+        const desired = !!cultivationSwitch.checked;
+        cultivationSwitch.disabled = true;
+        try {
+          await API.cookieCultivationToggle(desired);
+          await loadCookie();
+        } catch (e) {
+          alert(e.message || '更新失败');
+          await loadCookie();
+        } finally {
+          cultivationSwitch.disabled = false;
+        }
+      };
+    }
+
+    await loadCookie();
 
     // —— 渲染函数们 —— //
     const renderUsers = (items=[])=>{
