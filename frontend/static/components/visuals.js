@@ -288,7 +288,11 @@
       return { hex, name: COLOR_LOOKUP[hex] || autoColorName(hex) };
     }
     const hex = sanitizeHex(entry.hex || entry.color || entry.value);
-    const name = entry.name || COLOR_LOOKUP[hex] || autoColorName(hex);
+    let name = entry.name || entry.label || "";
+    if (name) name = String(name).trim();
+    if (!name || /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(name)) {
+      name = COLOR_LOOKUP[hex] || autoColorName(hex);
+    }
     return { hex, name };
   }
 
