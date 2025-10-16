@@ -9,24 +9,24 @@
     "brick_prism_spectrum": "棱镜光谱",
     "brick_medusa_relic": "蛇神遗痕",
     "brick_arcade_crystal": "水晶贪吃蛇",
-    "brick_arcade_serpent": "像素贪吃蛇",
-    "brick_arcade_blackhawk": "街机黑鹰",
+    "brick_arcade_serpent": "贪吃蛇",
+    "brick_arcade_blackhawk": "黑鹰坠落",
     "brick_arcade_champion": "拳王",
-    "brick_arcade_default": "电玩标准",
+    "brick_arcade_default": "普通模板",
     "brick_blade_royal": "王牌镶嵌",
     "brick_fate_blueberry": "蓝莓玉",
     "brick_fate_brass": "黄铜",
-    "brick_fate_default": "命运经典",
+    "brick_fate_default": "正常模板",
     "brick_fate_gold": "黄金",
     "brick_fate_goldenberry": "金莓",
-    "brick_fate_gradient": "命运渐变",
+    "brick_fate_gradient": "渐变（色彩随机）",
     "brick_fate_jade": "翡翠绿",
     "brick_fate_metal": "金属拉丝",
     "brick_fate_strawberry": "草莓金",
     "brick_fate_whitepeach": "白桃",
     "brick_prism2_flux": "棱镜攻势2",
     "brick_weather_clathrate": "可燃冰",
-    "brick_weather_default": "气象标准",
+    "brick_weather_default": "普通模板",
     "brick_weather_gradient": "气象渐变",
     "brick_weather_gundam": "高达气象",
     "brick_weather_purplebolt": "紫电",
@@ -288,7 +288,11 @@
       return { hex, name: COLOR_LOOKUP[hex] || autoColorName(hex) };
     }
     const hex = sanitizeHex(entry.hex || entry.color || entry.value);
-    const name = entry.name || COLOR_LOOKUP[hex] || autoColorName(hex);
+    let name = entry.name || entry.label || "";
+    if (name) name = String(name).trim();
+    if (!name || /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(name)) {
+      name = COLOR_LOOKUP[hex] || autoColorName(hex);
+    }
     return { hex, name };
   }
 
