@@ -288,6 +288,11 @@ const GachaPage = {
   },
   _modelLabel(model) {
     const key = String(model || "").toLowerCase();
+    if (!key) return "-";
+    if (window.SkinVisuals && typeof window.SkinVisuals.modelLabel === "function") {
+      const label = window.SkinVisuals.modelLabel(key);
+      if (label) return label;
+    }
     const map = {
       assault: "突击步枪",
       battle: "战斗步枪",
@@ -295,7 +300,6 @@ const GachaPage = {
       bullpup: "无托步枪",
       futuristic: "能量武器"
     };
-    if (!key) return "-";
     return map[key] || model || key;
   },
   _seasonInfoHtml(seasonId) {
