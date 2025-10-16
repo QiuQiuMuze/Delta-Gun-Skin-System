@@ -140,7 +140,12 @@ const API = {
     if (season) usp.append("season", season);
     return API.json(`/shop/brick-quote?${usp.toString()}`);
   },
-  odds: () => API.json("/odds"),
+  odds: (season = null) => {
+    const usp = new URLSearchParams();
+    if (season) usp.append("season", season);
+    const suffix = usp.toString() ? `?${usp.toString()}` : "";
+    return API.json(`/odds${suffix}`);
+  },
   seasonCatalog: async function(force = false) {
     if (!force && this._seasonCatalog) return this._seasonCatalog;
     const data = await API.json("/seasons/catalog");

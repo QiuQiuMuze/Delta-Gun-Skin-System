@@ -59,7 +59,7 @@
     flux: "相位流动",
     prism_flux: "棱镜流光",
     bold_tracer: "显眼曳光",
-    kill_counter: "击杀字数",
+    kill_counter: "击杀计数",
     arcade_core: "街机核心",
     arcade_glass: "街机玻璃",
     arcade_glow: "街机辉光",
@@ -1346,16 +1346,24 @@
     const attachRaw = ensureArray(v.attachments).map(normalizeColor).filter(Boolean);
     const templateKey = v.template ? String(v.template).toLowerCase() : "";
     const effectsRaw = ensureArray(v.effects).map(e => String(e || "").toLowerCase()).filter(Boolean);
+    const templateLabelRaw = v.template_label || v.templateLabel || "";
+    const providedEffectLabels = Array.isArray(v.effect_labels)
+      ? v.effect_labels.map(lbl => String(lbl || "").trim()).filter(Boolean)
+      : null;
     const modelKey = v.model ? String(v.model) : "";
 
     return {
       bodyColors: bodyRaw.length ? bodyRaw : [DEFAULT_COLOR],
       attachmentColors: attachRaw.length ? attachRaw : [DEFAULT_COLOR],
       template: templateKey,
-      templateLabel: templateKey ? (TEMPLATE_LABELS[templateKey] || templateKey) : "无模板",
+      templateLabel: templateLabelRaw
+        ? templateLabelRaw
+        : (templateKey ? (TEMPLATE_LABELS[templateKey] || templateKey) : "无模板"),
       hidden: !!v.hidden_template,
       effects: effectsRaw,
-      effectsLabel: effectsRaw.length ? effectsRaw.map(e => EFFECT_LABELS[e] || e).join("、") : "无特效",
+      effectsLabel: (providedEffectLabels && providedEffectLabels.length)
+        ? providedEffectLabels.join("、")
+        : (effectsRaw.length ? effectsRaw.map(e => EFFECT_LABELS[e] || e).join("、") : "无特效"),
       bodyText: (bodyRaw.length ? bodyRaw : [DEFAULT_COLOR]).map(c => c.name).join(" / "),
       attachmentText: (attachRaw.length ? attachRaw : [DEFAULT_COLOR]).map(c => c.name).join(" / "),
       model: modelKey,

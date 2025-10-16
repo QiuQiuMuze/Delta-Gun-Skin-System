@@ -3,7 +3,8 @@ const CraftPage = {
   _rarity: "GREEN",
   _data: { GREEN:[], BLUE:[], PURPLE:[] },
   _selected: new Set(),
-  _indexMap: [],            // 当前“页内”序号 → inv_id
+  _selectedMeta: new Map(),
+  _indexMap: [],            // 当前页条目（含 inv_id & 数据）
   _page: 1,
   _pageSize: 50,
   _skip: false,
@@ -117,14 +118,16 @@ const CraftPage = {
   },
 
   _seasonLabel(id){
-    if (!id || id === "ALL") {
+    const keyRaw = id === "ALL" ? "" : id;
+    const key = String(keyRaw == null ? "" : keyRaw).toUpperCase();
+    if (!key || key === "UNASSIGNED") {
       if (this._seasonCatalog && this._seasonCatalog.length) {
         const latest = this._seasonCatalog[this._seasonCatalog.length - 1];
-        return latest ? `${latest.name}` : "默认赛季";
+        return latest?.name || latest?.id || "最新赛季";
       }
-      return "默认赛季";
+      return "最新赛季";
     }
-    const entry = this._seasonMap[id] || this._seasonMap[String(id).toUpperCase()];
+    const entry = this._seasonMap[key] || this._seasonMap[key.toUpperCase()];
     if (entry && entry.name) return entry.name;
     return String(id);
   },
@@ -160,6 +163,7 @@ const CraftPage = {
     this._rarity = r;
     this._page = 1;                // 切换时回到第 1 页
     this._selected.clear();        // 切换时清空已选
+    this._selectedMeta.clear();
     document.querySelectorAll('[data-r]').forEach(b=> b.classList.toggle("active", b.dataset.r===r));
 
     // 清空顶部动画/结果（只在切换稀有度时清）
@@ -176,11 +180,21 @@ const CraftPage = {
     const sel = Array.from(this._selected);
     const box = byId("craft-summary");
     box.style.display = "block";
+    const entries = sel.map(id => this._resolveMeta(id));
+    const chipsHtml = entries.length
+      ? entries.map(entry => {
+          const key = this._id(entry?.inv_id);
+          const name = this._esc(entry?.name || key || "");
+          const seasonText = this._esc(this._seasonLabel(entry?.season || ""));
+          const extra = seasonText ? `（${seasonText}）` : "";
+          return `<span class="badge craft-selected-item" data-selected="${key}" title="双击移除">${name}${extra}</span>`;
+        }).join("")
+      : `<span class="badge">（空）</span>`;
     box.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
         <div>已选：<strong>${sel.length}</strong> / ${need}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;max-height:100px;overflow:auto;">
-          ${sel.map(id=>`<span class="badge">${id}</span>`).join("") || `<span class="badge">（空）</span>`}
+        <div class="craft-selected-list" style="display:flex;gap:6px;flex-wrap:wrap;max-height:100px;overflow:auto;">
+          ${chipsHtml}
         </div>
         <div>
           <button class="btn" id="do-craft" ${sel.length===need?"":"disabled"}>合成</button>
@@ -190,6 +204,14 @@ const CraftPage = {
     `;
     byId("do-craft").onclick = ()=> this._doCraft(sel, need);
     const sk = byId("skip"); if (sk) sk.onclick = ()=> this._skip = true;
+    box.querySelectorAll('[data-selected]').forEach(chip => {
+      chip.addEventListener('dblclick', () => {
+        const key = chip.getAttribute('data-selected');
+        this._removeSelection(key);
+        this._renderSummary();
+        this._renderListAndPager();
+      });
+    });
   },
 
   _renderToolbar(){
@@ -213,12 +235,20 @@ const CraftPage = {
       </div>
     `;
     byId("seq-apply").onclick = ()=>{ const txt=(byId("seq-input").value||"").trim(); if(!txt)return;
-      const idxs=this._parseSeq(txt,this._indexMap.length); idxs.forEach(i=>{const inv=this._indexMap[i-1]; if(inv)this._selected.add(inv);});
+      const idxs=this._parseSeq(txt,this._indexMap.length); idxs.forEach(i=>{
+        const entry=this._indexMap[i-1];
+        if(entry && entry.item){ this._trackSelection(entry.item); }
+      });
       this._renderListAndPager(); this._renderSummary(); };
     byId("auto-low").onclick = ()=>{ this._autoPick("low");  this._renderListAndPager(); this._renderSummary(); };
     byId("auto-high").onclick= ()=>{ this._autoPick("high"); this._renderListAndPager(); this._renderSummary(); };
     byId("auto-rand").onclick= ()=>{ this._autoPick("rand"); this._renderListAndPager(); this._renderSummary(); };
-    byId("sel-clear").onclick = ()=>{ this._selected.clear(); this._renderListAndPager(); this._renderSummary(); };
+    byId("sel-clear").onclick = ()=>{
+      this._selected.clear();
+      this._selectedMeta.clear();
+      this._renderListAndPager();
+      this._renderSummary();
+    };
   },
 
   _sortedAll() {
@@ -238,28 +268,31 @@ const CraftPage = {
     const pager = byId("craft-pagination");
 
     const all = this._sortedAll();
-    const total = all.length;
+    const selectedKeys = new Set(Array.from(this._selected));
+    const available = all.filter(item => !selectedKeys.has(this._id(item)));
+    const total = available.length;
     const totalPages = Math.max(1, Math.ceil(total / this._pageSize));
     this._page = Math.min(Math.max(1, this._page), totalPages);
 
     const start = (this._page - 1) * this._pageSize;
-    const pageArr = all.slice(start, start + this._pageSize);
+    const pageArr = available.slice(start, start + this._pageSize);
 
     // 页内索引
-    this._indexMap = pageArr.map(x=>x.inv_id);
+    this._indexMap = pageArr.map(x=>({ id: this._id(x), item: x }));
 
     // 表格
     const rows = pageArr.map((x,i)=>{
-      const selected=this._selected.has(x.inv_id);
+      const key=this._id(x);
+      const selected=this._selected.has(key);
       const rc=this._rarityClass(x.rarity);
       const seasonLabel = this._seasonLabel(x.season || "");
       const indicator = selected ? "已选" : "双击";
       const rowCls = selected ? "is-selected" : "";
-      return `<tr class="${rowCls}" data-inv="${x.inv_id}">
+      return `<tr class="${rowCls}" data-inv="${key}">
         <td><span class="craft-indicator ${selected?"is-active":""}">${indicator}</span></td>
         <td>${start + i + 1}</td>
         <td>${x.inv_id}</td>
-        <td class="${rc}">${x.name}</td>
+        <td class="${rc} craft-name" data-name="${key}">${this._esc(x.name)}</td>
         <td>${seasonLabel}</td>
         <td class="${rc}">${x.rarity}</td>
         <td>${isNaN(x.wear)?"-":x.wear.toFixed(2)}</td>
@@ -274,18 +307,16 @@ const CraftPage = {
         <thead><tr><th>选</th><th>#</th><th>inv_id</th><th>名称</th><th>赛季</th><th>稀有度</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <div class="muted small">提示：双击表格行即可加入/移除合成槽位，切换赛季将保留已选项目。</div>
+      <div class="muted small">提示：双击枪械名称即可加入合成槽位，切换赛季将保留已选项目。</div>
     `;
-    const toggleSelect = (id) => {
-      if (!id) return;
-      if (this._selected.has(id)) this._selected.delete(id);
-      else this._selected.add(id);
-      this._renderSummary();
-      this._renderListAndPager();
-    };
-    listBox.querySelectorAll('tbody tr[data-inv]').forEach(row => {
-      row.addEventListener('dblclick', () => {
-        toggleSelect(row.getAttribute('data-inv'));
+    listBox.querySelectorAll('tbody td.craft-name[data-name]').forEach(cell => {
+      cell.addEventListener('dblclick', () => {
+        const key = cell.getAttribute('data-name');
+        const entry = this._indexMap.find(it => it.id === key);
+        if (!entry || !entry.item) return;
+        this._trackSelection(entry.item);
+        this._renderSummary();
+        this._renderListAndPager();
       });
     });
 
@@ -490,12 +521,15 @@ const CraftPage = {
 
   _autoPick(mode){
     const arr = this._sortedAll();
-    const valid = arr.filter(x=>!isNaN(x.wear));
+    const used = new Set(Array.from(this._selected));
+    const valid = arr.filter(x=>!isNaN(x.wear) && !used.has(this._id(x)));
     if(mode==="low")  valid.sort((a,b)=>a.wear-b.wear);
     if(mode==="high") valid.sort((a,b)=>b.wear-a.wear);
     if(mode==="rand") valid.sort(()=>Math.random()-0.5);
-    const pick = valid.slice(0,20).map(x=>String(x.inv_id));
-    this._selected = new Set(pick);
+    for (const item of valid) {
+      if (this._selected.size >= 20) break;
+      this._trackSelection(item);
+    }
   },
 
   _parseSeq(text,maxN){
@@ -508,5 +542,55 @@ const CraftPage = {
     return Array.from(out).sort((a,b)=>a-b);
   },
 
-  _sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+  _sleep(ms){ return new Promise(r=>setTimeout(r, ms)); },
+
+  _trackSelection(item) {
+    if (!item) return;
+    const key = this._id(item);
+    if (!key) return;
+    if (this._selected.size >= 20) return;
+    if (this._selected.has(key)) return;
+    this._selected.add(key);
+    this._selectedMeta.set(key, item);
+  },
+
+  _removeSelection(key) {
+    const id = this._id(key);
+    if (!id) return;
+    this._selected.delete(id);
+    this._selectedMeta.delete(id);
+  },
+
+  _resolveMeta(key) {
+    const id = this._id(key);
+    if (!id) return null;
+    if (this._selectedMeta.has(id)) return this._selectedMeta.get(id);
+    for (const rarity of ["GREEN", "BLUE", "PURPLE"]) {
+      const found = (this._data[rarity] || []).find(item => this._id(item) === id);
+      if (found) {
+        this._selectedMeta.set(id, found);
+        return found;
+      }
+    }
+    return null;
+  },
+
+  _id(item) {
+    if (item == null) return "";
+    if (typeof item === "string" || typeof item === "number") return String(item);
+    if (typeof item === "object") {
+      if (item.inv_id != null) return String(item.inv_id);
+      if (item.id != null) return String(item.id);
+    }
+    return "";
+  },
+
+  _esc(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
 };
