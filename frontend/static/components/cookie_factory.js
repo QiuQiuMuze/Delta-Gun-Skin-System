@@ -327,6 +327,11 @@ const CookieFactoryPage = {
         const mini = miniMap[actionResult.mini];
         const name = mini ? mini.name : actionResult.mini;
         infoMessages.push(`🎮 ${escapeHtml(name)} 等级提升至 ${fmtInt(actionResult.level)} 级！`);
+      } else if (actionResult.mode === 'cultivation') {
+        infoMessages.push(`🧘 ${escapeHtml(actionResult.summary || '完成了一次修仙推演')}。`);
+        if (actionResult.reward && Number(actionResult.reward.bricks) > 0) {
+          infoMessages.push(`🎁 奖励 ${fmtInt(actionResult.reward.bricks)} 块砖，已自动放入背包。`);
+        }
       } else if (actionResult.points_gained) {
         infoMessages.push(`🌟 升天成功，获得 ${fmtInt(actionResult.points_gained)} 声望点`);
       } else if (actionResult.sugar_lumps != null && actionResult.mini == null) {
@@ -378,6 +383,43 @@ const CookieFactoryPage = {
     const renderMini = () => {
       if (!miniGames.length) return `<div class="muted">暂无小游戏</div>`;
       return miniGames.map(item => {
+        if (item.key === 'cultivation') {
+          const playCount = fmtInt(item.play_count || 0);
+          const bestScore = fmtInt(item.best_score || 0);
+          const targetScore = item.score_threshold ? fmtInt(item.score_threshold) : null;
+          const last = item.last_result || {};
+          const hasResult = last && last.score != null;
+          const ending = hasResult ? escapeHtml(last.ending || '') : '';
+          const stage = hasResult ? escapeHtml(last.stage || '') : '';
+          const age = hasResult ? fmtInt(last.age || 0) : '';
+          const scoreNow = hasResult ? fmtInt(last.score || 0) : '';
+          const summary = hasResult
+            ? `结局：${ending || '未知'} · 得分 ${scoreNow} · ${age} 岁 ${stage}`
+            : '尚未体验此修仙历练。';
+          const reward = last && last.reward && Number(last.reward.bricks) > 0
+            ? `<div class="cultivation-reward">🎁 获得 ${fmtInt(last.reward.bricks)} 块砖</div>`
+            : '';
+          const events = Array.isArray(last?.events) && last.events.length
+            ? `<ul class="cultivation-log">${last.events.map(ev => `<li>${escapeHtml(ev)}</li>`).join('')}</ul>`
+            : `<div class="cultivation-log cultivation-log--empty">尚无冒险记录，可随时推演一场。</div>`;
+          const meta = targetScore
+            ? `<span>🎯 目标 ${targetScore} 分</span>`
+            : '';
+          return `
+            <div class="cookie-mini cookie-mini--cultivation">
+              <div class="cookie-mini__icon">${escapeHtml(item.icon || '🧘')}</div>
+              <div class="cookie-mini__body">
+                <div class="cookie-mini__head">${escapeHtml(item.name)} · 历练 ${playCount} 次</div>
+                <div class="cookie-mini__desc">${escapeHtml(item.desc || '模拟整段修仙人生，随机遭遇奇遇、意外与结局。')}</div>
+                <div class="cookie-mini__stats"><span>🏆 最高 ${bestScore} 分</span>${meta}</div>
+                <div class="cookie-mini__summary">${summary}</div>
+                ${reward}
+                ${events}
+              </div>
+              <button class="btn btn-mini" data-mini="${item.key}" data-sugar="0" title="模拟一次修仙历练">开启推演</button>
+            </div>
+          `;
+        }
         const progress = Number(item.progress || 0);
         const threshold = Math.max(1, Number(item.threshold || 1));
         const pct = Math.min(100, Math.round(progress / threshold * 100));
