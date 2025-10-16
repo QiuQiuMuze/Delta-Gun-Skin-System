@@ -17,6 +17,167 @@ const CultivationPage = {
     const safe = String(tone).toLowerCase().replace(/[^a-z0-9_-]/g, '');
     return safe ? `tone-${safe}` : '';
   },
+  renderLineage(lineage) {
+    const info = lineage || {};
+    const sect = info.sect || {};
+    const master = info.master || {};
+    const sectName = sect.name ? escapeHtml(sect.name) : '散修';
+    const sectMotto = sect.motto ? `<div class="meta">${escapeHtml(sect.motto)}</div>` : '';
+    const masterName = master.name ? escapeHtml(master.name) : '无名前辈';
+    const masterTitle = master.title ? ` · ${escapeHtml(master.title)}` : '';
+    const masterMotto = master.motto ? `<div class="meta">${escapeHtml(master.motto)}</div>` : '';
+    return `
+      <div class="cultivation-lineage">
+        <div class="cultivation-lineage__item">
+          <span class="label">宗门</span>
+          <strong>${sectName}</strong>
+          ${sectMotto}
+        </div>
+        <div class="cultivation-lineage__item">
+          <span class="label">师承</span>
+          <strong>${masterName}${masterTitle}</strong>
+          ${masterMotto}
+        </div>
+      </div>
+    `;
+  },
+  renderCollection(title, items, emptyText = '暂无收获') {
+    const list = Array.isArray(items) ? items : [];
+    const chips = list
+      .map(item => {
+        if (!item) return '';
+        const name = escapeHtml(item.name || '');
+        const note = item.note ? `<span class="cultivation-chip__note">${escapeHtml(item.note)}</span>` : '';
+        const titleAttr = item.desc ? ` title="${escapeHtml(item.desc)}"` : '';
+        if (!name) return '';
+        return `<span class="cultivation-chip"${titleAttr}><span class="cultivation-chip__label">${name}</span>${note}</span>`;
+      })
+      .filter(Boolean)
+      .join('');
+    const body = chips
+      ? `<div class="cultivation-collection__list">${chips}</div>`
+      : `<div class="cultivation-collection__empty">${escapeHtml(emptyText)}</div>`;
+    return `
+      <div class="cultivation-collection">
+        <div class="cultivation-collection__title">${escapeHtml(title)}</div>
+        ${body}
+      </div>
+    `;
+  },
+  renderStatsGrid(stats) {
+    if (!stats || typeof stats !== 'object') return '';
+    const entries = Object.entries(stats)
+      .map(([key, value]) => `<div class="cultivation-stat-pill"><span>${escapeHtml(this.statLabel(key))}</span><strong>${this.fmtInt(value)}</strong></div>`)
+      .join('');
+    if (!entries) return '';
+    return `<div class="cultivation-stats-grid">${entries}</div>`;
+  },
+  renderLastSummary(last, fmtInt) {
+    if (!last || last.score == null) {
+      return '<div class="cultivation-summary__last">尚未完成任何历练。</div>';
+    }
+    const lineage = this.renderLineage(last.lineage);
+    const statsBlock = this.renderStatsGrid(last.stats);
+    const talents = Array.isArray(last.talents) && last.talents.length
+      ? `<div class="cultivation-summary__talents">天赋：${last.talents.map(name => `<span class="cultivation-chip"><span class="cultivation-chip__label">${escapeHtml(name || '')}</span></span>`).join('')}</div>`
+      : '';
+    const collections = `
+      <div class="cultivation-summary__collections">
+        ${this.renderCollection('法宝', last.artifacts, '暂无法宝')}
+        ${this.renderCollection('道友', last.companions, '暂无道友')}
+        ${this.renderCollection('传承', last.techniques, '暂无传承')}
+      </div>
+    `;
+    const statsSection = statsBlock ? `<div class="cultivation-summary__stats-grid">${statsBlock}</div>` : '';
+    return `
+      <div class="cultivation-summary__last">
+        <div class="cultivation-summary__headline">最近一次：得分 ${fmtInt(last.score || 0)} · ${escapeHtml(last.ending || '')}</div>
+        ${lineage}
+        ${statsSection}
+        ${talents}
+        ${collections}
+      </div>
+    `;
+  },
+  renderEndingScreen(screen) {
+    const result = screen?.result || {};
+    const fmtInt = (v) => this.fmtInt(v);
+    const endingText = escapeHtml(result.ending || '历练结束');
+    const stage = escapeHtml(result.stage || '');
+    const age = fmtInt(result.age || 0);
+    const score = fmtInt(result.score || 0);
+    const best = fmtInt((result.best != null ? result.best : screen?.bestScore) || 0);
+    const icon = result.ending_type === 'fallen' ? '☠️' : '✨';
+    const lineage = this.renderLineage(result.lineage);
+    const statsBlock = this.renderStatsGrid(result.stats);
+    const statsSection = statsBlock ? `<div class="cultivation-ending__stats">${statsBlock}</div>` : '';
+    const talents = Array.isArray(result.talents) && result.talents.length
+      ? `<div class="cultivation-ending__talents">天赋：${result.talents.map(name => `<span class="cultivation-chip"><span class="cultivation-chip__label">${escapeHtml(name || '')}</span></span>`).join('')}</div>`
+      : '';
+    const reward = result.reward && Number(result.reward.bricks) > 0
+      ? `<div class="cultivation-ending__reward">🎁 获得 ${fmtInt(result.reward.bricks)} 块砖</div>`
+      : '';
+    const collections = `
+      <div class="cultivation-ending__collections">
+        ${this.renderCollection('法宝', result.artifacts, '暂无法宝')}
+        ${this.renderCollection('道友', result.companions, '暂无道友')}
+        ${this.renderCollection('传承', result.techniques, '暂无传承')}
+      </div>
+    `;
+    const logItems = Array.isArray(result.events) ? result.events.slice(-12).reverse().map(ev => {
+      let text = '';
+      let tone = '';
+      if (ev && typeof ev === 'object') {
+        text = ev.text || '';
+        tone = ev.tone || '';
+      } else {
+        text = ev != null ? String(ev) : '';
+      }
+      const cls = this.toneClass(tone);
+      return `<li${cls ? ` class="${cls}"` : ''}>${escapeHtml(text)}</li>`;
+    }).join('') : '';
+    const logSection = logItems
+      ? `<div class="cultivation-ending__log-wrap"><div class="label">历练轨迹</div><ul class="cultivation-ending__log">${logItems}</ul></div>`
+      : '';
+    return `
+      <div class="cultivation-ending">
+        <div class="cultivation-ending__card">
+          <div class="cultivation-ending__header">
+            <div class="cultivation-ending__title">${icon} ${endingText}</div>
+            <div class="cultivation-ending__meta">境界 ${stage || '未知'} · ${age} 岁 · 得分 ${score}</div>
+            <div class="cultivation-ending__best">历史最佳 ${best} 分</div>
+          </div>
+          ${reward}
+          ${lineage}
+          ${statsSection}
+          ${talents}
+          ${collections}
+          ${logSection}
+          <div class="cultivation-ending__actions">
+            <button class="btn primary" id="cultivation-ending-confirm">确认返回</button>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+  bindEndingScreen() {
+    const confirm = this._root?.querySelector('#cultivation-ending-confirm');
+    if (!confirm) return;
+    confirm.addEventListener('click', async () => {
+      if (this._loading) return;
+      try {
+        this._loading = true;
+        confirm.classList.add('is-loading');
+        this._state.endingScreen = null;
+        await this.refresh();
+      } catch (e) {
+        alert(e.message || e);
+      } finally {
+        this._loading = false;
+        confirm.classList.remove('is-loading');
+      }
+    });
+  },
   render() {
     return `<div class="card" id="cultivation-root"><div class="muted">加载中...</div></div>`;
   },
@@ -28,6 +189,9 @@ const CultivationPage = {
   presence() {
     if (!this._state || this._state.enabled === false) {
       return { activity: 'cultivation:locked' };
+    }
+    if (this._state.endingScreen) {
+      return { activity: 'cultivation:ending' };
     }
     if (this._state && this._state.run && !this._state.run.finished) {
       return {
@@ -72,13 +236,16 @@ const CultivationPage = {
       this._root.innerHTML = `<div class="cultivation-empty">修仙玩法尚未开启，请等待管理员放行。</div>`;
       return;
     }
+    if (state.endingScreen) {
+      this._root.innerHTML = `<div class="cultivation-container">${this.renderEndingScreen(state.endingScreen)}</div>`;
+      this.bindEndingScreen();
+      return;
+    }
     const fmtInt = (v) => this.fmtInt(v);
     const bestScore = fmtInt(state.best_score || 0);
     const playCount = fmtInt(state.play_count || 0);
     const last = state.last_result || {};
-    const lastSummary = last && last.score != null
-      ? `<div class="cultivation-summary__last">最近一次：得分 ${fmtInt(last.score || 0)} · ${escapeHtml(last.ending || '')}</div>`
-      : '<div class="cultivation-summary__last">尚未完成任何历练。</div>';
+    const lastSummary = this.renderLastSummary(last, fmtInt);
     const rewardInfo = last && last.reward && Number(last.reward.bricks) > 0
       ? `<div class="cultivation-summary__reward">🎁 获得 ${fmtInt(last.reward.bricks)} 块砖</div>`
       : '';
@@ -151,6 +318,14 @@ const CultivationPage = {
       return `<div class="cultivation-outcome ${cls}">${narrative}<div class="cultivation-outcome__stats">修为 ${progress} · 积分 ${score} · 体魄 ${health}</div></div>`;
     })() : '';
     const eventBlock = event ? this.renderEvent(event) : '<div class="muted">即将触发下一段奇遇...</div>';
+    const lineageBlock = this.renderLineage(run.lineage);
+    const collectionsBlock = `
+      <div class="cultivation-run__collections">
+        ${this.renderCollection('法宝', run.artifacts, '暂无法宝')}
+        ${this.renderCollection('道友', run.companions, '暂无道友')}
+        ${this.renderCollection('传承', run.techniques, '暂无传承')}
+      </div>
+    `;
     return `
       <div class="cultivation-section">
         <div class="cultivation-run__header">
@@ -166,9 +341,11 @@ const CultivationPage = {
         <div class="cultivation-run__stats">
           ${Object.entries(run.stats || {}).map(([key, value]) => `<div class="stat"><span>${escapeHtml(this.statLabel(key))}</span><strong>${fmtInt(value)}</strong></div>`).join('')}
         </div>
+        ${lineageBlock}
         <div class="cultivation-run__talents">
           ${talents.length ? talents.map(t => `<span class="talent-chip" title="${escapeHtml(t.desc || '')}">${escapeHtml(t.name || '')}</span>`).join('') : '<span class="muted">未选择天赋</span>'}
         </div>
+        ${collectionsBlock}
         ${outcomeBlock}
         ${eventBlock}
         <div class="cultivation-log">
@@ -209,7 +386,20 @@ const CultivationPage = {
           const resp = await API.cultivationAdvance({ choice });
           if (resp.finished) {
             this._state.lastOutcome = null;
-            await this.refresh();
+            this._state.run = null;
+            if (typeof resp.best_score === 'number') {
+              this._state.best_score = resp.best_score;
+            }
+            if (resp.last_result) {
+              this._state.last_result = resp.last_result;
+            }
+            const endingResult = resp.result || resp.last_result || this._state.last_result || {};
+            this._state.endingScreen = {
+              result: endingResult,
+              bestScore: typeof resp.best_score === 'number' ? resp.best_score : this._state.best_score,
+            };
+            this.renderStatus();
+            window.PresenceTracker?.updateDetails?.(this.presence());
           } else {
             this._state.run = resp.run;
             this._state.lastOutcome = resp.outcome;
