@@ -377,6 +377,7 @@ const ShopPage = {
         } else {
           await API.me();
         }
+        window.AudioEngine?.playSfx?.('purchase');
         alert("购买成功");
         await loadPrices();
       } catch (e) {
@@ -417,6 +418,7 @@ const ShopPage = {
           return `${source} ${seasonLabel} ${seg.price} ×${seg.quantity}`;
         }).join("，");
         const extra = segmentText ? `成交明细：${segmentText}` : "";
+        window.AudioEngine?.playSfx?.('purchase');
         alert([`购砖成功，花费 ${res?.spent ?? quote?.total_cost ?? 0} 三角币。`, extra].filter(Boolean).join("\n"));
         await Promise.all([loadPrices(), loadBook(seasonValue)]);
       } catch (e) {
@@ -434,6 +436,7 @@ const ShopPage = {
       try {
         const res = await API.brickSell(qty, price, sellSeason);
         const seasonLabel = this._seasonMap[sellSeason]?.name || sellSeason;
+        window.AudioEngine?.playSfx?.('sell');
         alert(`已上架 ${qty} 块 ${seasonLabel} 砖（#${res.order_id}）。`);
         sellCount.value = "";
         sellPrice.value = "";
@@ -470,6 +473,7 @@ const ShopPage = {
         } else {
           msg = "委托已锁定，待价格满足后成交。";
         }
+        window.AudioEngine?.playSfx?.('purchase');
         alert(`委托创建成功（#${res.order_id}）。${msg}`);
         buyCount.value = "";
         buyPrice.value = "";

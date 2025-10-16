@@ -234,7 +234,13 @@ const Pages = {
   }
 };
 
-function renderNav() { $nav().innerHTML = Nav.render(); Nav.bind(); }
+function renderNav() {
+  const navNode = $nav();
+  if (!navNode) return;
+  navNode.innerHTML = Nav.render();
+  Nav.bind();
+  window.AudioEngine?.decorateArea?.(navNode);
+}
 
 async function renderRoute() {
   const r = (location.hash.replace(/^#\//,"") || "home");
@@ -251,11 +257,13 @@ async function renderRoute() {
   }
 
   renderNav();
+  window.AudioEngine?.setRoute?.(r);
   const p = Pages[r] || Pages.home;
   PresenceTracker.setPage(r, p);
   const html = await (p.render?.() ?? "");
   $page().innerHTML = html;
   p.bind?.();
+  window.AudioEngine?.decorateArea?.($page());
 }
 
 window.addEventListener("hashchange", renderRoute);
