@@ -8,7 +8,7 @@ const Nav = {
       ...(authed ? [
         ["me","我的信息"], ["wallet","钱包"], ["shop","商店"], ["gacha","开砖"],
         ...(hasCookie ? [["cookie","饼干工厂"]] : []),
-        ["inventory","背包"], ["craft","合成"], ["market","交易行"]
+        ["inventory","背包"], ["training","训练场"], ["craft","合成"], ["market","交易行"]
       ] : [["auth","登录/注册"]]),
       ...(isAdmin ? [["admin","管理员"]] : []),
       ...(authed ? [["logout","退出登录"]] : [])

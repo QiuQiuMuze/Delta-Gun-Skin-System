@@ -152,6 +152,7 @@ const Pages = {
   gacha: GachaPage,
   cookie: CookieFactoryPage,
   inventory: InventoryPage,
+  training: TrainingPage,
   craft: CraftPage,
   market: MarketPage,
   odds: {
