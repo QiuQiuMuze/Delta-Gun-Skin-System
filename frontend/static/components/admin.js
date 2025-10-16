@@ -390,6 +390,24 @@ const AdminPage = {
       window.addEventListener('beforeunload', stopPresence, { once: true });
     }
 
+    if (cultivationSwitch) {
+      cultivationSwitch.onchange = async () => {
+        const desired = !!cultivationSwitch.checked;
+        cultivationSwitch.disabled = true;
+        try {
+          await API.cookieCultivationToggle(desired);
+          await loadCookie();
+        } catch (e) {
+          alert(e.message || '更新失败');
+          await loadCookie();
+        } finally {
+          cultivationSwitch.disabled = false;
+        }
+      };
+    }
+
+    await loadCookie();
+
     // —— 渲染函数们 —— //
     const renderUsers = (items=[])=>{
       const rows = items.map(u=>{
