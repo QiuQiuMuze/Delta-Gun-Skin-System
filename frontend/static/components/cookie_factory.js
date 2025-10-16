@@ -14,6 +14,23 @@ const CookieFactoryPage = {
     { icon: "🌙", title: "夜班小贴士", text: "睡前收获糖块，第二天上线就有甜蜜惊喜。" },
     { icon: "💼", title: "三角洲联动", text: "把赚到的砖拿去抽砖或交易，下一周还能获得额外 5% 产量。" },
   ],
+  presence() {
+    if (!this._data || !this._data.enabled) {
+      return { activity: 'cookie:locked' };
+    }
+    const profile = this._data.profile || {};
+    const toNumber = (value) => {
+      const num = Number(value || 0);
+      return Number.isFinite(num) ? num : 0;
+    };
+    return {
+      activity: 'cookie:factory',
+      details: {
+        cookies: toNumber(profile.cookies || profile.total_cookies),
+        cps: toNumber(profile.effective_cps || profile.cps),
+      },
+    };
+  },
   formatNumber(num) {
     const value = Number(num || 0);
     if (!Number.isFinite(value)) return "0";
@@ -693,5 +710,6 @@ const CookieFactoryPage = {
     root.innerHTML = this.renderInner();
     this.bindInner();
     this.startTicker();
+    window.PresenceTracker?.updateDetails?.(this.presence());
   }
 };
