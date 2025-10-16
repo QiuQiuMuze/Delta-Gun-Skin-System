@@ -514,14 +514,9 @@ const InventoryPage = {
     let previewHtml = '-';
     let detail = '';
     if (window.SkinVisuals) {
-      const info = SkinVisuals.describe(visual);
       const meta = SkinVisuals.formatMeta(visual);
       previewHtml = SkinVisuals.render(visual, { label: data.name, meta });
-      const extras = [
-        `主体：${info.bodyText}`,
-        `配件：${info.attachmentText}`,
-        meta
-      ];
+      const extras = [meta];
       if (data.season) extras.push(`赛季：${this._seasonLabel(data.season)}`);
       if (data.model) extras.push(`类型：${this._modelLabel(data.model)}`);
       detail = extras.join(' · ');

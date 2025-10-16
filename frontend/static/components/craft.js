@@ -52,10 +52,6 @@ const CraftPage = {
           <label class="input-label" for="craft-season-filter">赛季筛选</label>
           <select id="craft-season-filter">${seasonOptions}</select>
         </div>
-        <div class="input-row" style="gap:12px; flex-wrap:wrap;">
-          <label class="input-label" for="craft-season-filter">赛季筛选</label>
-          <select id="craft-season-filter">${seasonOptions}</select>
-        </div>
 
         <!-- 顶部：合成摘要 + 合成按钮 + 跳过动画 -->
         <div id="craft-summary" class="card" style="position:sticky; top:64px; z-index:5;"></div>
@@ -177,13 +173,7 @@ const CraftPage = {
     const visual = x.visual || {
       body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects
     };
-    const info = SkinVisuals.describe(visual);
-    const parts = [
-      `主体：${info.bodyText}`,
-      `配件：${info.attachmentText}`,
-      SkinVisuals.formatMeta(visual)
-    ];
-    return parts.join(" · ");
+    return SkinVisuals.formatMeta(visual);
   },
 
   _switchRarity(r){

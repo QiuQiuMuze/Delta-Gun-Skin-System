@@ -311,19 +311,12 @@ const GachaPage = {
   },
   _visualMeta(x) {
     if (!window.SkinVisuals) return "";
-    const info = SkinVisuals.describe(x.visual || {
+    const visual = x.visual || {
       body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects
-    });
-    const parts = [
-      `主体：${info.bodyText}`,
-      `配件：${info.attachmentText}`
-    ];
+    };
+    const parts = [SkinVisuals.formatMeta(visual)];
     if (x.season) parts.push(`赛季：${this._seasonLabel(x.season)}`);
     if (x.model) parts.push(`类型：${this._modelLabel(x.model)}`);
-    const meta = SkinVisuals.formatMeta(x.visual || {
-      body: [], attachments: [], template: x.template, hidden_template: x.hidden_template, effects: x.effects
-    });
-    parts.push(meta);
     return parts.join(" · ");
   },
   _rowHTML(x) {
@@ -358,7 +351,7 @@ const GachaPage = {
     });
   },
 
-  async _ensureResources(count) {
+  async _ensureResources(count, seasonKey = null) {
     if (!count) return;
     let me;
     try {
@@ -366,24 +359,30 @@ const GachaPage = {
     } catch (_) {
       return;
     }
-    const seasonKey = this._currentSeasonKey();
+    const normalizedSeason = this._normalizeSeasonKey(seasonKey || this._currentSeasonKey());
+    const latestKey = this._latestSeasonKey();
     const detailList = Array.isArray(me.unopened_bricks_detail) ? me.unopened_bricks_detail : [];
-    let seasonAvailable = Number(me.unopened_bricks ?? 0);
+    let seasonAvailable = 0;
     if (detailList.length) {
-      const desiredKey = seasonKey || this._latestSeasonKey();
-      let match = detailList.find(item => this._normalizeSeasonKey(item.season_key || item.season || "") === desiredKey);
-      if (!match && !desiredKey) {
+      const desiredKey = normalizedSeason || latestKey;
+      let match = null;
+      if (desiredKey) {
+        match = detailList.find(item => this._normalizeSeasonKey(item.season_key || item.season || "") === desiredKey);
+      }
+      if (!match && desiredKey && latestKey && desiredKey !== latestKey) {
+        match = detailList.find(item => this._normalizeSeasonKey(item.season_key || item.season || "") === latestKey);
+      }
+      if (!match) {
         match = detailList.find(item => {
           const key = this._normalizeSeasonKey(item.season_key || item.season || "");
-          return !key || key === "UNASSIGNED";
+          return !key || key === "UNASSIGNED" || key === latestKey;
         });
-      }
-      if (!match && desiredKey) {
-        match = detailList.find(item => this._normalizeSeasonKey(item.season_key || item.season || "") === this._latestSeasonKey());
       }
       if (match) {
         seasonAvailable = Number(match.count || 0);
       }
+    } else {
+      seasonAvailable = Number(me.unopened_bricks ?? 0);
     }
     const needs = {
       keys: Math.max(0, count - (me.keys ?? 0)),
@@ -405,16 +404,16 @@ const GachaPage = {
       }
     }
     if (needs.bricks > 0) {
-      brickQuote = await API.brickQuote(needs.bricks, seasonKey || null);
+      brickQuote = await API.brickQuote(needs.bricks, normalizedSeason || latestKey || null);
       if ((brickQuote?.missing || 0) > 0) {
-        const seasonName = this._seasonLabel(seasonKey);
+        const seasonName = this._seasonLabel(normalizedSeason || latestKey);
         alert(`当前赛季（${seasonName}）可用的未开砖不足，仅能提供 ${brickQuote.available || 0} 块，请稍后再试。`);
         throw { message: "" };
       }
     }
 
     const parts = [];
-    const seasonLabel = this._seasonLabel(seasonKey);
+    const seasonLabel = this._seasonLabel(normalizedSeason || latestKey);
     if (needs.keys > 0) {
       const unit = keyUnit ? `（单价 ${keyUnit} 三角币，共 ${keyCost}）` : "";
       parts.push(`钥匙 ×${needs.keys}${unit}`);
@@ -463,7 +462,7 @@ const GachaPage = {
       await API.buyKeys(needs.keys);
     }
     if (needs.bricks > 0) {
-      await API.buyBricks(needs.bricks, seasonKey || null);
+      await API.buyBricks(needs.bricks, normalizedSeason || latestKey || null);
     }
     await this._refreshStats();
   },
@@ -483,7 +482,7 @@ const GachaPage = {
 
     // 自动补购所需钥匙/砖
     try {
-      await this._ensureResources(c);
+      await this._ensureResources(c, seasonKey);
     } catch (err) {
       this._opening = false;
       this._setDrawDisabled(false);
@@ -496,9 +495,10 @@ const GachaPage = {
 
     // ② 调用后端
     let data;
-    try { data = await API.open(c, seasonKey || null, this._targetSkinId || null); }
-    catch (e) {
-      alert(e.message);
+    try {
+      data = await this._attemptOpen(c, seasonKey);
+    } catch (e) {
+      if (e?.message) alert(e.message);
       this._setDrawDisabled(false);
       this._opening = false;
       this._showStage("");
@@ -531,6 +531,29 @@ const GachaPage = {
     } else {
       this._revealSequential(others, /*done*/true); // 只有非砖皮
     }
+  },
+
+  async _attemptOpen(count, seasonKey) {
+    try {
+      return await API.open(count, seasonKey || null, this._targetSkinId || null);
+    } catch (err) {
+      const retry = await this._handleResourceShortage(err, count, seasonKey);
+      if (retry) return retry;
+      throw err;
+    }
+  },
+
+  _needsResourcePrompt(message) {
+    if (!message) return false;
+    const normalized = String(message);
+    const keywords = ["未开砖", "钥匙不足", "钥匙不够"];
+    return keywords.some(key => normalized.includes(key));
+  },
+
+  async _handleResourceShortage(err, count, seasonKey) {
+    if (!this._needsResourcePrompt(err?.message)) return null;
+    await this._ensureResources(count, seasonKey);
+    return API.open(count, seasonKey || null, this._targetSkinId || null);
   },
 
   // —— 砖皮优先鉴定 —— //

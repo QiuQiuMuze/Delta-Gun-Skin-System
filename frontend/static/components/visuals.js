@@ -1373,6 +1373,8 @@
   function formatMeta(visual){
     const info = describe(visual);
     const parts = [
+      `主体：${info.bodyText}`,
+      `配件：${info.attachmentText}`,
       `模板：${info.templateLabel}`,
       `特效：${info.effectsLabel}`
     ];
