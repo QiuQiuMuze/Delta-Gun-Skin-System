@@ -12,6 +12,11 @@ const CultivationPage = {
       return String(Math.round(n));
     }
   },
+  toneClass(tone) {
+    if (!tone) return '';
+    const safe = String(tone).toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    return safe ? `tone-${safe}` : '';
+  },
   render() {
     return `<div class="card" id="cultivation-root"><div class="muted">加载中...</div></div>`;
   },
@@ -113,10 +118,39 @@ const CultivationPage = {
     const talents = Array.isArray(run.talents) ? run.talents : [];
     const event = run.pending_event || null;
     const fmtInt = (v) => this.fmtInt(v);
-    const logEntries = Array.isArray(run.log) && run.log.length
-      ? run.log.slice(-20).reverse().map(item => `<li>${escapeHtml(item)}</li>`).join('')
+    const logs = Array.isArray(run.log) ? run.log.slice(-20).reverse() : [];
+    const logEntries = logs.length
+      ? logs.map(entry => {
+          let text = '';
+          let tone = 'info';
+          if (entry && typeof entry === 'object') {
+            text = entry.text || '';
+            tone = entry.tone || 'info';
+          } else {
+            text = String(entry || '');
+          }
+          const cls = this.toneClass(tone);
+          return `<li${cls ? ` class="${cls}"` : ''}>${escapeHtml(text)}</li>`;
+        }).join('')
       : '<li class="muted">暂无历练记录。</li>';
     const outcome = this._state?.lastOutcome;
+    const fmtSigned = (value, digits = 1) => {
+      const num = Number(value || 0);
+      if (!Number.isFinite(num)) return '0';
+      const fixed = digits === 0 ? Math.round(num).toString() : num.toFixed(digits);
+      if (num > 0) return `+${fixed}`;
+      if (num < 0) return fixed;
+      return digits === 0 ? '0' : Number(0).toFixed(digits);
+    };
+    const outcomeBlock = outcome ? (() => {
+      const cls = this.toneClass(outcome.tone);
+      const narrative = outcome.narrative ? `<div class="cultivation-outcome__narrative">${escapeHtml(outcome.narrative)}</div>` : '';
+      const progress = fmtSigned(outcome.progress_gain || 0, 1);
+      const score = fmtSigned(outcome.score_gain || 0, 1);
+      const health = fmtSigned(outcome.health_delta || 0, 1);
+      return `<div class="cultivation-outcome ${cls}">${narrative}<div class="cultivation-outcome__stats">修为 ${progress} · 积分 ${score} · 体魄 ${health}</div></div>`;
+    })() : '';
+    const eventBlock = event ? this.renderEvent(event) : '<div class="muted">即将触发下一段奇遇...</div>';
     return `
       <div class="cultivation-section">
         <div class="cultivation-run__header">
@@ -135,8 +169,8 @@ const CultivationPage = {
         <div class="cultivation-run__talents">
           ${talents.length ? talents.map(t => `<span class="talent-chip" title="${escapeHtml(t.desc || '')}">${escapeHtml(t.name || '')}</span>`).join('') : '<span class="muted">未选择天赋</span>'}
         </div>
-        ${outcome ? `<div class="cultivation-outcome">本轮收获：修为 +${fmtInt(outcome.progress_gain || 0)} · 体魄变化 ${Number(outcome.health_delta || 0).toFixed(1)}</div>` : ''}
-        ${event ? this.renderEvent(event) : '<div class="muted">即将触发下一段奇遇...</div>'}
+        ${outcomeBlock}
+        ${eventBlock}
         <div class="cultivation-log">
           <div class="cultivation-log__title">历练轨迹</div>
           <ul>${logEntries}</ul>
@@ -146,6 +180,7 @@ const CultivationPage = {
   },
   renderEvent(event) {
     const hint = event.hint ? `<div class="cultivation-event__hint">${escapeHtml(event.hint)}</div>` : '';
+    const theme = event.theme_label ? `<div class="cultivation-event__tag">✨ ${escapeHtml(event.theme_label)}机缘</div>` : '';
     const options = (event.options || []).map(opt => `
       <button class="btn" data-choice="${escapeHtml(opt.id || '')}">
         <div class="btn-title">${escapeHtml(opt.label || '')}</div>
@@ -156,6 +191,7 @@ const CultivationPage = {
       <div class="cultivation-event">
         <div class="cultivation-event__title">${escapeHtml(event.title || '遭遇')}</div>
         <div class="cultivation-event__desc">${escapeHtml(event.description || '')}</div>
+        ${theme}
         ${hint}
         <div class="cultivation-event__options">${options}</div>
       </div>
