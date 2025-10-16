@@ -3,6 +3,7 @@ const InventoryPage = {
   _activePreviewBtn: null,
   _seasonCatalog: [],
   _seasonMap: {},
+  _latestSeasonId: "",
   _filters: { season: "ALL", rarity: "ALL", quality: "ANY", wear: "ALL", sort: "TIME_DESC" },
   _pages: { BRICK: 1, PURPLE: 1, BLUE: 1, GREEN: 1 },
   _grouped: { BRICK: [], PURPLE: [], BLUE: [], GREEN: [] },
@@ -16,6 +17,8 @@ const InventoryPage = {
       this._seasonMap[season.id] = season;
       this._seasonMap[String(season.id).toUpperCase()] = season;
     });
+    const latestRaw = catalog?.latest || (seasons.length ? seasons[seasons.length - 1].id : "");
+    this._latestSeasonId = String(latestRaw || "").toUpperCase();
     const seasonOptions = [`<option value="ALL">全部赛季</option>`]
       .concat(seasons.map(season => `<option value="${season.id}" ${this._filters.season===season.id?"selected":""}>${season.name}</option>`))
       .join("");
@@ -225,12 +228,44 @@ const InventoryPage = {
     if (r === "BLUE")   return "hl-blue";
     return "hl-green";
   },
+  _rarityLabel(r) {
+    const key = String(r || "").toUpperCase();
+    const map = { BRICK: "砖皮", PURPLE: "紫皮", BLUE: "蓝皮", GREEN: "绿皮" };
+    if (map[key]) return map[key];
+    return key || "-";
+  },
+  _normalizeSeasonKey(value) {
+    const raw = value == null ? "" : String(value).trim();
+    if (!raw || raw.toUpperCase() === "UNASSIGNED") {
+      return this._latestSeasonKey();
+    }
+    const up = raw.toUpperCase();
+    if (this._seasonMap[up]) return up;
+    const fallback = (this._seasonCatalog || []).find(season => String(season.id).toUpperCase() === up);
+    if (fallback) return String(fallback.id).toUpperCase();
+    return up;
+  },
+  _latestSeasonKey() {
+    if (this._latestSeasonId) return this._latestSeasonId;
+    if (this._seasonCatalog && this._seasonCatalog.length) {
+      const id = String(this._seasonCatalog[this._seasonCatalog.length - 1].id || "").toUpperCase();
+      this._latestSeasonId = id;
+      return id;
+    }
+    return "";
+  },
   _seasonLabel(id) {
-    if (!id) return "默认奖池";
-    const key = String(id);
+    const key = this._normalizeSeasonKey(id);
+    if (!key) {
+      if (this._seasonCatalog && this._seasonCatalog.length) {
+        const latest = this._seasonCatalog[this._seasonCatalog.length - 1];
+        return latest?.name || latest?.id || "最新赛季";
+      }
+      return "最新赛季";
+    }
     const entry = this._seasonMap[key] || this._seasonMap[key.toUpperCase()] || null;
     if (entry?.name) return entry.name;
-    const fallback = this._seasonCatalog.find(s => String(s.id) === key || String(s.id).toUpperCase() === key.toUpperCase());
+    const fallback = this._seasonCatalog.find(s => String(s.id).toUpperCase() === key);
     return fallback?.name || key;
   },
   _modelLabel(model) {
@@ -270,6 +305,7 @@ const InventoryPage = {
     };
     const model = (x.model ?? visual.model ?? "").toString();
     const seasonRaw = (x.season ?? "").toString();
+    const season = this._normalizeSeasonKey(seasonRaw);
     const acquired_at = Number(x.acquired_at ?? x.acquired ?? 0) || 0;
     const wearValue = typeof x.wear === "number"
       ? x.wear
@@ -294,7 +330,7 @@ const InventoryPage = {
       locked,
       lock_reason,
       model,
-      season: seasonRaw,
+      season,
       acquired_at,
     };
   },
@@ -372,6 +408,7 @@ const InventoryPage = {
         };
         if (item.inv_id) this._cache[item.inv_id] = cached;
         const rc = this._rarityClass(item.rarity);
+        const rarityLabel = this._rarityLabel(item.rarity);
         const ex = key === "BRICK"
           ? (item.exquisite ? `<span class="badge badge-exq">极品</span>` : `<span class="badge badge-prem">优品</span>`)
           : "-";
@@ -382,7 +419,7 @@ const InventoryPage = {
           <td class="${rc}">${item.name}${lockInfo}</td>
           <td>${cached.season_label}</td>
           <td>${cached.model_label}</td>
-          <td class="${rc}">${item.rarity}</td>
+          <td class="${rc}">${rarityLabel}</td>
           <td>${ex}</td>
           <td>${item.wear}</td>
           <td>${item.grade || "-"}</td>
@@ -477,14 +514,9 @@ const InventoryPage = {
     let previewHtml = '-';
     let detail = '';
     if (window.SkinVisuals) {
-      const info = SkinVisuals.describe(visual);
       const meta = SkinVisuals.formatMeta(visual);
       previewHtml = SkinVisuals.render(visual, { label: data.name, meta });
-      const extras = [
-        `主体：${info.bodyText}`,
-        `配件：${info.attachmentText}`,
-        meta
-      ];
+      const extras = [meta];
       if (data.season) extras.push(`赛季：${this._seasonLabel(data.season)}`);
       if (data.model) extras.push(`类型：${this._modelLabel(data.model)}`);
       detail = extras.join(' · ');

@@ -28,6 +28,12 @@
     return up || "GREEN";
   }
 
+  function rarityLabel(v){
+    const key = mapRarity(v);
+    const map = { BRICK: "砖皮", PURPLE: "紫皮", BLUE: "蓝皮", GREEN: "绿皮" };
+    return map[key] || key || "-";
+  }
+
   function isExq(x){
     if (typeof x?.exquisite    !== "undefined") return !!x.exquisite;
     if (typeof x?.is_exquisite !== "undefined") return !!x.is_exquisite;
@@ -94,12 +100,18 @@
     _seasonMap: {},
 
     _seasonLabel: function(id){
-      if (!id) return "默认奖池";
-      var key = String(id);
+      var key = String(id == null ? "" : id).toUpperCase();
+      if (!key || key === "UNASSIGNED") {
+        if (this._seasonCatalog && this._seasonCatalog.length) {
+          var latest = this._seasonCatalog[this._seasonCatalog.length - 1];
+          return (latest && latest.name) || latest?.id || "最新赛季";
+        }
+        return "最新赛季";
+      }
       var entry = this._seasonMap[key] || this._seasonMap[key.toUpperCase()];
       if (entry && entry.name) return entry.name;
       var fallback = (this._seasonCatalog || []).find(function(season){
-        return String(season.id) === key || String(season.id).toUpperCase() === key.toUpperCase();
+        return String(season.id).toUpperCase() === key;
       });
       return (fallback && fallback.name) || key;
     },
@@ -356,6 +368,7 @@
       for (let i=0;i<this._inventory.length;i++){
         const it=this._inventory[i];
         const rc = rarityClass(it.rarity);
+        const rarityText = rarityLabel(it.rarity);
         const ex = (it.rarity==="BRICK") ? (it.exquisite?'<span class="badge badge-exq">极品</span>':'<span class="badge badge-prem">优品</span>') : '-';
         const checked = (this._sellSelected && String(this._sellSelected)===String(it.inv_id)) ? 'checked' : '';
         const seasonLabel = this._seasonLabel(it.season);
@@ -366,7 +379,7 @@
           '<td class="'+rc+'">'+esc(it.name)+'</td>'+
           '<td>'+esc(seasonLabel)+'</td>'+
           '<td>'+esc(modelLabel)+'</td>'+
-          '<td class="'+rc+'">'+esc(it.rarity)+'</td>'+
+          '<td class="'+rc+'">'+esc(rarityText)+'</td>'+
           '<td>'+ex+'</td>'+
           '<td>'+(isNaN(it.wear)?'-':it.wear)+'</td>'+
           '<td class="'+gradeClass(it.grade)+'">'+(it.grade||'-')+'</td>'+
@@ -447,6 +460,7 @@
           var rows='';
           for (var i=0;i<items.length;i++){
             var x=items[i], rc=rarityClass(x.rarity);
+            var rarityText = rarityLabel(x.rarity);
             var ex=(x.rarity==="BRICK") ? (x.exquisite?'<span class="badge badge-exq">极品</span>':'<span class="badge badge-prem">优品</span>') : '-';
             var preview = previewCell(x);
             var seasonLabel = self._seasonLabel(x.season);
@@ -457,7 +471,7 @@
               '<td>'+esc(seasonLabel)+'</td>'+
               '<td>'+esc(modelLabel)+'</td>'+
               '<td>'+preview+'</td>'+
-              '<td class="'+rc+'">'+esc(x.rarity)+'</td>'+
+              '<td class="'+rc+'">'+esc(rarityText)+'</td>'+
               '<td>'+ex+'</td>'+
               '<td>'+(isNaN(x.wear)?'-':x.wear)+'</td>'+
               '<td class="'+gradeClass(x.grade)+'">'+(x.grade||'-')+'</td>'+
@@ -512,6 +526,7 @@
           });
           for (var i=0;i<list.length;i++){
             var x=list[i], rc=rarityClass(x.rarity);
+            var rarityText = rarityLabel(x.rarity);
             var ex=(x.rarity==="BRICK")?(x.exquisite?'<span class="badge badge-exq">极品</span>':'<span class="badge badge-prem">优品</span>'):'-';
             var preview = previewCell(x);
             var seasonLabel = self._seasonLabel ? self._seasonLabel(x.season) : (x.season || "默认奖池");
@@ -521,7 +536,7 @@
               '<td>'+esc(seasonLabel)+'</td>'+
               '<td>'+esc(modelLabel)+'</td>'+
               '<td>'+preview+'</td>'+
-              '<td class="'+rc+'">'+esc(x.rarity)+'</td>'+
+              '<td class="'+rc+'">'+esc(rarityText)+'</td>'+
               '<td>'+ex+'</td>'+
               '<td>'+(isNaN(x.wear)?'-':x.wear)+'</td>'+
               '<td class="'+gradeClass(x.grade)+'">'+(x.grade||'-')+'</td>'+
