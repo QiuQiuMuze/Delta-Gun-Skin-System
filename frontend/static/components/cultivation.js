@@ -2,6 +2,8 @@ const CultivationPage = {
   _root: null,
   _state: null,
   _selection: { talents: new Set(), allocations: {}, originId: null, sectId: null, masterId: null },
+  _lastEventId: null,
+  _endingPlayed: false,
   _loading: false,
   fmtInt(value) {
     const n = Number(value || 0);
@@ -235,6 +237,7 @@ const CultivationPage = {
     if (!confirm) return;
     confirm.addEventListener('click', async () => {
       if (this._loading) return;
+      window.AudioEngine?.playSfx?.('ending-confirm');
       try {
         this._loading = true;
         confirm.classList.add('is-loading');
@@ -254,6 +257,8 @@ const CultivationPage = {
   async bind() {
     this._root = document.getElementById('cultivation-root');
     this._selection = { talents: new Set(), allocations: {}, originId: null, sectId: null, masterId: null };
+    this._lastEventId = null;
+    this._endingPlayed = false;
     await this.refresh();
   },
   presence() {
@@ -292,6 +297,7 @@ const CultivationPage = {
   },
   resetSelection() {
     this._selection = { talents: new Set(), allocations: {}, originId: null, sectId: null, masterId: null };
+    this._lastEventId = null;
     const lobby = this._state?.lobby;
     if (lobby && lobby.base_stats) {
       Object.keys(lobby.base_stats).forEach(key => {
@@ -363,10 +369,15 @@ const CultivationPage = {
       return;
     }
     if (state.endingScreen) {
+      if (!this._endingPlayed) {
+        window.AudioEngine?.playSfx?.('ending');
+        this._endingPlayed = true;
+      }
       this._root.innerHTML = `<div class="cultivation-container">${this.renderEndingScreen(state.endingScreen)}</div>`;
       this.bindEndingScreen();
       return;
     }
+    this._endingPlayed = false;
     const fmtInt = (v) => this.fmtInt(v);
     const bestScore = fmtInt(state.best_score || 0);
     const playCount = fmtInt(state.play_count || 0);
@@ -405,6 +416,7 @@ const CultivationPage = {
     } else if (state.lobby) {
       this.bindLobby(state.lobby);
     }
+    window.AudioEngine?.decorateArea?.(this._root);
   },
   renderRun(run) {
     const healthPct = Math.max(0, Math.min(100, Math.round((run.health / Math.max(run.max_health || 1, 1)) * 100)));
@@ -531,7 +543,7 @@ const CultivationPage = {
         metaLine = `<div class="btn-meta">${tags.join('')}</div>`;
       }
       return `
-        <button class="btn" data-choice="${id}">
+        <button class="btn" data-sfx="custom" data-choice="${id}">
           <div class="btn-title">${title}</div>
           <div class="btn-desc">${detail}</div>
           ${metaLine}
@@ -560,6 +572,7 @@ const CultivationPage = {
     const delay = Math.max(0, delayAttr);
     container.classList.add('is-active');
     container.innerHTML = `<div class="cultivation-trial-spinner__inner"><div class="spinner"></div><div class="label">天命判定中...</div></div>`;
+    window.AudioEngine?.playSfx?.('trial-spin');
     let timer = null;
     const wait = new Promise(resolve => {
       timer = setTimeout(() => {
@@ -579,6 +592,7 @@ const CultivationPage = {
         const effective = this.fmtInt(outcome?.effective || 0);
         const difficulty = this.fmtInt(outcome?.difficulty || info?.difficulty || 0);
         container.innerHTML = `<div class="cultivation-trial-spinner__inner result ${toneClass}"><div class="label">${escapeHtml(fortune)} · 判定 ${effective} / ${difficulty}</div></div>`;
+        window.AudioEngine?.playSfx?.('trial-result', { passed: !!outcome?.passed, fortune });
         setTimeout(() => {
           container.classList.remove('is-active');
         }, 1400);
@@ -596,6 +610,15 @@ const CultivationPage = {
   bindRun(run) {
     const event = run.pending_event || {};
     const trialInfo = event.trial || null;
+    if (event) {
+      const eventKey = event.id || `${event.stage || ''}|${event.title || ''}|${event.type || ''}`;
+      if (eventKey && eventKey !== this._lastEventId) {
+        window.AudioEngine?.playSfx?.('event', { trial: !!trialInfo });
+        this._lastEventId = eventKey;
+      }
+    } else {
+      this._lastEventId = null;
+    }
     const buttons = this._root.querySelectorAll('[data-choice]');
     buttons.forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -606,6 +629,7 @@ const CultivationPage = {
         try {
           this._loading = true;
           btn.classList.add('is-loading');
+          window.AudioEngine?.playSfx?.('choice');
           const advancePromise = API.cultivationAdvance({ choice });
           if (needsTrial) {
             spinnerCtrl = this.showTrialSpinner(trialInfo);
@@ -624,6 +648,7 @@ const CultivationPage = {
           if (resp.finished) {
             this._state.lastOutcome = null;
             this._state.run = null;
+            this._lastEventId = null;
             if (typeof resp.best_score === 'number') {
               this._state.best_score = resp.best_score;
             }
@@ -669,8 +694,10 @@ const CultivationPage = {
         : '无额外加成';
       const rarityTone = t.rarity_tone ? ` rarity-${escapeHtml(t.rarity_tone)}` : '';
       const rarityLabel = t.rarity_label ? `<span class="cultivation-talent__rarity${rarityTone}">${escapeHtml(t.rarity_label)}</span>` : '';
+      const rarityKeyRaw = t.rarity_key || t.rarity || t.rarity_label || '';
+      const rarityKey = typeof rarityKeyRaw === 'string' ? rarityKeyRaw.toLowerCase() : String(rarityKeyRaw || '').toLowerCase();
       return `
-        <div class="cultivation-talent" data-talent="${escapeHtml(t.id || '')}">
+        <div class="cultivation-talent" data-talent="${escapeHtml(t.id || '')}" data-rarity="${escapeHtml(rarityKey)}">
           <div class="cultivation-talent__head">
             <div class="cultivation-talent__name">${escapeHtml(t.name || '')}</div>
             ${rarityLabel}
@@ -688,7 +715,7 @@ const CultivationPage = {
     const refreshToolbar = `
       <div class="cultivation-talent-toolbar">
         <div class="cultivation-refresh__info">剩余刷新 <span class="cultivation-refresh__count">${fmtInt(refreshLeft)}</span> 次</div>
-        <button class="btn" id="cultivation-refresh">刷新天赋</button>
+        <button class="btn" id="cultivation-refresh" data-sfx="custom">刷新天赋</button>
       </div>
     `;
     const statsInputs = Object.entries(baseStats).map(([key, value]) => `
@@ -779,7 +806,7 @@ const CultivationPage = {
         </div>
         <div class="cultivation-attr-list">${statsInputs}</div>
         <div class="cultivation-start">
-          <button class="btn primary" id="cultivation-start">开始历练</button>
+          <button class="btn primary" id="cultivation-start" data-sfx="custom">开始历练</button>
         </div>
       </div>
     `;
@@ -794,6 +821,7 @@ const CultivationPage = {
       }
       refreshBtn.addEventListener('click', async () => {
         if (this._loading || refreshBtn.disabled) return;
+        window.AudioEngine?.playSfx?.('refresh');
         try {
           this._loading = true;
           refreshBtn.classList.add('is-loading');
@@ -801,6 +829,7 @@ const CultivationPage = {
           if (data && data.lobby) {
             this._state.lobby = data.lobby;
             this.resetSelection();
+            window.AudioEngine?.playSfx?.('refresh-complete');
             this.renderStatus();
             window.PresenceTracker?.updateDetails?.(this.presence());
           }
@@ -818,7 +847,8 @@ const CultivationPage = {
         const id = node.dataset.talent;
         if (!id) return;
         const max = Number(lobby.max_talents || 0);
-        if (node.classList.contains('selected')) {
+        const wasSelected = node.classList.contains('selected');
+        if (wasSelected) {
           node.classList.remove('selected');
           this._selection.talents.delete(id);
         } else {
@@ -829,6 +859,53 @@ const CultivationPage = {
           this._selection.talents.add(id);
           node.classList.add('selected');
         }
+        window.AudioEngine?.playSfx?.('talent-select', { rarity: node.dataset.rarity, selected: !wasSelected });
+        this.updateStartButton();
+      });
+    });
+    const originCards = this._root.querySelectorAll('.cultivation-origin');
+    originCards.forEach(card => {
+      card.addEventListener('click', () => {
+        if (card.classList.contains('is-locked')) return;
+        const id = card.dataset.id;
+        if (!id) return;
+        if (this._selection.originId !== id) {
+          this._selection.originId = id;
+          this._selection.sectId = null;
+          this._selection.masterId = null;
+          window.AudioEngine?.playSfx?.('lineage');
+        }
+        this.updateLineageAvailability(lobby);
+        this.updateStartButton();
+      });
+    });
+    const sectCards = this._root.querySelectorAll('.cultivation-sect');
+    sectCards.forEach(card => {
+      card.addEventListener('click', () => {
+        if (card.classList.contains('is-locked')) return;
+        const id = card.dataset.id;
+        if (!id) return;
+        if (this._selection.sectId !== id) {
+          this._selection.sectId = id;
+          this._selection.masterId = null;
+          window.AudioEngine?.playSfx?.('lineage');
+        }
+        this.updateLineageAvailability(lobby);
+        this.updateStartButton();
+      });
+    });
+    const masterCards = this._root.querySelectorAll('.cultivation-master');
+    masterCards.forEach(card => {
+      card.addEventListener('click', () => {
+        if (card.classList.contains('is-locked') || card.classList.contains('is-hidden')) return;
+        const id = card.dataset.id;
+        if (!id) return;
+        const changed = this._selection.masterId !== id;
+        this._selection.masterId = id;
+        if (changed) {
+          window.AudioEngine?.playSfx?.('lineage');
+        }
+        this.updateLineageAvailability(lobby);
         this.updateStartButton();
       });
     });
@@ -879,6 +956,7 @@ const CultivationPage = {
         let value = parseInt(input.value, 10);
         if (!Number.isFinite(value) || value < 0) value = 0;
         const points = Number(lobby.points || 0);
+        const previous = Number(this._selection.allocations[stat] || 0);
         const otherSum = Object.entries(this._selection.allocations).reduce((sum, [k, v]) => {
           if (k === stat) return sum;
           return sum + Number(v || 0);
@@ -888,6 +966,9 @@ const CultivationPage = {
         }
         this._selection.allocations[stat] = value;
         input.value = value;
+        if (value !== previous) {
+          window.AudioEngine?.playSfx?.('stat-adjust');
+        }
         this.updatePointsRemaining(points);
         this.updateStartButton();
       });
@@ -910,6 +991,7 @@ const CultivationPage = {
         try {
           this._loading = true;
           startBtn.classList.add('is-loading');
+          window.AudioEngine?.playSfx?.('run-start');
           const payload = {
             talents: selected,
             attributes: this._selection.allocations,
