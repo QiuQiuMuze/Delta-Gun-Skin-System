@@ -2073,6 +2073,79 @@ CULTIVATION_DEFAULT_TEMPLATES = {
 }
 
 
+CULTIVATION_STAT_KEYS = [
+    ("body", "体魄"),
+    ("mind", "悟性"),
+    ("spirit", "心性"),
+    ("luck", "气运"),
+]
+
+CULTIVATION_TALENTS = [
+    {
+        "id": "iron_body",
+        "name": "金刚体魄",
+        "desc": "体魄 +3，战斗时所受伤害降低",
+        "effects": {"body": 3},
+        "flags": {"combat_resist": 0.5},
+    },
+    {
+        "id": "sage_mind",
+        "name": "悟道奇才",
+        "desc": "悟性 +3，闭关悟道成功率提升",
+        "effects": {"mind": 3},
+        "flags": {"insight_bonus": 0.15},
+    },
+    {
+        "id": "serene_heart",
+        "name": "静心如水",
+        "desc": "心性 +2，失败损失减少",
+        "effects": {"spirit": 2},
+        "flags": {"setback_reduce": 4},
+    },
+    {
+        "id": "child_of_luck",
+        "name": "气运之子",
+        "desc": "气运 +4，奇遇收益提升",
+        "effects": {"luck": 4},
+        "flags": {"chance_bonus": 0.25},
+    },
+    {
+        "id": "alchemy_adept",
+        "name": "丹道新星",
+        "desc": "首次炼丹事件必定成功并悟性 +1",
+        "effects": {"mind": 1},
+        "flags": {"alchemy_mastery": 1},
+    },
+    {
+        "id": "sword_soul",
+        "name": "剑魂共鸣",
+        "desc": "战斗成功奖励提升，体魄 +1，悟性 +1",
+        "effects": {"body": 1, "mind": 1},
+        "flags": {"combat_bonus": 0.2},
+    },
+    {
+        "id": "phoenix_blood",
+        "name": "凤血重生",
+        "desc": "寿元 +15，濒死时有机会重生",
+        "effects": {},
+        "flags": {"lifespan_bonus": 15, "resurrection": 0.3},
+    },
+    {
+        "id": "spirit_talker",
+        "name": "灵识敏锐",
+        "desc": "心性 +3，可预判风险",
+        "effects": {"spirit": 3},
+        "flags": {"hazard_hint": 1},
+    },
+]
+
+CULTIVATION_BASE_POINTS = 8
+CULTIVATION_MAX_TALENTS = 2
+CULTIVATION_REFRESH_COUNT = 3
+CULTIVATION_STAGE_NAMES = ["凡人", "炼气", "筑基", "金丹", "元婴", "化神", "飞升"]
+CULTIVATION_STAGE_THRESHOLDS = [120, 260, 420, 660, 960, 1320]
+
+
 def _json_object(raw: str, default: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if default is None:
         default = {}
