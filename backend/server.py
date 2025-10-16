@@ -2037,7 +2037,7 @@ CULTIVATION_TALENTS = [
     },
 ]
 
-CULTIVATION_TALENT_ROLLS = 6
+CULTIVATION_TALENT_ROLLS = 4
 CULTIVATION_BASE_POINTS = 10
 CULTIVATION_MAX_TALENTS = 3
 CULTIVATION_REFRESH_COUNT = 5
@@ -2098,203 +2098,6 @@ CULTIVATION_TRIALS = [
             "log": "【劫灭】天威浩荡，肉身神魂俱灭。",
         },
     },
-]
-
-CULTIVATION_STATUS_LABELS = {1: "寒门出身", 2: "世家子弟", 3: "仙门传承"}
-
-CULTIVATION_ORIGINS = [
-    {
-        "id": "mortal",
-        "name": "凡尘平民",
-        "desc": "家境清寒，自幼劳作锻体。",
-        "status": 1,
-        "stats": {"body": 1},
-        "coins": 45,
-    },
-    {
-        "id": "bureaucrat",
-        "name": "官宦人家",
-        "desc": "诗书礼仪熏陶，心志坚定。",
-        "status": 2,
-        "stats": {"mind": 1, "spirit": 1},
-        "coins": 70,
-    },
-    {
-        "id": "merchant",
-        "name": "富商子弟",
-        "desc": "财力雄厚，善于交际权衡。",
-        "status": 2,
-        "stats": {"luck": 2},
-        "coins": 110,
-    },
-    {
-        "id": "cultivator",
-        "name": "修仙世家",
-        "desc": "灵脉滋养，天赋卓绝。",
-        "status": 3,
-        "stats": {"mind": 1, "spirit": 2},
-        "coins": 90,
-        "flags": {"insight_bonus": 0.05},
-    },
-]
-
-CULTIVATION_SECTS = [
-    {
-        "id": "azure_sword",
-        "name": "青虚剑宗",
-        "motto": "剑意通霄，斩尽尘埃",
-        "min_status": 2,
-        "stats": {"body": 2, "mind": 1},
-        "coins": 20,
-        "flags": {"combat_bonus": 0.1},
-    },
-    {
-        "id": "emerald_palace",
-        "name": "玉衡仙宫",
-        "motto": "星辉为引，度化群生",
-        "min_status": 3,
-        "stats": {"mind": 2, "spirit": 1},
-        "coins": 10,
-        "flags": {"insight_bonus": 0.1},
-    },
-    {
-        "id": "thunder_valley",
-        "name": "雷泽谷",
-        "motto": "万雷淬体，唯强者立",
-        "min_status": 1,
-        "stats": {"body": 2},
-        "coins": 25,
-        "flags": {"combat_resist": 0.2},
-    },
-    {
-        "id": "moon_temple",
-        "name": "太阴月殿",
-        "motto": "月华如练，静照诸天",
-        "min_status": 2,
-        "stats": {"spirit": 2, "mind": 1},
-        "coins": 15,
-        "flags": {"setback_reduce": 3},
-    },
-    {
-        "id": "spirit_pavilion",
-        "name": "灵木山亭",
-        "motto": "万木成灵，心念向善",
-        "min_status": 1,
-        "stats": {"spirit": 1},
-        "coins": 18,
-        "flags": {"hazard_hint": 1},
-    },
-    {
-        "id": "wandering",
-        "name": "浮空散修盟",
-        "motto": "天地为师，逍遥游",
-        "min_status": 1,
-        "stats": {"luck": 1},
-        "coins": 30,
-        "flags": {"chance_bonus": 0.08},
-    },
-]
-
-CULTIVATION_MASTERS = [
-    {
-        "id": "lingxiao",
-        "name": "凌霄真君",
-        "title": "剑道长老",
-        "motto": "以无畏之心破万劫",
-        "sect": "azure_sword",
-        "min_status": 2,
-        "stats": {"body": 1, "mind": 1},
-        "flags": {"combat_bonus": 0.15},
-        "coins": 10,
-        "traits": ["剑道加成", "战斗收益提升"],
-    },
-    {
-        "id": "ziyue",
-        "name": "紫月仙姝",
-        "title": "月殿掌教",
-        "motto": "静极生辉，心净自明",
-        "sect": "moon_temple",
-        "min_status": 2,
-        "stats": {"spirit": 1, "mind": 1},
-        "flags": {"setback_reduce": 4},
-        "coins": 12,
-        "traits": ["稳固心神", "减少失败损伤"],
-    },
-    {
-        "id": "leiting",
-        "name": "雷霆老祖",
-        "title": "雷罚护法",
-        "motto": "怒雷既出，邪祟皆灭",
-        "sect": "thunder_valley",
-        "min_status": 1,
-        "stats": {"body": 1},
-        "flags": {"combat_resist": 0.3},
-        "coins": 8,
-        "traits": ["减免战斗伤害"],
-    },
-    {
-        "id": "lingsang",
-        "name": "灵桑道人",
-        "title": "灵木传人",
-        "motto": "春风化雨，以德载道",
-        "sect": "spirit_pavilion",
-        "min_status": 1,
-        "stats": {"spirit": 1},
-        "flags": {"hazard_hint": 1},
-        "coins": 6,
-        "traits": ["先机洞察"],
-    },
-    {
-        "id": "youchens",
-        "name": "游尘散人",
-        "title": "逍遥前辈",
-        "motto": "天地无垠，步步皆景",
-        "sect": "wandering",
-        "min_status": 1,
-        "stats": {"luck": 1},
-        "flags": {"chance_bonus": 0.15},
-        "coins": 16,
-        "traits": ["机缘丰厚"],
-    },
-    {
-        "id": "baiyan",
-        "name": "白砚居士",
-        "title": "星象推演师",
-        "motto": "观星测命，以智开疆",
-        "sect": "emerald_palace",
-        "min_status": 3,
-        "stats": {"mind": 2},
-        "flags": {"insight_bonus": 0.15},
-        "coins": 14,
-        "traits": ["悟道奇才"],
-    },
-]
-
-CULTIVATION_ARTIFACT_POOL = [
-    {"name": "星河飞剑", "desc": "蕴含星辰之力，可破万法"},
-    {"name": "玄光镜", "desc": "照见心魔，护持道心"},
-    {"name": "雷霆战鼓", "desc": "激发真雷，一击震退强敌"},
-    {"name": "紫霜佩铃", "desc": "摇动时凝聚寒霜守护周身"},
-    {"name": "灵木法冠", "desc": "引动万木生机疗愈创伤"},
-    {"name": "云海羽衣", "desc": "御风而行，千里瞬至"},
-]
-
-CULTIVATION_COMPANION_POOL = [
-    {"name": "柳霜", "note": "剑修师姐", "desc": "行事干练，擅长指点剑道窍门"},
-    {"name": "白起", "note": "雷谷师兄", "desc": "豪迈爽朗，总在危局前驱"},
-    {"name": "顾清仪", "note": "炼丹妙手", "desc": "善以丹术疗伤，随时支援"},
-    {"name": "封晚晴", "note": "月殿圣女", "desc": "心思缜密，擅长谋划布局"},
-    {"name": "牧野", "note": "逍遥游侠", "desc": "行踪不定，却总能伸出援手"},
-    {"name": "枝岚", "note": "灵木道灵", "desc": "化形木灵，能借自然庇护同伴"},
-]
-
-CULTIVATION_TECHNIQUE_POOL = [
-    {"name": "紫霄御雷诀", "desc": "引动九霄神雷护体攻敌"},
-    {"name": "星沉剑意", "desc": "以星辰轨迹推演剑势"},
-    {"name": "太阴凝华术", "desc": "借月华凝炼心神稳固境界"},
-    {"name": "木灵回春篇", "desc": "调动生机，重塑经脉活力"},
-    {"name": "游龙步", "desc": "化身游龙，身形难以捕捉"},
-    {"name": "玄心定神章", "desc": "熄灭杂念，抵御心魔侵蚀"},
 ]
 
 CULTIVATION_STATUS_LABELS = {1: "寒门出身", 2: "世家子弟", 3: "仙门传承"}
@@ -3662,6 +3465,7 @@ CULTIVATION_TALENTS = [
     {
         "id": "phoenix_blood",
         "name": "凤血重生",
+        "rarity": "gold",
         "desc": "寿元 +15，濒死时有机会重生",
         "effects": {},
         "flags": {"lifespan_bonus": 15, "resurrection": 0.3},
@@ -4963,68 +4767,6 @@ def _cultivation_render_master(master: Dict[str, Any]) -> Dict[str, Any]:
     return data
 
 
-def _cultivation_stat_label(stat: str) -> str:
-    return next((label for key, label in CULTIVATION_STAT_KEYS if key == stat), stat)
-
-
-def _cultivation_render_bonus(stats: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    effects: List[Dict[str, Any]] = []
-    if not isinstance(stats, dict):
-        return effects
-    for key, value in stats.items():
-        try:
-            amount = int(value)
-        except Exception:
-            continue
-        if not amount:
-            continue
-        effects.append({"stat": key, "label": _cultivation_stat_label(key), "value": amount})
-    return effects
-
-
-def _cultivation_render_origin(origin: Dict[str, Any]) -> Dict[str, Any]:
-    status = int(origin.get("status") or 1)
-    return {
-        "id": origin.get("id"),
-        "name": origin.get("name"),
-        "desc": origin.get("desc"),
-        "status": status,
-        "status_label": origin.get("status_label") or CULTIVATION_STATUS_LABELS.get(status, ""),
-        "coins": int(origin.get("coins") or 0),
-        "effects": _cultivation_render_bonus(origin.get("stats")),
-    }
-
-
-def _cultivation_render_sect(sect: Dict[str, Any]) -> Dict[str, Any]:
-    status = int(sect.get("min_status") or 1)
-    return {
-        "id": sect.get("id"),
-        "name": sect.get("name"),
-        "motto": sect.get("motto"),
-        "min_status": status,
-        "coins": int(sect.get("coins") or 0),
-        "effects": _cultivation_render_bonus(sect.get("stats")),
-    }
-
-
-def _cultivation_render_master(master: Dict[str, Any]) -> Dict[str, Any]:
-    status = int(master.get("min_status") or 1)
-    data = {
-        "id": master.get("id"),
-        "name": master.get("name"),
-        "title": master.get("title"),
-        "motto": master.get("motto"),
-        "sect": master.get("sect"),
-        "min_status": status,
-        "coins": int(master.get("coins") or 0),
-        "effects": _cultivation_render_bonus(master.get("stats")),
-    }
-    traits = master.get("traits")
-    if isinstance(traits, (list, tuple)):
-        data["traits"] = [str(t) for t in traits if t]
-    return data
-
-
 def _cultivation_prepare_lobby(node: Dict[str, Any], seed: Optional[int] = None) -> Dict[str, Any]:
     lobby = node.get("lobby") if isinstance(node.get("lobby"), dict) else None
     if lobby and lobby.get("talents"):
@@ -5236,6 +4978,181 @@ def _cultivation_option(
 
 
 
+
+def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Dict[str, Any]:
+    event_seed = base_seed ^ 0x55AA
+    options: List[Dict[str, Any]] = []
+    artifact_rng = random.Random(event_seed ^ 0x1010)
+    artifact = _cultivation_random_artifact(artifact_rng)
+    if artifact:
+        cost = max(40, 55 + artifact_rng.randint(-10, 25))
+        artifact = dict(artifact)
+        name = artifact.get("name", "神秘法宝")
+        artifact["log"] = f"【交易】花费{cost}枚铜钱购得{name}。{artifact.get('desc', '')}".strip()
+        options.append(
+            _cultivation_option(
+                "buy_artifact",
+                f"购入{name}",
+                f"消耗{cost}铜钱换取珍稀法宝。",
+                "mind",
+                "merchant_buy",
+                (18, 28),
+                (-2, 2),
+                (24, 36),
+                "与行脚商贩讨价还价。",
+                meta={"cost": cost, "loot": artifact, "note": "法宝交易"},
+            )
+        )
+    technique_rng = random.Random(event_seed ^ 0x2020)
+    technique = _cultivation_random_technique(technique_rng)
+    if technique:
+        cost = max(30, 42 + technique_rng.randint(-6, 18))
+        technique = dict(technique)
+        name = technique.get("name", "秘术残卷")
+        technique["log"] = f"【交易】花费{cost}枚铜钱换得{name}。{technique.get('desc', '')}".strip()
+        options.append(
+            _cultivation_option(
+                "buy_technique",
+                f"购入{name}",
+                f"支出{cost}铜钱获得一套玄妙功法。",
+                "spirit",
+                "merchant_buy",
+                (16, 26),
+                (-1, 3),
+                (20, 32),
+                "用铜钱换取功法残卷。",
+                meta={"cost": cost, "loot": technique, "note": "功法交易"},
+            )
+        )
+    if not options:
+        options.append(
+            _cultivation_option(
+                "empty_hand",
+                "错过机缘",
+                "今日商贩未携带珍品，只能作罢。",
+                "luck",
+                "merchant_leave",
+                (12, 20),
+                (-1, 2),
+                (14, 22),
+                "拱手作别行脚商贩。",
+            )
+        )
+    options.append(
+        _cultivation_option(
+            "decline",
+            "婉拒离去",
+            "保留资源，继续赶路。",
+            "luck",
+            "merchant_leave",
+            (14, 22),
+            (-1, 3),
+            (16, 24),
+            "谢绝商贩的热情邀约。",
+            meta={"note": "离开"},
+        )
+    )
+    description = "一位行脚商贩摆开摊位，低声兜售珍贵法器与功法。"
+    return {
+        "id": f"{run['session']}-{run['step']}-merchant",
+        "title": "行脚商贩",
+        "description": description,
+        "options": options,
+        "seed": event_seed,
+        "event_type": "merchant",
+    }
+
+
+def _cultivation_build_sacrifice_event(run: Dict[str, Any], base_seed: int) -> Dict[str, Any]:
+    event_seed = base_seed ^ 0x7F31
+    rng = random.Random(event_seed)
+    options: List[Dict[str, Any]] = []
+    altar_text = rng.choice([
+        "古老石坛散发幽蓝光辉",
+        "血色法阵缓缓旋转",
+        "幽火缭绕的祭坛矗立前方",
+    ])
+    artifact_rng = random.Random(event_seed ^ 0x3030)
+    artifact = _cultivation_random_artifact(artifact_rng)
+    if artifact:
+        cost = max(28, 38 + artifact_rng.randint(-6, 12))
+        sacrifice = [{"stat": "body", "amount": 1}]
+        artifact = dict(artifact)
+        name = artifact.get("name", "祭坛馈赠")
+        artifact["log"] = f"【献祭】燃烧体魄与{cost}铜钱，换得{name}。{artifact.get('desc', '')}".strip()
+        options.append(
+            _cultivation_option(
+                "sacrifice_artifact",
+                f"献祭血骨换取{name}",
+                f"献祭1点体魄并奉上{cost}铜钱以换取法宝。",
+                "body",
+                "sacrifice_trade",
+                (18, 26),
+                (-4, 1),
+                (24, 34),
+                "献上精血，祭坛回馈灵光。",
+                meta={"cost": cost, "loot": artifact, "sacrifice": sacrifice, "note": "法宝献祭"},
+            )
+        )
+    technique_rng = random.Random(event_seed ^ 0x4040)
+    technique = _cultivation_random_technique(technique_rng)
+    if technique:
+        sacrifice = [{"stat": "mind", "amount": 1}]
+        technique = dict(technique)
+        gain = max(48, 60 + technique_rng.randint(-4, 16))
+        technique["log"] = f"【献祭】燃尽心神换得{technique.get('name', '秘术')}，并获{gain}枚铜钱回馈。{technique.get('desc', '')}".strip()
+        options.append(
+            _cultivation_option(
+                "sacrifice_scroll",
+                f"祭献悟性悟得{technique.get('name', '秘术')}",
+                f"献祭1点悟性获取功法，并额外得到{gain}铜钱。",
+                "spirit",
+                "sacrifice_trade",
+                (16, 24),
+                (-3, 2),
+                (22, 32),
+                "神魂与祭坛相融，赐下秘法。",
+                meta={"loot": technique, "sacrifice": sacrifice, "gain_coins": gain, "note": "功法献祭"},
+            )
+        )
+    gain = max(55, 70 + rng.randint(-10, 18))
+    options.append(
+        _cultivation_option(
+            "sacrifice_coins",
+            "祭献气运换取铜钱",
+            f"献祭1点气运换得{gain}枚铜钱。",
+            "luck",
+            "sacrifice_convert",
+            (14, 22),
+            (-3, 2),
+            (18, 28),
+            "气运被祭坛吞噬，化作叮当铜钱。",
+            meta={"sacrifice": [{"stat": "luck", "amount": 1}], "gain_coins": gain, "note": "铜钱回馈"},
+        )
+    )
+    options.append(
+        _cultivation_option(
+            "leave_altar",
+            "谨慎离开",
+            "察觉邪异气息，未做献祭。",
+            "spirit",
+            "sacrifice_leave",
+            (12, 20),
+            (-2, 3),
+            (14, 22),
+            "稳住心神，远离诡异祭坛。",
+            meta={"note": "离开"},
+        )
+    )
+    description = f"{altar_text}，低语声蛊惑你献出心神与铜钱。"
+    return {
+        "id": f"{run['session']}-{run['step']}-sacrifice",
+        "title": "秘祭商铺",
+        "description": description,
+        "options": options,
+        "seed": event_seed,
+        "event_type": "sacrifice",
+    }
 
 def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Dict[str, Any]:
     event_seed = base_seed ^ 0x55AA

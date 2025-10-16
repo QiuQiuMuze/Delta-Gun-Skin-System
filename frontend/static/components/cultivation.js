@@ -685,6 +685,12 @@ const CultivationPage = {
       const label = info && info.label ? escapeHtml(info.label) : escapeHtml(key);
       return `<span class="cultivation-rarity-pill${tone}">${label}</span>`;
     }).join('');
+    const refreshToolbar = `
+      <div class="cultivation-talent-toolbar">
+        <div class="cultivation-refresh__info">剩余刷新 <span class="cultivation-refresh__count">${fmtInt(refreshLeft)}</span> 次</div>
+        <button class="btn" id="cultivation-refresh">刷新天赋</button>
+      </div>
+    `;
     const statsInputs = Object.entries(baseStats).map(([key, value]) => `
       <div class="cultivation-attr" data-stat="${escapeHtml(key)}">
         <label>${escapeHtml(this.statLabel(key))}</label>
@@ -752,10 +758,6 @@ const CultivationPage = {
     return `
       <div class="cultivation-section">
         <div class="cultivation-lobby__meta">可分配属性点：<span id="cultivation-points-left">${points}</span> · 最多选择 ${fmtInt(lobby.max_talents || 0)} 个天赋 · 预计起始铜钱 <span id="cultivation-start-coins">${coinsPreview}</span></div>
-        <div class="cultivation-refresh__info">剩余刷新 <span class="cultivation-refresh__count">${fmtInt(refreshLeft)}</span> 次</div>
-        <div class="cultivation-lobby__actions">
-          <button class="btn" id="cultivation-refresh">刷新天赋</button>
-        </div>
         ${rarityLegendBlock}
         <div class="cultivation-lineage-select">
           <div class="cultivation-lineage-select__group">
@@ -771,7 +773,10 @@ const CultivationPage = {
             <div class="group-body">${masterCards}</div>
           </div>
         </div>
-        <div class="cultivation-talent-list">${talentCards}</div>
+        <div class="cultivation-talent-area">
+          ${refreshToolbar}
+          <div class="cultivation-talent-list">${talentCards}</div>
+        </div>
         <div class="cultivation-attr-list">${statsInputs}</div>
         <div class="cultivation-start">
           <button class="btn primary" id="cultivation-start">开始历练</button>
