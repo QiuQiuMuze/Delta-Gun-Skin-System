@@ -529,6 +529,12 @@ h3 + .muted.small { margin-top:-6px; }
 .cookie-mini__stats span { display:flex; align-items:center; gap:4px; background:rgba(30,58,138,0.28); padding:2px 8px; border-radius:8px; }
 .cookie-mini__progress { display:flex; flex-direction:column; gap:4px; }
 .cookie-mini__progress-label { font-size:11px; color:#94a3b8; }
+.cookie-mini__summary { font-size:12px; color:#e2e8f0; margin-bottom:6px; }
+.cookie-mini--cultivation .cookie-mini__summary { font-size:13px; font-weight:500; color:#f8fafc; }
+.cultivation-reward { font-size:12px; color:#fde68a; margin-bottom:6px; }
+.cultivation-log { margin:0; padding-left:18px; max-height:140px; overflow-y:auto; font-size:12px; color:#cbd5f5; }
+.cultivation-log li { margin-bottom:4px; line-height:1.4; }
+.cultivation-log--empty { padding:10px 12px; background:rgba(30,64,175,0.25); border-radius:8px; list-style:none; }
 .cookie-disabled { padding:24px; border-radius:16px; text-align:center; background:rgba(15,23,42,0.6); color:#cbd5f5; }
 .cookie-report { padding:16px; border-radius:14px; background:rgba(30,41,59,0.8); box-shadow:0 4px 14px rgba(0,0,0,0.12); display:flex; flex-direction:column; gap:8px; }
 .cookie-report .report-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:6px; font-size:13px; color:#cbd5f5; }
