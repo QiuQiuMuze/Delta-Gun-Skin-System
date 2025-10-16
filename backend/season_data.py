@@ -1572,6 +1572,32 @@ SEASON_DEFINITIONS = [
                     "attachment_colors": [["#9a7646", "#f2d18a"]],
                     "effects": {"premium": ["sheen"], "exquisite": ["sheen", "sparkle"]}
                 }
+            },
+            {
+                "skin_id": "EPI_SCARL_HELIX",
+                "name": "SCAR-L突击步枪-螺旋棱镜",
+                "weapon": "SCAR-L突击步枪",
+                "rarity": "PURPLE",
+                "model_key": "assault",
+                "meta": {
+                    "description": "枪身嵌入螺旋光带，棱镜碎片随动作折射冷暖光芒。",
+                    "body_colors": [["#5d6dff", "#2a3b9f"]],
+                    "attachment_colors": [["#f4cfff", "#88f3ff"]],
+                    "effects": {"premium": ["sheen"], "exquisite": ["sheen", "refraction", "sparkle"]}
+                }
+            },
+            {
+                "skin_id": "EPI_SVD_LUMINEDGE",
+                "name": "SVD狙击步枪-辉刃",
+                "weapon": "SVD狙击步枪",
+                "rarity": "PURPLE",
+                "model_key": "battle",
+                "meta": {
+                    "description": "长枪体被蓝紫光刃包裹，狙击护木镶嵌流动能量脉络。",
+                    "body_colors": [["#4b5fe6", "#89a4ff"]],
+                    "attachment_colors": [["#ffe0ad", "#ffd2f5"]],
+                    "effects": {"premium": ["sheen"], "exquisite": ["sheen", "refraction"]}
+                }
             }
         ],
         "blues": [
@@ -1586,6 +1612,66 @@ SEASON_DEFINITIONS = [
                     "body_colors": [["#3f3f46", "#686873"]],
                     "attachment_colors": [["#b5b5c2", "#89899a"]]
                 }
+            },
+            {
+                "skin_id": "RAR_MP7_NEONFRAME",
+                "name": "MP7冲锋枪-霓框",
+                "weapon": "MP7冲锋枪",
+                "rarity": "BLUE",
+                "model_key": "vector",
+                "meta": {
+                    "description": "紧凑机匣外覆霓虹光框，尾部散发冷蓝辉芒。",
+                    "body_colors": [["#2e3b6f", "#4c5fa6"]],
+                    "attachment_colors": [["#7af2ff", "#c3f7ff"]]
+                }
+            },
+            {
+                "skin_id": "RAR_QBZ95_POLARARC",
+                "name": "QBZ-95突击步枪-极弧",
+                "weapon": "QBZ-95突击步枪",
+                "rarity": "BLUE",
+                "model_key": "bullpup",
+                "meta": {
+                    "description": "无托布局上覆极地蓝弧面，护木透出光电回路。",
+                    "body_colors": [["#3c5f9e", "#6f8fe2"]],
+                    "attachment_colors": [["#c3d9ff", "#8ee0ff"]]
+                }
+            },
+            {
+                "skin_id": "RAR_SIG552_STEELWING",
+                "name": "SIG 552突击步枪-钢翼",
+                "weapon": "SIG 552突击步枪",
+                "rarity": "BLUE",
+                "model_key": "assault",
+                "meta": {
+                    "description": "钢翼状散热片镶嵌于枪身两侧，透出冷银光泽。",
+                    "body_colors": [["#46546a", "#7084a0"]],
+                    "attachment_colors": [["#b8c9dd", "#d8e9f9"]]
+                }
+            },
+            {
+                "skin_id": "RAR_P90_STROBELINE",
+                "name": "P90冲锋枪-频闪线",
+                "weapon": "P90冲锋枪",
+                "rarity": "BLUE",
+                "model_key": "vector",
+                "meta": {
+                    "description": "流线型弹匣覆以蓝紫频闪线条，侧翼透出亮白灯带。",
+                    "body_colors": [["#394f8c", "#6175c4"]],
+                    "attachment_colors": [["#d5e2ff", "#9fe2ff"]]
+                }
+            },
+            {
+                "skin_id": "RAR_MK14_SILVERGROOVE",
+                "name": "MK14战斗步枪-银脊",
+                "weapon": "MK14战斗步枪",
+                "rarity": "BLUE",
+                "model_key": "battle",
+                "meta": {
+                    "description": "拉丝银脊贯穿枪体，侧板以暗蓝渐变衬托机械质感。",
+                    "body_colors": [["#2f3c55", "#51658a"]],
+                    "attachment_colors": [["#c2d1e4", "#93a7c7"]]
+                }
             }
         ],
         "greens": [
@@ -1599,6 +1685,138 @@ SEASON_DEFINITIONS = [
                     "description": "粗犷机械纹理配以荧绿色野性涂装。",
                     "body_colors": [["#4a5d3a"]],
                     "attachment_colors": [["#9bd964"]]
+                }
+            },
+            {
+                "skin_id": "UNC_AK74M_BRUSHWOOD",
+                "name": "AK-74M突击步枪-林影",
+                "weapon": "AK-74M突击步枪",
+                "rarity": "GREEN",
+                "model_key": "assault",
+                "meta": {
+                    "description": "林木伪装色叠加细致拉丝，让经典步枪更具野战气质。",
+                    "body_colors": [["#5a7a4d"]],
+                    "attachment_colors": [["#c8df9a"]]
+                }
+            },
+            {
+                "skin_id": "UNC_G36_SMOKEGLASS",
+                "name": "G36突击步枪-烟玻",
+                "weapon": "G36突击步枪",
+                "rarity": "GREEN",
+                "model_key": "assault",
+                "meta": {
+                    "description": "灰蓝烟玻材质覆盖护木，透出内部结构线条。",
+                    "body_colors": [["#4e5d6a"]],
+                    "attachment_colors": [["#9fb6c6"]]
+                }
+            },
+            {
+                "skin_id": "UNC_VITYAZ_CYANGLINT",
+                "name": "PP-19冲锋枪-青辉",
+                "weapon": "PP-19-01冲锋枪",
+                "rarity": "GREEN",
+                "model_key": "vector",
+                "meta": {
+                    "description": "护木与折叠托镶嵌青色亮条，释放灵动能量感。",
+                    "body_colors": [["#3d6f71"]],
+                    "attachment_colors": [["#9ae3df"]]
+                }
+            },
+            {
+                "skin_id": "UNC_TYPE81_TERRACOTTA",
+                "name": "81式突击步枪-陶纹",
+                "weapon": "81式突击步枪",
+                "rarity": "GREEN",
+                "model_key": "assault",
+                "meta": {
+                    "description": "暖土色陶纹与黑色金属交错，呈现东方古典气息。",
+                    "body_colors": [["#70584a"]],
+                    "attachment_colors": [["#c9a687"]]
+                }
+            },
+            {
+                "skin_id": "UNC_FAMAS_LATTICE",
+                "name": "FAMAS突击步枪-格栅",
+                "weapon": "FAMAS突击步枪",
+                "rarity": "GREEN",
+                "model_key": "assault",
+                "meta": {
+                    "description": "无托结构配以浅蓝格栅纹理，呈现冷静科技风。",
+                    "body_colors": [["#4d5f76"]],
+                    "attachment_colors": [["#b0d1e8"]]
+                }
+            },
+            {
+                "skin_id": "UNC_M249_FIELDGRID",
+                "name": "M249机枪-田格",
+                "weapon": "M249轻机枪",
+                "rarity": "GREEN",
+                "model_key": "battle",
+                "meta": {
+                    "description": "弹链护罩绘制浅绿田格，暗示田野作战背景。",
+                    "body_colors": [["#5c6650"]],
+                    "attachment_colors": [["#c0d79a"]]
+                }
+            },
+            {
+                "skin_id": "UNC_HONEYBADGER_RIVERBED",
+                "name": "Honey Badger冲锋枪-河床",
+                "weapon": "Honey Badger冲锋枪",
+                "rarity": "GREEN",
+                "model_key": "vector",
+                "meta": {
+                    "description": "沉稳灰蓝基调上点缀鹅卵石纹理，模拟河床肌理。",
+                    "body_colors": [["#45515b"]],
+                    "attachment_colors": [["#9ab7c7"]]
+                }
+            },
+            {
+                "skin_id": "UNC_AKS74U_SPARKLEAF",
+                "name": "AKS-74U冲锋枪-星叶",
+                "weapon": "AKS-74U冲锋枪",
+                "rarity": "GREEN",
+                "model_key": "vector",
+                "meta": {
+                    "description": "折叠托与护木涂覆星点绿叶纹，凸显轻巧敏捷。",
+                    "body_colors": [["#4a7254"]],
+                    "attachment_colors": [["#b8e6a7"]]
+                }
+            },
+            {
+                "skin_id": "UNC_TAVOR_MOONLIT",
+                "name": "Tavor突击步枪-月辉",
+                "weapon": "Tavor突击步枪",
+                "rarity": "GREEN",
+                "model_key": "bullpup",
+                "meta": {
+                    "description": "月光银青渐变附着于无托结构，显得灵巧而未来。",
+                    "body_colors": [["#4f5874"]],
+                    "attachment_colors": [["#c4cbe3"]]
+                }
+            },
+            {
+                "skin_id": "UNC_M14D_OBSIDIAN",
+                "name": "M14 DMR-黑曜",
+                "weapon": "M14精确步枪",
+                "rarity": "GREEN",
+                "model_key": "battle",
+                "meta": {
+                    "description": "枪托采用黑曜石质感涂层，带有青灰折光。",
+                    "body_colors": [["#3e4854"]],
+                    "attachment_colors": [["#8ea4b9"]]
+                }
+            },
+            {
+                "skin_id": "UNC_MP5K_WAVEGRID",
+                "name": "MP5K冲锋枪-波网",
+                "weapon": "MP5K冲锋枪",
+                "rarity": "GREEN",
+                "model_key": "vector",
+                "meta": {
+                    "description": "短枪身覆盖蓝绿波纹网格，配件以淡青磨砂收束。",
+                    "body_colors": [["#42687a"]],
+                    "attachment_colors": [["#a8d5e6"]]
                 }
             }
         ]

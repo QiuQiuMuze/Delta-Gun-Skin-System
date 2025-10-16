@@ -57,6 +57,7 @@
     trail: "残影拖尾",
     refraction: "晶体折射",
     flux: "相位流动",
+    prism_flux: "棱镜流光",
     bold_tracer: "显眼曳光",
     kill_counter: "击杀字数",
     arcade_core: "街机核心",
@@ -174,6 +175,88 @@
 
   const DEFAULT_COLOR = { hex: "#889199", name: "军械灰" };
 
+  function rgbToHsl(r, g, b){
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h = 0, s = 0;
+    const l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h *= 60;
+    }
+    return { h, s, l };
+  }
+
+  function resolveHueName(h){
+    const table = [
+      { max: 15, name: "猩红" },
+      { max: 45, name: "暮橙" },
+      { max: 75, name: "琥金" },
+      { max: 105, name: "嫩绿" },
+      { max: 135, name: "翠绿" },
+      { max: 165, name: "青翠" },
+      { max: 195, name: "湖蓝" },
+      { max: 225, name: "霁蓝" },
+      { max: 255, name: "靛青" },
+      { max: 285, name: "暮紫" },
+      { max: 315, name: "绛紫" },
+      { max: 345, name: "玫红" },
+      { max: 360, name: "猩红" }
+    ];
+    const hue = ((h % 360) + 360) % 360;
+    for (const entry of table) {
+      if (hue <= entry.max) return entry.name;
+    }
+    return "多彩";
+  }
+
+  function buildTonePrefix(s, l){
+    if (s < 0.12) {
+      if (l < 0.12) return "深邃";
+      if (l < 0.25) return "玄";
+      if (l < 0.4) return "暗";
+      if (l < 0.6) return "中性";
+      if (l < 0.78) return "浅";
+      return "莹";
+    }
+    if (l < 0.2) return "深";
+    if (l < 0.35) return "暗";
+    if (l > 0.82) return "极浅";
+    if (l > 0.65) return "浅";
+    if (s > 0.65 && l > 0.5) return "亮";
+    return "";
+  }
+
+  function grayscaleName(l){
+    if (l < 0.08) return "墨黑";
+    if (l < 0.18) return "夜黑";
+    if (l < 0.32) return "玄灰";
+    if (l < 0.5) return "石墨灰";
+    if (l < 0.68) return "钛银";
+    if (l < 0.82) return "月白";
+    return "雪白";
+  }
+
+  function autoColorName(hex){
+    const { r, g, b } = hexToRgb(hex);
+    const { h, s, l } = rgbToHsl(r, g, b);
+    const light = Math.max(0, Math.min(1, l));
+    const sat = Math.max(0, Math.min(1, s));
+    if (sat < 0.12) {
+      return grayscaleName(light);
+    }
+    const tone = buildTonePrefix(sat, light);
+    const base = resolveHueName(h);
+    return `${tone ? tone : ""}${base}`;
+  }
+
   function esc(str){
     return String(str == null ? "" : str)
       .replace(/&/g, "&amp;")
@@ -202,10 +285,10 @@
     if (!entry) return DEFAULT_COLOR;
     if (typeof entry === "string" || typeof entry === "number") {
       const hex = sanitizeHex(entry);
-      return { hex, name: COLOR_LOOKUP[hex] || hex };
+      return { hex, name: COLOR_LOOKUP[hex] || autoColorName(hex) };
     }
     const hex = sanitizeHex(entry.hex || entry.color || entry.value);
-    const name = entry.name || COLOR_LOOKUP[hex] || hex;
+    const name = entry.name || COLOR_LOOKUP[hex] || autoColorName(hex);
     return { hex, name };
   }
 

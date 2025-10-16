@@ -76,7 +76,6 @@ const CraftPage = {
         const value = seasonSel.value || "ALL";
         this._seasonFilter = value === "ALL" ? "ALL" : value;
         this._page = 1;
-        this._selected.clear();
         this._renderSummary();
         this._renderToolbar();
         this._renderListAndPager();
@@ -251,11 +250,13 @@ const CraftPage = {
 
     // 表格
     const rows = pageArr.map((x,i)=>{
-      const checked=this._selected.has(x.inv_id)?"checked":"";
+      const selected=this._selected.has(x.inv_id);
       const rc=this._rarityClass(x.rarity);
       const seasonLabel = this._seasonLabel(x.season || "");
-      return `<tr>
-        <td><input type="checkbox" data-inv="${x.inv_id}" ${checked}/></td>
+      const indicator = selected ? "已选" : "双击";
+      const rowCls = selected ? "is-selected" : "";
+      return `<tr class="${rowCls}" data-inv="${x.inv_id}">
+        <td><span class="craft-indicator ${selected?"is-active":""}">${indicator}</span></td>
         <td>${start + i + 1}</td>
         <td>${x.inv_id}</td>
         <td class="${rc}">${x.name}</td>
@@ -273,9 +274,19 @@ const CraftPage = {
         <thead><tr><th>选</th><th>#</th><th>inv_id</th><th>名称</th><th>赛季</th><th>稀有度</th><th>磨损</th><th>品质</th><th>编号</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      <div class="muted small">提示：双击表格行即可加入/移除合成槽位，切换赛季将保留已选项目。</div>
     `;
-    listBox.querySelectorAll('input[type="checkbox"][data-inv]').forEach(cb=>{
-      cb.onchange = ()=>{ const id=cb.dataset.inv; if(cb.checked)this._selected.add(id); else this._selected.delete(id); this._renderSummary(); };
+    const toggleSelect = (id) => {
+      if (!id) return;
+      if (this._selected.has(id)) this._selected.delete(id);
+      else this._selected.add(id);
+      this._renderSummary();
+      this._renderListAndPager();
+    };
+    listBox.querySelectorAll('tbody tr[data-inv]').forEach(row => {
+      row.addEventListener('dblclick', () => {
+        toggleSelect(row.getAttribute('data-inv'));
+      });
     });
 
     // 单一分页条（底部）

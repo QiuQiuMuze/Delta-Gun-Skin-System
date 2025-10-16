@@ -356,33 +356,50 @@ const GachaPage = {
     }
 
     const parts = [];
+    const seasonLabelRaw = this._seasonLabel(this._selectedSeason);
+    const seasonLabel = seasonLabelRaw ? seasonLabelRaw.replace(/（默认）$/, "") : "默认赛季";
     if (needs.keys > 0) {
       const unit = keyUnit ? `（单价 ${keyUnit} 三角币，共 ${keyCost}）` : "";
       parts.push(`钥匙 ×${needs.keys}${unit}`);
     }
     if (needs.bricks > 0) {
       const brickCost = brickQuote?.total_cost || 0;
-      const unit = needs.bricks > 0 ? `（预计 ${brickCost} 三角币）` : "";
-      parts.push(`未开砖 ×${needs.bricks}${unit}`);
+      const unit = brickCost > 0 ? `（共 ${brickCost} 三角币）` : "";
+      parts.push(`${seasonLabel} 未开砖 ×${needs.bricks}${unit}`);
     }
     const detail = [];
     if (brickQuote?.segments?.length) {
       brickQuote.segments.forEach(seg => {
         const label = seg.source === "player" ? "玩家" : "官方";
-        const seasonLabel = seg.season_name || this._seasonLabel(seg.season) || "默认";
-        detail.push(`${label} ${seasonLabel} ${seg.price} ×${seg.quantity}`);
+        const segSeasonRaw = seg.season_name || this._seasonLabel(seg.season) || seasonLabel || "默认赛季";
+        const segSeason = segSeasonRaw ? segSeasonRaw.replace(/（默认）$/, "") : "默认赛季";
+        detail.push(`${label} ${segSeason} ${seg.price} ×${seg.quantity}`);
       });
     }
     const totalCost = keyCost + (brickQuote?.total_cost || 0);
-    const intro = totalCost > 0
-      ? `当前钥匙/砖不足，将自动购入所需资源，预计额外花费 ${totalCost} 三角币：`
-      : "当前钥匙/砖不足，将自动购买：";
-    const lines = [intro, ...parts];
+    const lines = [];
+    if (parts.length) {
+      lines.push(`当前钥匙/砖不足，将为本次抽取补齐资源：`);
+      lines.push(...parts);
+    } else {
+      lines.push(`当前钥匙/砖不足，将为本次抽取补齐资源。`);
+    }
+    if (totalCost > 0) {
+      lines.push(`预计总花费：${totalCost} 三角币`);
+    }
     if (detail.length) {
-      lines.push(`预计拆分：${detail.join("，")}`);
+      lines.push(`拆分明细：${detail.join("，")}`);
     }
     lines.push("是否继续？");
     if (!confirm(lines.join("\n"))) {
+      throw { message: "" };
+    }
+    if (totalCost > (me.coins ?? 0)) {
+      const diff = totalCost - (me.coins ?? 0);
+      const ask = confirm(`三角币余额不足，还差 ${diff}。是否前往钱包充值？`);
+      if (ask) {
+        location.hash = "#/wallet";
+      }
       throw { message: "" };
     }
     if (needs.keys > 0) {

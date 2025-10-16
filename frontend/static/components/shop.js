@@ -3,6 +3,7 @@ const ShopPage = {
   _seasonCatalog: [],
   _seasonMap: {},
   _selectedSeason: null,
+  _selectedBrick: null,
   async render() {
     const catalog = await API.seasonCatalog().catch(() => ({ seasons: [], latest: null }));
     this._seasonCatalog = Array.isArray(catalog?.seasons) ? catalog.seasons : [];
@@ -12,6 +13,17 @@ const ShopPage = {
       this._seasonMap[season.id] = season;
       this._seasonMap[String(season.id).toUpperCase()] = season;
     });
+    if (this._selectedBrick) {
+      const sid = this._selectedBrick.seasonId;
+      const skin = this._selectedBrick.skinId;
+      const seasonEntry = sid ? (this._seasonMap[sid] || this._seasonMap[String(sid).toUpperCase()]) : null;
+      const exists = seasonEntry && ["bricks", "purples", "blues", "greens"].some(group =>
+        Array.isArray(seasonEntry[group]) && seasonEntry[group].some(item => String(item.skin_id) === String(skin))
+      );
+      if (!exists) {
+        this._selectedBrick = null;
+      }
+    }
     if (!this._selectedSeason) {
       this._selectedSeason = catalog?.latest || (this._seasonCatalog[0]?.id ?? "ALL");
     }
@@ -142,7 +154,13 @@ const ShopPage = {
     const listHtml = groups.map(group => {
       const list = entry[group.key] || [];
       const items = list.length
-        ? list.map(item => `<li class="${group.cls}">${esc(item.name || item.skin_id || '未知皮肤')}</li>`).join("")
+        ? list.map(item => {
+            const skinId = item.skin_id || '';
+            const active = this._selectedBrick && this._selectedBrick.skinId === skinId;
+            const classes = [group.cls, active ? 'is-active' : ''].filter(Boolean).join(' ');
+            const label = esc(item.name || item.skin_id || '未知皮肤');
+            return `<li class="${classes}" data-skin="${skinId}" data-season="${entry.id}" data-name="${label}" title="点击查看砖价区间">${label}</li>`;
+          }).join("")
         : '<li class="muted">暂无</li>';
       return `<div class="shop-season__group shop-season__group--${group.key}">
         <h4>${group.title}（${list.length}）</h4>
@@ -195,7 +213,7 @@ const ShopPage = {
       if (!histBox) return;
       const seasonKey = this._state.bookSeason;
       if (!seasonKey) {
-        histBox.innerHTML = `<div class="muted">请选择赛季后查看砖价区间。</div>`;
+        histBox.innerHTML = `<div class="muted">请选择砖皮后查看砖价区间。</div>`;
         return;
       }
       const hist = this._state.book?.histogram;
@@ -205,6 +223,7 @@ const ShopPage = {
         return;
       }
       const seasonName = this._state.book?.season_name || this._seasonMap[seasonKey]?.name || seasonKey;
+      const brickName = this._selectedBrick && this._selectedBrick.skinId ? (this._selectedBrick.name || '') : '';
       const maxCount = Math.max(...hist.map(h => h.count || 0), 1);
       const rows = hist.map(bucket => {
         const pct = Math.max(6, Math.min(100, Math.round((bucket.count || 0) / maxCount * 100)));
@@ -217,7 +236,8 @@ const ShopPage = {
             </div>
           </div>`;
       }).join("");
-      histBox.innerHTML = `<div class="hist-title">${seasonName} 砖价区间</div>${rows}`;
+      const title = brickName ? `${seasonName} · ${brickName} 砖价区间` : `${seasonName} 砖价区间`;
+      histBox.innerHTML = `<div class="hist-title">${title}</div>${rows}`;
     };
 
     const renderOrderSection = (el, items, opts = {}) => {
@@ -291,7 +311,28 @@ const ShopPage = {
     if (seasonSelect && seasonCatalogBox) {
       seasonSelect.addEventListener('change', () => {
         this._selectedSeason = seasonSelect.value || "ALL";
+        if (!this._selectedSeason || this._selectedSeason === "ALL") {
+          this._selectedBrick = null;
+        } else if (!this._selectedBrick || this._selectedBrick.seasonId !== this._selectedSeason) {
+          this._selectedBrick = null;
+        }
         seasonCatalogBox.innerHTML = this._renderSeasonCatalog(this._selectedSeason);
+        this._bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect });
+      });
+    }
+
+    if (buySeasonSelect) {
+      buySeasonSelect.addEventListener('change', () => {
+        const value = buySeasonSelect.value || null;
+        const normalized = value ? String(value) : null;
+        if (normalized && (!this._selectedBrick || this._selectedBrick.seasonId !== normalized)) {
+          this._selectedBrick = null;
+        }
+        if (seasonCatalogBox) {
+          seasonCatalogBox.innerHTML = this._renderSeasonCatalog(this._selectedSeason);
+          this._bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect });
+        }
+        loadBook(normalized);
       });
     }
 
@@ -435,5 +476,26 @@ const ShopPage = {
 
     loadPrices();
     loadBook(this._state.bookSeason);
+    this._bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect });
   }
+};
+
+ShopPage._bindCatalogInteractions = function _bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect } = {}) {
+  const box = byId("shop-season-catalog");
+  if (!box) return;
+  box.querySelectorAll('li[data-skin]').forEach(node => {
+    node.addEventListener('click', () => {
+      const season = node.getAttribute('data-season') || '';
+      const skin = node.getAttribute('data-skin') || '';
+      const name = node.getAttribute('data-name') || node.textContent || '';
+      if (!season) return;
+      ShopPage._selectedSeason = season;
+      ShopPage._selectedBrick = { seasonId: season, skinId: skin, name };
+      if (seasonSelect) seasonSelect.value = season;
+      if (buySeasonSelect) buySeasonSelect.value = season;
+      box.innerHTML = ShopPage._renderSeasonCatalog(ShopPage._selectedSeason);
+      ShopPage._bindCatalogInteractions({ loadBook, seasonSelect, buySeasonSelect });
+      loadBook(season);
+    });
+  });
 };
