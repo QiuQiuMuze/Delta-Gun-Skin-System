@@ -5155,6 +5155,357 @@ def _cultivation_build_sacrifice_event(run: Dict[str, Any], base_seed: int) -> D
     }
 
 
+def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Dict[str, Any]:
+    event_seed = base_seed ^ 0x55AA
+    options: List[Dict[str, Any]] = []
+    artifact_rng = random.Random(event_seed ^ 0x1010)
+    artifact = _cultivation_random_artifact(artifact_rng)
+    if artifact:
+        cost = max(40, 55 + artifact_rng.randint(-10, 25))
+        artifact = dict(artifact)
+        name = artifact.get("name", "神秘法宝")
+        artifact["log"] = f"【交易】花费{cost}枚铜钱购得{name}。{artifact.get('desc', '')}".strip()
+        options.append(
+            _cultivation_option(
+                "buy_artifact",
+                f"购入{name}",
+                f"消耗{cost}铜钱换取珍稀法宝。",
+                "mind",
+                "merchant_buy",
+                (18, 28),
+                (-2, 2),
+                (24, 36),
+                "与行脚商贩讨价还价。",
+                meta={"cost": cost, "loot": artifact, "note": "法宝交易"},
+            )
+        )
+    technique_rng = random.Random(event_seed ^ 0x2020)
+    technique = _cultivation_random_technique(technique_rng)
+    if technique:
+        cost = max(30, 42 + technique_rng.randint(-6, 18))
+        technique = dict(technique)
+        name = technique.get("name", "秘术残卷")
+        technique["log"] = f"【交易】花费{cost}枚铜钱换得{name}。{technique.get('desc', '')}".strip()
+        options.append(
+            _cultivation_option(
+                "buy_technique",
+                f"购入{name}",
+                f"支出{cost}铜钱获得一套玄妙功法。",
+                "spirit",
+                "merchant_buy",
+                (16, 26),
+                (-1, 3),
+                (20, 32),
+                "用铜钱换取功法残卷。",
+                meta={"cost": cost, "loot": technique, "note": "功法交易"},
+            )
+        )
+    if not options:
+        options.append(
+            _cultivation_option(
+                "empty_hand",
+                "错过机缘",
+                "今日商贩未携带珍品，只能作罢。",
+                "luck",
+                "merchant_leave",
+                (12, 20),
+                (-1, 2),
+                (14, 22),
+                "拱手作别行脚商贩。",
+            )
+        )
+    options.append(
+        _cultivation_option(
+            "decline",
+            "婉拒离去",
+            "保留资源，继续赶路。",
+            "luck",
+            "merchant_leave",
+            (14, 22),
+            (-1, 3),
+            (16, 24),
+            "谢绝商贩的热情邀约。",
+            meta={"note": "离开"},
+        )
+    )
+    description = "一位行脚商贩摆开摊位，低声兜售珍贵法器与功法。"
+    return {
+        "id": f"{run['session']}-{run['step']}-merchant",
+        "title": "行脚商贩",
+        "description": description,
+        "options": options,
+        "seed": event_seed,
+        "event_type": "merchant",
+    }
+
+
+def _cultivation_build_sacrifice_event(run: Dict[str, Any], base_seed: int) -> Dict[str, Any]:
+    event_seed = base_seed ^ 0x7F31
+    rng = random.Random(event_seed)
+    options: List[Dict[str, Any]] = []
+    altar_text = rng.choice([
+        "古老石坛散发幽蓝光辉",
+        "血色法阵缓缓旋转",
+        "幽火缭绕的祭坛矗立前方",
+    ])
+    artifact_rng = random.Random(event_seed ^ 0x3030)
+    artifact = _cultivation_random_artifact(artifact_rng)
+    if artifact:
+        cost = max(28, 38 + artifact_rng.randint(-6, 12))
+        sacrifice = [{"stat": "body", "amount": 1}]
+        artifact = dict(artifact)
+        name = artifact.get("name", "祭坛馈赠")
+        artifact["log"] = f"【献祭】燃烧体魄与{cost}铜钱，换得{name}。{artifact.get('desc', '')}".strip()
+        options.append(
+            _cultivation_option(
+                "sacrifice_artifact",
+                f"献祭血骨换取{name}",
+                f"献祭1点体魄并奉上{cost}铜钱以换取法宝。",
+                "body",
+                "sacrifice_trade",
+                (18, 26),
+                (-4, 1),
+                (24, 34),
+                "献上精血，祭坛回馈灵光。",
+                meta={"cost": cost, "loot": artifact, "sacrifice": sacrifice, "note": "法宝献祭"},
+            )
+        )
+    technique_rng = random.Random(event_seed ^ 0x4040)
+    technique = _cultivation_random_technique(technique_rng)
+    if technique:
+        sacrifice = [{"stat": "mind", "amount": 1}]
+        technique = dict(technique)
+        gain = max(48, 60 + technique_rng.randint(-4, 16))
+        technique["log"] = f"【献祭】燃尽心神换得{technique.get('name', '秘术')}，并获{gain}枚铜钱回馈。{technique.get('desc', '')}".strip()
+        options.append(
+            _cultivation_option(
+                "sacrifice_scroll",
+                f"祭献悟性悟得{technique.get('name', '秘术')}",
+                f"献祭1点悟性获取功法，并额外得到{gain}铜钱。",
+                "spirit",
+                "sacrifice_trade",
+                (16, 24),
+                (-3, 2),
+                (22, 32),
+                "神魂与祭坛相融，赐下秘法。",
+                meta={"loot": technique, "sacrifice": sacrifice, "gain_coins": gain, "note": "功法献祭"},
+            )
+        )
+    gain = max(55, 70 + rng.randint(-10, 18))
+    options.append(
+        _cultivation_option(
+            "sacrifice_coins",
+            "祭献气运换取铜钱",
+            f"献祭1点气运换得{gain}枚铜钱。",
+            "luck",
+            "sacrifice_convert",
+            (14, 22),
+            (-3, 2),
+            (18, 28),
+            "气运被祭坛吞噬，化作叮当铜钱。",
+            meta={"sacrifice": [{"stat": "luck", "amount": 1}], "gain_coins": gain, "note": "铜钱回馈"},
+        )
+    )
+    options.append(
+        _cultivation_option(
+            "leave_altar",
+            "谨慎离开",
+            "察觉邪异气息，未做献祭。",
+            "spirit",
+            "sacrifice_leave",
+            (12, 20),
+            (-2, 3),
+            (14, 22),
+            "稳住心神，远离诡异祭坛。",
+            meta={"note": "离开"},
+        )
+    )
+    description = f"{altar_text}，低语声蛊惑你献出心神与铜钱。"
+    return {
+        "id": f"{run['session']}-{run['step']}-sacrifice",
+        "title": "秘祭商铺",
+        "description": description,
+        "options": options,
+        "seed": event_seed,
+        "event_type": "sacrifice",
+    }
+
+def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Dict[str, Any]:
+    event_seed = base_seed ^ 0x55AA
+    options: List[Dict[str, Any]] = []
+    artifact_rng = random.Random(event_seed ^ 0x1010)
+    artifact = _cultivation_random_artifact(artifact_rng)
+    if artifact:
+        cost = max(40, 55 + artifact_rng.randint(-10, 25))
+        artifact = dict(artifact)
+        name = artifact.get("name", "神秘法宝")
+        artifact["log"] = f"【交易】花费{cost}枚铜钱购得{name}。{artifact.get('desc', '')}".strip()
+        options.append(
+            _cultivation_option(
+                "buy_artifact",
+                f"购入{name}",
+                f"消耗{cost}铜钱换取珍稀法宝。",
+                "mind",
+                "merchant_buy",
+                (18, 28),
+                (-2, 2),
+                (24, 36),
+                "与行脚商贩讨价还价。",
+                meta={"cost": cost, "loot": artifact, "note": "法宝交易"},
+            )
+        )
+    technique_rng = random.Random(event_seed ^ 0x2020)
+    technique = _cultivation_random_technique(technique_rng)
+    if technique:
+        cost = max(30, 42 + technique_rng.randint(-6, 18))
+        technique = dict(technique)
+        name = technique.get("name", "秘术残卷")
+        technique["log"] = f"【交易】花费{cost}枚铜钱换得{name}。{technique.get('desc', '')}".strip()
+        options.append(
+            _cultivation_option(
+                "buy_technique",
+                f"购入{name}",
+                f"支出{cost}铜钱获得一套玄妙功法。",
+                "spirit",
+                "merchant_buy",
+                (16, 26),
+                (-1, 3),
+                (20, 32),
+                "用铜钱换取功法残卷。",
+                meta={"cost": cost, "loot": technique, "note": "功法交易"},
+            )
+        )
+    if not options:
+        options.append(
+            _cultivation_option(
+                "empty_hand",
+                "错过机缘",
+                "今日商贩未携带珍品，只能作罢。",
+                "luck",
+                "merchant_leave",
+                (12, 20),
+                (-1, 2),
+                (14, 22),
+                "拱手作别行脚商贩。",
+            )
+        )
+    options.append(
+        _cultivation_option(
+            "decline",
+            "婉拒离去",
+            "保留资源，继续赶路。",
+            "luck",
+            "merchant_leave",
+            (14, 22),
+            (-1, 3),
+            (16, 24),
+            "谢绝商贩的热情邀约。",
+            meta={"note": "离开"},
+        )
+    )
+    description = "一位行脚商贩摆开摊位，低声兜售珍贵法器与功法。"
+    return {
+        "id": f"{run['session']}-{run['step']}-merchant",
+        "title": "行脚商贩",
+        "description": description,
+        "options": options,
+        "seed": event_seed,
+        "event_type": "merchant",
+    }
+
+
+def _cultivation_build_sacrifice_event(run: Dict[str, Any], base_seed: int) -> Dict[str, Any]:
+    event_seed = base_seed ^ 0x7F31
+    rng = random.Random(event_seed)
+    options: List[Dict[str, Any]] = []
+    altar_text = rng.choice([
+        "古老石坛散发幽蓝光辉",
+        "血色法阵缓缓旋转",
+        "幽火缭绕的祭坛矗立前方",
+    ])
+    artifact_rng = random.Random(event_seed ^ 0x3030)
+    artifact = _cultivation_random_artifact(artifact_rng)
+    if artifact:
+        cost = max(28, 38 + artifact_rng.randint(-6, 12))
+        sacrifice = [{"stat": "body", "amount": 1}]
+        artifact = dict(artifact)
+        name = artifact.get("name", "祭坛馈赠")
+        artifact["log"] = f"【献祭】燃烧体魄与{cost}铜钱，换得{name}。{artifact.get('desc', '')}".strip()
+        options.append(
+            _cultivation_option(
+                "sacrifice_artifact",
+                f"献祭血骨换取{name}",
+                f"献祭1点体魄并奉上{cost}铜钱以换取法宝。",
+                "body",
+                "sacrifice_trade",
+                (18, 26),
+                (-4, 1),
+                (24, 34),
+                "献上精血，祭坛回馈灵光。",
+                meta={"cost": cost, "loot": artifact, "sacrifice": sacrifice, "note": "法宝献祭"},
+            )
+        )
+    technique_rng = random.Random(event_seed ^ 0x4040)
+    technique = _cultivation_random_technique(technique_rng)
+    if technique:
+        sacrifice = [{"stat": "mind", "amount": 1}]
+        technique = dict(technique)
+        gain = max(48, 60 + technique_rng.randint(-4, 16))
+        technique["log"] = f"【献祭】燃尽心神换得{technique.get('name', '秘术')}，并获{gain}枚铜钱回馈。{technique.get('desc', '')}".strip()
+        options.append(
+            _cultivation_option(
+                "sacrifice_scroll",
+                f"祭献悟性悟得{technique.get('name', '秘术')}",
+                f"献祭1点悟性获取功法，并额外得到{gain}铜钱。",
+                "spirit",
+                "sacrifice_trade",
+                (16, 24),
+                (-3, 2),
+                (22, 32),
+                "神魂与祭坛相融，赐下秘法。",
+                meta={"loot": technique, "sacrifice": sacrifice, "gain_coins": gain, "note": "功法献祭"},
+            )
+        )
+    gain = max(55, 70 + rng.randint(-10, 18))
+    options.append(
+        _cultivation_option(
+            "sacrifice_coins",
+            "祭献气运换取铜钱",
+            f"献祭1点气运换得{gain}枚铜钱。",
+            "luck",
+            "sacrifice_convert",
+            (14, 22),
+            (-3, 2),
+            (18, 28),
+            "气运被祭坛吞噬，化作叮当铜钱。",
+            meta={"sacrifice": [{"stat": "luck", "amount": 1}], "gain_coins": gain, "note": "铜钱回馈"},
+        )
+    )
+    options.append(
+        _cultivation_option(
+            "leave_altar",
+            "谨慎离开",
+            "察觉邪异气息，未做献祭。",
+            "spirit",
+            "sacrifice_leave",
+            (12, 20),
+            (-2, 3),
+            (14, 22),
+            "稳住心神，远离诡异祭坛。",
+            meta={"note": "离开"},
+        )
+    )
+    description = f"{altar_text}，低语声蛊惑你献出心神与铜钱。"
+    return {
+        "id": f"{run['session']}-{run['step']}-sacrifice",
+        "title": "秘祭商铺",
+        "description": description,
+        "options": options,
+        "seed": event_seed,
+        "event_type": "sacrifice",
+    }
+
+
 
 def _cultivation_generate_event(run: Dict[str, Any]) -> None:
     if run.get("finished"):
