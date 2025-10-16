@@ -26,11 +26,18 @@ main#page { padding:16px; max-width:1100px; margin:0 auto; }
 .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grid.cols-4 .kv-wide { grid-column: span 2; }
 .kv { display:flex; gap:8px; flex-wrap: wrap; }
 .kv .k { min-width:120px; color:#9aa7bd; }
 .kv .v { font-weight:600; }
+.brick-breakdown { margin:4px 0 0; padding-left:18px; }
+.brick-breakdown li { list-style:disc; margin:2px 0; }
 .table { width:100%; border-collapse: collapse; }
 .table th, .table td { padding:8px; border-bottom:1px solid #1d2430; text-align:left; }
+.table tr.is-selected { background:rgba(255,196,0,0.08); }
+.table tr.is-selected td { font-weight:600; }
+.craft-indicator { display:inline-block; min-width:44px; padding:2px 6px; border-radius:6px; background:rgba(136,145,153,0.2); color:#d7dee6; text-align:center; font-size:12px; }
+.craft-indicator.is-active { background:rgba(255,196,0,0.22); color:#fff4cf; box-shadow:0 0 0 1px rgba(255,196,0,0.35) inset; }
 
 .badge { padding:2px 8px; border-radius:999px; background:#1a2433; border:1px solid #2a3951; font-size:12px; }
 
@@ -376,7 +383,9 @@ main#page { padding:16px; max-width:1100px; margin:0 auto; }
 .shop-season__group { background:rgba(10,16,24,0.75); border:1px solid rgba(52,70,98,0.35); border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:6px; }
 .shop-season__group h4 { margin:0; font-size:14px; }
 .shop-season__group ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; font-size:12px; }
-.shop-season__group li { word-break:break-all; }
+.shop-season__group li { word-break:break-all; cursor:pointer; padding:4px 6px; border-radius:6px; transition:background 0.2s ease, transform 0.2s ease; }
+.shop-season__group li:hover { background:rgba(255,255,255,0.08); transform:translateY(-1px); }
+.shop-season__group li.is-active { background:rgba(255,196,0,0.16); box-shadow:0 0 0 1px rgba(255,196,0,0.4) inset; }
 .shop-season__grid { display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .shop-season__card { background:rgba(10,16,24,0.75); border:1px solid rgba(52,70,98,0.35); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; box-shadow: inset 0 0 0 1px rgba(18,26,38,0.35); }
 .shop-season__card h4 { margin:0; font-size:16px; color:#e3e8f5; }
@@ -432,6 +441,7 @@ main#page { padding:16px; max-width:1100px; margin:0 auto; }
 .order-meta { margin-left:6px; color:#6b8abf; font-size:12px; }
 h3 + .muted.small { margin-top:-6px; }
 .histogram { background:rgba(14,18,26,0.75); border:1px solid rgba(60,80,110,0.35); border-radius:12px; padding:12px 14px; display:flex; flex-direction:column; gap:10px; }
+.histogram .hist-title { font-size:13px; font-weight:600; color:rgba(222,233,255,0.75); letter-spacing:0.2px; }
 .hist-row { display:flex; align-items:center; gap:12px; font-size:13px; }
 .hist-label { min-width:90px; color:#8fa0bb; }
 .hist-bar { flex:1; position:relative; background:rgba(30,40,60,0.6); border-radius:999px; height:18px; overflow:hidden; }
