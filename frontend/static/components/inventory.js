@@ -226,11 +226,17 @@ const InventoryPage = {
     return "hl-green";
   },
   _seasonLabel(id) {
-    if (!id) return "默认奖池";
-    const key = String(id);
+    const key = String(id == null ? "" : id).toUpperCase();
+    if (!key || key === "UNASSIGNED") {
+      if (this._seasonCatalog && this._seasonCatalog.length) {
+        const latest = this._seasonCatalog[this._seasonCatalog.length - 1];
+        return latest?.name || latest?.id || "最新赛季";
+      }
+      return "最新赛季";
+    }
     const entry = this._seasonMap[key] || this._seasonMap[key.toUpperCase()] || null;
     if (entry?.name) return entry.name;
-    const fallback = this._seasonCatalog.find(s => String(s.id) === key || String(s.id).toUpperCase() === key.toUpperCase());
+    const fallback = this._seasonCatalog.find(s => String(s.id).toUpperCase() === key);
     return fallback?.name || key;
   },
   _modelLabel(model) {

@@ -94,12 +94,18 @@
     _seasonMap: {},
 
     _seasonLabel: function(id){
-      if (!id) return "默认奖池";
-      var key = String(id);
+      var key = String(id == null ? "" : id).toUpperCase();
+      if (!key || key === "UNASSIGNED") {
+        if (this._seasonCatalog && this._seasonCatalog.length) {
+          var latest = this._seasonCatalog[this._seasonCatalog.length - 1];
+          return (latest && latest.name) || latest?.id || "最新赛季";
+        }
+        return "最新赛季";
+      }
       var entry = this._seasonMap[key] || this._seasonMap[key.toUpperCase()];
       if (entry && entry.name) return entry.name;
       var fallback = (this._seasonCatalog || []).find(function(season){
-        return String(season.id) === key || String(season.id).toUpperCase() === key.toUpperCase();
+        return String(season.id).toUpperCase() === key;
       });
       return (fallback && fallback.name) || key;
     },

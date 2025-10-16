@@ -8,13 +8,10 @@ const GachaPage = {
   _seasonMap: {},
   _selectedSeason: null,
   _targetSkinId: null,
+  _lastOdds: null,
 
   async render() {
-    const [me, od, seasonData] = await Promise.all([
-      API.me(),
-      API.odds(),
-      API.seasonCatalog().catch(() => ({ seasons: [], latest: null }))
-    ]);
+    const seasonData = await API.seasonCatalog().catch(() => ({ seasons: [], latest: null }));
     const seasons = Array.isArray(seasonData?.seasons) ? seasonData.seasons : [];
     this._seasonCatalog = seasons;
     this._seasonMap = {};
@@ -27,6 +24,12 @@ const GachaPage = {
       this._selectedSeason = seasonData?.latest || (seasons[0]?.id ?? null);
       this._targetSkinId = null;
     }
+    const currentKey = this._currentSeasonKey();
+    const [me, od] = await Promise.all([
+      API.me(),
+      API.odds(currentKey || null)
+    ]);
+    this._lastOdds = od;
     const odds = od.odds || od;
     const lim = od.limits || { brick_pity_max:75, purple_pity_max:20 };
     const left_brick  = Math.max(0, lim.brick_pity_max  - (odds.pity_brick  + 1));
@@ -110,45 +113,64 @@ const GachaPage = {
         this._targetSkinId = null;
         const infoBox = byId("gacha-season-info");
         if (infoBox) infoBox.innerHTML = this._seasonInfoHtml(this._selectedSeason);
-        const targetSelect = byId("gacha-target");
-        if (targetSelect) {
-          targetSelect.addEventListener("change", () => {
-            this._targetSkinId = targetSelect.value || null;
-          });
-        }
+        this._bindTargetSelector();
+        this._loadSeasonOdds();
       });
     }
-    const targetSelect = byId("gacha-target");
-    if (targetSelect) {
-      targetSelect.addEventListener("change", () => {
-        this._targetSkinId = targetSelect.value || null;
-      });
-    }
+    this._bindTargetSelector();
   },
 
   // —— 抽完后刷新顶部 & 概率/保底 —— //
   async _refreshStats() {
     try {
-      const [me, od] = await Promise.all([API.me(), API.odds()]);
+      const [me, od] = await Promise.all([
+        API.me(),
+        API.odds(this._currentSeasonKey() || null)
+      ]);
+      this._lastOdds = od;
       // 钱包/库存
       byId("stat-keys").textContent   = me.keys;
       byId("stat-bricks").textContent = me.unopened_bricks;
       byId("stat-coins").textContent  = me.coins;
-      // 概率
-      const odds = od.odds || od;
-      byId("od-brick").textContent  = odds.brick;
-      byId("od-purple").textContent = odds.purple;
-      byId("od-blue").textContent   = odds.blue;
-      byId("od-green").textContent  = odds.green;
-      // 保底计数与“还差X抽”
-      const lim = od.limits || { brick_pity_max:75, purple_pity_max:20 };
-      const left_brick  = Math.max(0, lim.brick_pity_max  - (odds.pity_brick  + 1));
-      const left_purple = Math.max(0, lim.purple_pity_max - (odds.pity_purple + 1));
-      byId("pity-brick").textContent  = odds.pity_brick;
-      byId("pity-purple").textContent = odds.pity_purple;
-      byId("left-brick").textContent  = left_brick;
-      byId("left-purple").textContent = left_purple;
+      this._applyOddsData(od);
     } catch (_) {}
+  },
+
+  _bindTargetSelector() {
+    const targetSelect = byId("gacha-target");
+    if (targetSelect) {
+      targetSelect.onchange = () => {
+        this._targetSkinId = targetSelect.value || null;
+      };
+    }
+  },
+
+  async _loadSeasonOdds() {
+    try {
+      const od = await API.odds(this._currentSeasonKey() || null);
+      this._lastOdds = od;
+      this._applyOddsData(od);
+    } catch (_) {}
+  },
+
+  _applyOddsData(data) {
+    if (!data) return;
+    const odds = data.odds || data;
+    const limits = data.limits || { brick_pity_max:75, purple_pity_max:20 };
+    const leftBrick  = Math.max(0, limits.brick_pity_max  - (Number(odds.pity_brick)  + 1));
+    const leftPurple = Math.max(0, limits.purple_pity_max - (Number(odds.pity_purple) + 1));
+    const setText = (id, value) => {
+      const node = byId(id);
+      if (node) node.textContent = value;
+    };
+    setText("od-brick", odds.brick);
+    setText("od-purple", odds.purple);
+    setText("od-blue", odds.blue);
+    setText("od-green", odds.green);
+    setText("pity-brick", odds.pity_brick);
+    setText("pity-purple", odds.pity_purple);
+    setText("left-brick", leftBrick);
+    setText("left-purple", leftPurple);
   },
 
   _rarityClass(r) {
@@ -174,18 +196,28 @@ const GachaPage = {
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
   },
+  _normalizeSeasonKey(value) {
+    if (!value) return "";
+    return String(value).trim().toUpperCase();
+  },
+  _latestSeasonKey() {
+    if (!Array.isArray(this._seasonCatalog) || !this._seasonCatalog.length) return "";
+    return this._normalizeSeasonKey(this._seasonCatalog[this._seasonCatalog.length - 1]?.id);
+  },
+  _currentSeasonKey() {
+    const key = this._normalizeSeasonKey(this._selectedSeason);
+    if (key) return key;
+    return this._latestSeasonKey();
+  },
   _seasonLabel(id) {
-    if (!id) {
+    const key = this._normalizeSeasonKey(id);
+    if (!key || key === "UNASSIGNED") {
       if (this._seasonCatalog && this._seasonCatalog.length) {
         const latest = this._seasonCatalog[this._seasonCatalog.length - 1];
-        const label = latest?.name || latest?.id || "最新赛季";
-        return `${label}（默认）`;
+        return latest?.name || latest?.id || "最新赛季";
       }
-      return this._seasonCatalog && this._seasonCatalog.length
-        ? `${this._seasonCatalog[0].name || "最新赛季"}（默认）`
-        : "默认奖池";
+      return "最新赛季";
     }
-    const key = String(id || "");
     const entry = this._seasonMap[key] || this._seasonMap[key.toUpperCase()];
     return entry?.name || key || "-";
   },
@@ -327,9 +359,28 @@ const GachaPage = {
     } catch (_) {
       return;
     }
+    const seasonKey = this._currentSeasonKey();
+    const detailList = Array.isArray(me.unopened_bricks_detail) ? me.unopened_bricks_detail : [];
+    let seasonAvailable = Number(me.unopened_bricks ?? 0);
+    if (detailList.length) {
+      const desiredKey = seasonKey || this._latestSeasonKey();
+      let match = detailList.find(item => this._normalizeSeasonKey(item.season_key || item.season || "") === desiredKey);
+      if (!match && !desiredKey) {
+        match = detailList.find(item => {
+          const key = this._normalizeSeasonKey(item.season_key || item.season || "");
+          return !key || key === "UNASSIGNED";
+        });
+      }
+      if (!match && desiredKey) {
+        match = detailList.find(item => this._normalizeSeasonKey(item.season_key || item.season || "") === this._latestSeasonKey());
+      }
+      if (match) {
+        seasonAvailable = Number(match.count || 0);
+      }
+    }
     const needs = {
       keys: Math.max(0, count - (me.keys ?? 0)),
-      bricks: Math.max(0, count - (me.unopened_bricks ?? 0))
+      bricks: Math.max(0, count - seasonAvailable)
     };
     if (needs.keys <= 0 && needs.bricks <= 0) return;
 
@@ -347,17 +398,16 @@ const GachaPage = {
       }
     }
     if (needs.bricks > 0) {
-      brickQuote = await API.brickQuote(needs.bricks, this._selectedSeason || null);
+      brickQuote = await API.brickQuote(needs.bricks, seasonKey || null);
       if ((brickQuote?.missing || 0) > 0) {
-        const seasonName = this._seasonLabel(this._selectedSeason);
+        const seasonName = this._seasonLabel(seasonKey);
         alert(`当前赛季（${seasonName}）可用的未开砖不足，仅能提供 ${brickQuote.available || 0} 块，请稍后再试。`);
         throw { message: "" };
       }
     }
 
     const parts = [];
-    const seasonLabelRaw = this._seasonLabel(this._selectedSeason);
-    const seasonLabel = seasonLabelRaw ? seasonLabelRaw.replace(/（默认）$/, "") : "默认赛季";
+    const seasonLabel = this._seasonLabel(seasonKey);
     if (needs.keys > 0) {
       const unit = keyUnit ? `（单价 ${keyUnit} 三角币，共 ${keyCost}）` : "";
       parts.push(`钥匙 ×${needs.keys}${unit}`);
@@ -371,8 +421,8 @@ const GachaPage = {
     if (brickQuote?.segments?.length) {
       brickQuote.segments.forEach(seg => {
         const label = seg.source === "player" ? "玩家" : "官方";
-        const segSeasonRaw = seg.season_name || this._seasonLabel(seg.season) || seasonLabel || "默认赛季";
-        const segSeason = segSeasonRaw ? segSeasonRaw.replace(/（默认）$/, "") : "默认赛季";
+        const segSeasonRaw = seg.season_name || this._seasonLabel(seg.season) || seasonLabel || "最新赛季";
+        const segSeason = segSeasonRaw || "最新赛季";
         detail.push(`${label} ${segSeason} ${seg.price} ×${seg.quantity}`);
       });
     }
@@ -406,13 +456,14 @@ const GachaPage = {
       await API.buyKeys(needs.keys);
     }
     if (needs.bricks > 0) {
-      await API.buyBricks(needs.bricks, this._selectedSeason || null);
+      await API.buyBricks(needs.bricks, seasonKey || null);
     }
     await this._refreshStats();
   },
 
   async _open(count = 1) {
     const c = [1, 10].includes(count) ? count : 1;
+    const seasonKey = this._currentSeasonKey();
     this._skip = false;
     this._opening = true;
     this._setDrawDisabled(true);
@@ -438,7 +489,7 @@ const GachaPage = {
 
     // ② 调用后端
     let data;
-    try { data = await API.open(c, this._selectedSeason || null, this._targetSkinId || null); }
+    try { data = await API.open(c, seasonKey || null, this._targetSkinId || null); }
     catch (e) {
       alert(e.message);
       this._setDrawDisabled(false);

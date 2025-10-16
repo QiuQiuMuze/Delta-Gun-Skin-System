@@ -221,6 +221,16 @@ class UserBrickBalance(Base):
     gift_locked = Column(Integer, nullable=False, default=0)
     __table_args__ = (UniqueConstraint("user_id", "season", name="uq_user_season"),)
 
+
+class UserSeasonPity(Base):
+    __tablename__ = "user_season_pity"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    season = Column(String, nullable=False, default="")
+    pity_brick = Column(Integer, nullable=False, default=0)
+    pity_purple = Column(Integer, nullable=False, default=0)
+    __table_args__ = (UniqueConstraint("user_id", "season", name="uq_user_season_pity"),)
+
 def _ensure_user_sessionver():
     con = sqlite3.connect(DB_PATH_FS)
     cur = con.cursor()
@@ -492,8 +502,10 @@ class MarketBrowseOut(BaseModel):
     serial: str
     created_at: int
     template: str
+    template_label: str = ""
     hidden_template: bool
     effects: List[str]
+    effect_labels: List[str] = []
     visual: Dict[str, Any]
     season: str = ""
     model: str = ""
@@ -671,6 +683,94 @@ SEASON_IDS = [sid for sid in SEASON_LOOKUP.keys() if sid]
 LATEST_SEASON = SEASON_IDS[-1] if SEASON_IDS else ""
 
 
+TEMPLATE_LABEL_LOOKUP: Dict[str, str] = {
+    "brick_normal": "标准模板",
+    "brick_white_diamond": "白钻切面",
+    "brick_yellow_diamond": "黄钻切面",
+    "brick_pink_diamond": "粉钻切面",
+    "brick_brushed_metal": "金属拉丝",
+    "brick_laser_gradient": "镭射渐变",
+    "brick_prism_spectrum": "棱镜光谱",
+    "brick_medusa_relic": "蛇神遗痕",
+    "brick_arcade_crystal": "水晶贪吃蛇",
+    "brick_arcade_serpent": "像素贪吃蛇",
+    "brick_arcade_blackhawk": "街机黑鹰",
+    "brick_arcade_champion": "拳王",
+    "brick_arcade_default": "电玩标准",
+    "brick_blade_royal": "王牌镶嵌",
+    "brick_fate_blueberry": "蓝莓玉",
+    "brick_fate_brass": "黄铜",
+    "brick_fate_default": "命运经典",
+    "brick_fate_gold": "黄金",
+    "brick_fate_goldenberry": "金莓",
+    "brick_fate_gradient": "命运渐变",
+    "brick_fate_jade": "翡翠绿",
+    "brick_fate_metal": "金属拉丝",
+    "brick_fate_strawberry": "草莓金",
+    "brick_fate_whitepeach": "白桃",
+    "brick_prism2_flux": "棱镜攻势2",
+    "brick_weather_clathrate": "可燃冰",
+    "brick_weather_default": "气象标准",
+    "brick_weather_gradient": "气象渐变",
+    "brick_weather_gundam": "高达气象",
+    "brick_weather_purplebolt": "紫电",
+    "brick_weather_redbolt": "红电",
+    "prism_flux": "棱镜流光",
+    "ember_strata": "余烬分层",
+    "ion_tessellate": "离子镶嵌",
+    "diamond_veil": "钻石面纱",
+    "aurora_matrix": "极光矩阵",
+    "nebula_glass": "星云玻璃",
+    "ion_glaze": "离子釉彩",
+    "vapor_trace": "雾态轨迹",
+    "phase_shift": "相位位移",
+    "urban_mesh": "都市网格",
+    "fiber_wave": "纤维波纹",
+    "midnight_line": "午夜线条",
+    "field_classic": "野战经典",
+    "steel_ridge": "钢脊纹",
+    "matte_guard": "哨卫磨砂",
+}
+
+
+EFFECT_LABEL_LOOKUP: Dict[str, str] = {
+    "glow": "辉光涌动",
+    "pulse": "能量脉冲",
+    "sheen": "流光泛映",
+    "sparkle": "星火闪烁",
+    "trail": "残影拖尾",
+    "refraction": "晶体折射",
+    "flux": "相位流动",
+    "prism_flux": "棱镜流光",
+    "bold_tracer": "显眼曳光",
+    "kill_counter": "击杀计数",
+    "arcade_core": "街机核心",
+    "arcade_glass": "街机玻璃",
+    "arcade_glow": "街机辉光",
+    "arcade_pulse": "街机脉冲",
+    "arcade_trail": "街机拖尾",
+    "blade_glow": "王牌辉光",
+    "chromatic_flame": "彩焰",
+    "fate_glow": "命运辉光",
+    "fate_gradient": "命运渐变",
+    "medusa_glare": "美杜莎凝视",
+    "weather_bolt": "天气闪电",
+    "weather_frost": "气象霜华",
+    "weather_glow": "气象辉光",
+    "weather_gradient": "气象渐变",
+}
+
+
+for _season in SEASON_DEFINITIONS:
+    for _group in ("bricks", "purples", "blues", "greens"):
+        for _skin in _season.get(_group, []) or []:
+            meta = (_skin.get("meta") or {})
+            for _rule in meta.get("template_rules", []) or []:
+                key = str(_rule.get("key") or "").lower()
+                label = _rule.get("label")
+                if key and label and key not in TEMPLATE_LABEL_LOOKUP:
+                    TEMPLATE_LABEL_LOOKUP[key] = label
+
 def _normalize_season(season: Optional[str]) -> Optional[str]:
     if not season:
         return None
@@ -692,6 +792,55 @@ def _brick_season_key(season: Optional[str]) -> str:
     if LATEST_SEASON:
         return LATEST_SEASON
     return BRICK_SEASON_FALLBACK
+
+
+def _season_pity_key(season: Optional[str]) -> str:
+    key = _normalize_season(season)
+    if key:
+        return key
+    return _brick_season_key(None)
+
+
+def _ensure_season_pity_row(
+    db: Session,
+    user_id: int,
+    season_key: str,
+    *,
+    user: Optional[User] = None,
+) -> UserSeasonPity:
+    row = db.query(UserSeasonPity).filter_by(user_id=user_id, season=season_key).first()
+    if row:
+        return row
+    default_key = _brick_season_key(None)
+    pity_brick = 0
+    pity_purple = 0
+    existing = db.query(UserSeasonPity).filter_by(user_id=user_id).count()
+    if user is None:
+        user = db.query(User).filter_by(id=user_id).first()
+    if existing == 0 and user is not None and season_key == default_key:
+        pity_brick = int(user.pity_brick or 0)
+        pity_purple = int(user.pity_purple or 0)
+    row = UserSeasonPity(
+        user_id=user_id,
+        season=season_key,
+        pity_brick=int(pity_brick),
+        pity_purple=int(pity_purple),
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def get_user_season_pity(db: Session, user: User, season: Optional[str]) -> UserSeasonPity:
+    key = _season_pity_key(season)
+    return _ensure_season_pity_row(db, user.id, key, user=user)
+
+
+def sync_user_global_pity(user: User, season_key: str, row: UserSeasonPity) -> None:
+    default_key = _brick_season_key(None)
+    if season_key == default_key:
+        user.pity_brick = int(row.pity_brick or 0)
+        user.pity_purple = int(row.pity_purple or 0)
 
 
 def _season_display_name(season: str) -> str:
@@ -880,6 +1029,44 @@ def brick_balance_detail(db: Session, user_id: int) -> List[Dict[str, Any]]:
             "count": info["quantity"],
             "gift_locked": info["gift_locked"],
         })
+    return detail
+
+
+def season_pity_detail(db: Session, user_id: int) -> List[Dict[str, Any]]:
+    rows = db.query(UserSeasonPity).filter_by(user_id=user_id).all()
+    if not rows:
+        return []
+    ordered = list(SEASON_IDS)
+    default_key = _brick_season_key(None)
+    if default_key and default_key not in ordered:
+        ordered.append(default_key)
+    seen: set[str] = set()
+    detail: List[Dict[str, Any]] = []
+
+    def _append(row: UserSeasonPity):
+        key = row.season or BRICK_SEASON_FALLBACK
+        detail.append({
+            "season": "" if key == BRICK_SEASON_FALLBACK else key,
+            "season_key": key,
+            "name": _season_display_name(key),
+            "pity_brick": int(row.pity_brick or 0),
+            "pity_purple": int(row.pity_purple or 0),
+        })
+        seen.add(key)
+
+    for key in ordered:
+        for row in rows:
+            row_key = row.season or BRICK_SEASON_FALLBACK
+            if row_key == key and row_key not in seen:
+                _append(row)
+                break
+
+    for row in rows:
+        row_key = row.season or BRICK_SEASON_FALLBACK
+        if row_key in seen:
+            continue
+        _append(row)
+
     return detail
 
 
@@ -1164,6 +1351,7 @@ def generate_visual_profile(
         attachments = [_pick_color()]
 
     template_key = ""
+    template_label = ""
     hidden_template = False
     effects: List[str] = []
 
@@ -1194,6 +1382,7 @@ def generate_visual_profile(
                         break
         if rule:
             template_key = str(rule.get("key") or "")
+            template_label = str(rule.get("label") or "")
             hidden_template = bool(rule.get("hidden", False))
             chosen_body = _resolve_palette(rule.get("body"))
             if chosen_body:
@@ -1220,6 +1409,12 @@ def generate_visual_profile(
             effects.extend(eff_conf)
 
     effects = _unique_list(effects)
+    if not template_label and template_key:
+        template_label = TEMPLATE_LABEL_LOOKUP.get(str(template_key).lower(), "")
+    effect_labels = [
+        EFFECT_LABEL_LOOKUP.get(str(tag).lower(), str(tag))
+        for tag in effects
+    ]
 
     return {
         "body": body,
@@ -1228,6 +1423,8 @@ def generate_visual_profile(
         "hidden_template": hidden_template,
         "effects": effects,
         "model": model,
+        "template_label": template_label,
+        "effect_labels": effect_labels,
     }
 
 
@@ -1352,12 +1549,19 @@ def ensure_visual(inv: Inventory, skin: Optional[Skin] = None) -> Dict[str, obje
             model_key = inv.model_key
             changed = True
 
+    template_label = TEMPLATE_LABEL_LOOKUP.get(str(template).lower(), "") if template else ""
+    effect_labels = [
+        EFFECT_LABEL_LOOKUP.get(str(tag).lower(), str(tag))
+        for tag in effects
+    ]
     return {
         "body": body,
         "attachments": attachments,
         "template": template,
+        "template_label": template_label,
         "hidden_template": hidden_template,
         "effects": effects,
+        "effect_labels": effect_labels,
         "model": model_key,
         "changed": changed,
     }
@@ -2374,6 +2578,7 @@ class OddsOut(_BM):
     force_brick_next: bool; force_purple_next: bool
     pity_brick: int; pity_purple: int
 
+
 def pick_skin(db: Session, rarity: str, season: Optional[str] = None, preferred_skin_id: Optional[str] = None) -> Skin:
     q = db.query(Skin).filter_by(rarity=rarity, active=True)
     season_key = _normalize_season(season)
@@ -2394,8 +2599,10 @@ def pick_skin(db: Session, rarity: str, season: Optional[str] = None, preferred_
     if not rows: raise HTTPException(500, f"当前没有可用的 {rarity} 皮肤")
     return secrets.choice(rows)
 
-def compute_odds(u: User, cfg: PoolConfig) -> OddsOut:
-    n = u.pity_brick; m = u.pity_purple
+
+def compute_odds(pity_brick: int, pity_purple: int, cfg: PoolConfig) -> OddsOut:
+    n = max(0, int(pity_brick or 0))
+    m = max(0, int(pity_purple or 0))
     p_brick = cfg.p_brick_base; p_purple = cfg.p_purple_base
     p_blue = cfg.p_blue_base;   p_green = cfg.p_green_base
     # 65~75 抽动态提升砖皮 & 压缩其他
@@ -2617,12 +2824,14 @@ def me(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
         phone = ""
     cookie_enabled = cookie_factory_enabled(db)
     brick_detail = brick_balance_detail(db, user.id)
+    pity_detail = season_pity_detail(db, user.id)
     return {
         "username": user.username, "phone": phone,
         "fiat": user.fiat, "coins": user.coins, "keys": user.keys,
         "unopened_bricks": user.unopened_bricks,
         "unopened_bricks_detail": brick_detail,
         "pity_brick": user.pity_brick, "pity_purple": user.pity_purple,
+        "pity_by_season": pity_detail,
         "is_admin": bool(getattr(user, "is_admin", False)),
         "features": {
             "cookie_factory": {
@@ -3110,12 +3319,27 @@ def shop_brick_quote(
 
 # ------------------ Gacha ------------------
 @app.get("/odds")
-def odds(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+def odds(
+    season: Optional[str] = Query(None),
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
     cfg = db.query(PoolConfig).first()
-    od = compute_odds(user, cfg)
+    pity_row = get_user_season_pity(db, user, season)
+    season_key = pity_row.season or BRICK_SEASON_FALLBACK
+    od = compute_odds(pity_row.pity_brick, pity_row.pity_purple, cfg)
+    sync_user_global_pity(user, season_key, pity_row)
     return {
         "odds": od.dict(),
-        "limits": {"brick_pity_max": cfg.brick_pity_max, "purple_pity_max": cfg.purple_pity_max}
+        "limits": {"brick_pity_max": cfg.brick_pity_max, "purple_pity_max": cfg.purple_pity_max},
+        "season": season_key,
+        "season_label": _season_display_name(season_key),
+        "pity": {
+            "season": season_key,
+            "season_label": _season_display_name(season_key),
+            "pity_brick": pity_row.pity_brick,
+            "pity_purple": pity_row.pity_purple,
+        },
     }
 
 @app.post("/gacha/open")
@@ -3126,16 +3350,18 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
     if user.unopened_bricks < inp.count: raise HTTPException(400, "未开砖数量不足")
     if user.keys < inp.count: raise HTTPException(400, "钥匙不足")
     cfg = db.query(PoolConfig).first()
-    season_key = _normalize_season(inp.season) or LATEST_SEASON
-    consume_user_bricks(db, user, season_key, inp.count, allow_gift=True)
+    season_key = _season_pity_key(inp.season)
+    brick_season_param = None if season_key == BRICK_SEASON_FALLBACK else season_key
+    consume_user_bricks(db, user, brick_season_param, inp.count, allow_gift=True)
     user.keys -= inp.count
     mark_cookie_delta_activity(db, user.id)
 
     results = []
     target_skin = (inp.target_skin_id or "").strip()
+    pity_row = get_user_season_pity(db, user, season_key)
 
     for _ in range(inp.count):
-        od = compute_odds(user, cfg)
+        od = compute_odds(pity_row.pity_brick, pity_row.pity_purple, cfg)
         # 决定稀有度
         if od.force_brick_next:
             rarity = "BRICK"
@@ -3152,11 +3378,14 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
                     rarity = "BLUE" if r3 < ppm(od.blue) else "GREEN"
 
         if rarity == "BRICK":
-            user.pity_brick = 0; user.pity_purple += 1
+            pity_row.pity_brick = 0
+            pity_row.pity_purple = int(pity_row.pity_purple or 0) + 1
         elif rarity == "PURPLE":
-            user.pity_brick += 1; user.pity_purple = 0
+            pity_row.pity_brick = int(pity_row.pity_brick or 0) + 1
+            pity_row.pity_purple = 0
         else:
-            user.pity_brick += 1; user.pity_purple += 1
+            pity_row.pity_brick = int(pity_row.pity_brick or 0) + 1
+            pity_row.pity_purple = int(pity_row.pity_purple or 0) + 1
 
         preferred = target_skin if rarity == "BRICK" and target_skin else None
         skin = pick_skin(db, rarity, season=season_key, preferred_skin_id=preferred)
@@ -3189,8 +3418,10 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
             "skin_id": skin.skin_id, "name": skin.name, "rarity": skin.rarity,
             "exquisite": exquisite, "wear": f"{wear_bp/100:.2f}", "grade": grade, "serial": inv.serial,
             "template": profile["template"],
+            "template_label": profile.get("template_label", ""),
             "hidden_template": profile["hidden_template"],
             "effects": profile["effects"],
+            "effect_labels": profile.get("effect_labels", []),
             "season": skin.season or season_key,
             "model": profile.get("model", skin.model_key or ""),
             "sell_locked": bool(inv.sell_locked),
@@ -3199,14 +3430,17 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
                 "body": profile["body"],
                 "attachments": profile["attachments"],
                 "template": profile["template"],
+                "template_label": profile.get("template_label", ""),
                 "hidden_template": profile["hidden_template"],
                 "effects": profile["effects"],
+                "effect_labels": profile.get("effect_labels", []),
                 "model": profile.get("model", skin.model_key or ""),
             },
         })
 
     apply_brick_market_influence(db, cfg, results)
     process_brick_buy_orders(db, cfg)
+    sync_user_global_pity(user, season_key, pity_row)
     db.commit()
     return {"ok": True, "results": results}
 
@@ -3240,8 +3474,10 @@ def inventory(
             "body": vis["body"],
             "attachments": vis["attachments"],
             "template": vis["template"],
+            "template_label": vis.get("template_label", ""),
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
+            "effect_labels": vis.get("effect_labels", []),
             "model": vis.get("model", ""),
         }
 
@@ -3256,8 +3492,10 @@ def inventory(
             "on_market": x.on_market,               # 继续返回状态，前端可用来显示角标
             "status": "on_market" if x.on_market else "in_bag",
             "template": vis["template"],
+            "template_label": vis.get("template_label", ""),
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
+            "effect_labels": vis.get("effect_labels", []),
             "model": vis.get("model", ""),
             "season": x.season or (skin_map.get(x.skin_id).season if skin_map.get(x.skin_id) else ""),
             "visual": visual_payload,
@@ -3295,8 +3533,10 @@ def inventory_by_color(
             "body": vis["body"],
             "attachments": vis["attachments"],
             "template": vis["template"],
+            "template_label": vis.get("template_label", ""),
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
+            "effect_labels": vis.get("effect_labels", []),
             "model": vis.get("model", ""),
         }
 
@@ -3311,8 +3551,10 @@ def inventory_by_color(
             "on_market": x.on_market,
             "status": "on_market" if x.on_market else "in_bag",
             "template": vis["template"],
+            "template_label": vis.get("template_label", ""),
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
+            "effect_labels": vis.get("effect_labels", []),
             "model": vis.get("model", ""),
             "season": x.season or (skin_map.get(x.skin_id).season if skin_map.get(x.skin_id) else ""),
             "visual": visual_payload,
@@ -3676,8 +3918,10 @@ def market_my(user: User = Depends(user_from_token), db: Session = Depends(get_d
             "body": vis["body"],
             "attachments": vis["attachments"],
             "template": vis["template"],
+            "template_label": vis.get("template_label", ""),
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
+            "effect_labels": vis.get("effect_labels", []),
             "model": vis.get("model", ""),
         }
 
@@ -3686,8 +3930,10 @@ def market_my(user: User = Depends(user_from_token), db: Session = Depends(get_d
             "name": inv.name, "rarity": inv.rarity, "exquisite": bool(inv.exquisite),
             "grade": inv.grade, "wear": round(inv.wear_bp/100, 2), "serial": inv.serial, "inv_id": inv.id,
             "template": vis["template"],
+            "template_label": vis.get("template_label", ""),
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
+            "effect_labels": vis.get("effect_labels", []),
             "model": vis.get("model", ""),
             "season": inv.season or (skin_map.get(inv.skin_id).season if skin_map.get(inv.skin_id) else ""),
             "visual": visual_payload,
@@ -3759,8 +4005,10 @@ def market_browse(rarity: Optional[RarityT] = None,
             "body": vis["body"],
             "attachments": vis["attachments"],
             "template": vis["template"],
+            "template_label": vis.get("template_label", ""),
             "hidden_template": vis["hidden_template"],
             "effects": vis["effects"],
+            "effect_labels": vis.get("effect_labels", []),
             "model": vis.get("model", ""),
         }
 
@@ -3769,8 +4017,10 @@ def market_browse(rarity: Optional[RarityT] = None,
             name=inv.name, skin_id=inv.skin_id, rarity=inv.rarity,
             exquisite=bool(inv.exquisite), grade=inv.grade,
             wear=round(inv.wear_bp/100, 2), serial=inv.serial, created_at=mi.created_at,
-            template=vis["template"], hidden_template=vis["hidden_template"],
-            effects=vis["effects"], visual=visual_payload,
+            template=vis["template"], template_label=vis.get("template_label", ""),
+            hidden_template=vis["hidden_template"],
+            effects=vis["effects"], effect_labels=vis.get("effect_labels", []),
+            visual=visual_payload,
             season=inv.season or (skin_map.get(inv.skin_id).season if skin_map.get(inv.skin_id) else ""),
             model=vis.get("model", ""),
         ))
@@ -4250,8 +4500,10 @@ def admin_user_inventory(username: str, admin=_Depends(_require_admin)):
                 "body": vis["body"],
                 "attachments": vis["attachments"],
                 "template": vis["template"],
+                "template_label": vis.get("template_label", ""),
                 "hidden_template": vis["hidden_template"],
                 "effects": vis["effects"],
+                "effect_labels": vis.get("effect_labels", []),
             }
             items.append({
                 "inv_id": inv.id,

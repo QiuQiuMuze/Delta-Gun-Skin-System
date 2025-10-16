@@ -336,14 +336,6 @@ const ShopPage = {
       });
     }
 
-    if (buySeasonSelect) {
-      buySeasonSelect.addEventListener('change', () => {
-        const value = buySeasonSelect.value || null;
-        const normalized = value ? String(value) : null;
-        loadBook(normalized);
-      });
-    }
-
     byId("buy-keys").onclick = async () => {
       const n = parseInt(keyInput.value, 10) || 0;
       if (n <= 0) return alert("数量必须 ≥ 1");
