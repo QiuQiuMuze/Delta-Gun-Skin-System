@@ -136,6 +136,14 @@ main#page { padding:16px; max-width:1100px; margin:0 auto; }
 .admin-inventory table { margin-top:8px; }
 .admin-inventory .skin-preview { --preview-width: 210px; }
 .admin-inventory .skin-preview--compact { --preview-width: 210px; }
+.admin-presence { margin-top: 16px; }
+.admin-presence__head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; }
+.admin-presence__meta { font-size:13px; color:#6b7280; }
+.admin-presence__body { max-height:280px; overflow:auto; }
+.admin-presence__table { margin:0; font-size:13px; }
+.admin-presence__table th, .admin-presence__table td { white-space:nowrap; }
+.admin-presence__table td:first-child { font-weight:600; }
+.admin-presence__table td:nth-child(3) { color:#2563eb; }
 
 /* —— 枪械外观预览 —— */
 .skin-preview {
@@ -529,6 +537,70 @@ h3 + .muted.small { margin-top:-6px; }
 .cookie-mini__stats span { display:flex; align-items:center; gap:4px; background:rgba(30,58,138,0.28); padding:2px 8px; border-radius:8px; }
 .cookie-mini__progress { display:flex; flex-direction:column; gap:4px; }
 .cookie-mini__progress-label { font-size:11px; color:#94a3b8; }
+.cookie-mini__summary { font-size:12px; color:#e2e8f0; margin-bottom:6px; }
+.cultivation-container { display:flex; flex-direction:column; gap:16px; }
+.cultivation-empty { padding:24px; text-align:center; color:#777; }
+.cultivation-summary { background:#0f172a; border:1px solid rgba(148,163,184,0.3); border-radius:12px; padding:16px; color:#e2e8f0; }
+.cultivation-summary__header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.cultivation-summary__title { font-size:20px; font-weight:600; }
+.cultivation-summary__stats { font-size:14px; color:#94a3b8; }
+.cultivation-summary__last { font-size:14px; margin-bottom:6px; }
+.cultivation-summary__reward { color:#facc15; margin-bottom:6px; font-weight:600; }
+.cultivation-summary__history { margin-top:12px; }
+.cultivation-summary__history .label { font-size:13px; color:#94a3b8; margin-bottom:4px; display:block; }
+.cultivation-summary__history ul { list-style:none; padding:0; margin:0; }
+.cultivation-summary__history li { display:flex; justify-content:space-between; font-size:13px; padding:4px 0; border-bottom:1px solid rgba(148,163,184,0.15); }
+.cultivation-summary__history li:last-child { border-bottom:none; }
+.cultivation-summary__history .meta { color:#94a3b8; }
+
+.cultivation-section { background:#0f172a; border:1px solid rgba(148,163,184,0.3); border-radius:12px; padding:16px; color:#e2e8f0; }
+.cultivation-run__header { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:12px; }
+.cultivation-run__stage { font-size:18px; font-weight:600; }
+.cultivation-run__meta { font-size:13px; color:#94a3b8; margin-top:4px; }
+.cultivation-run__health { min-width:160px; font-size:13px; color:#e2e8f0; }
+.cultivation-run__health .progress-bar { margin-top:4px; height:6px; background:rgba(148,163,184,0.3); border-radius:4px; overflow:hidden; }
+.cultivation-run__health .progress-bar__fill { height:100%; background:linear-gradient(90deg,#22c55e,#16a34a); }
+.cultivation-run__stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; margin-bottom:12px; }
+.cultivation-run__stats .stat { background:rgba(148,163,184,0.08); padding:8px; border-radius:8px; text-align:center; }
+.cultivation-run__stats .stat span { display:block; font-size:12px; color:#94a3b8; }
+.cultivation-run__stats .stat strong { font-size:18px; font-weight:600; color:#f8fafc; }
+.cultivation-run__talents { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.talent-chip { background:rgba(59,130,246,0.15); color:#bfdbfe; padding:6px 12px; border-radius:999px; font-size:13px; }
+.cultivation-outcome { margin-bottom:12px; padding:10px 12px; background:rgba(56,189,248,0.12); border-radius:8px; font-size:13px; color:#bae6fd; }
+.cultivation-event { margin-bottom:16px; }
+.cultivation-event__title { font-size:17px; font-weight:600; margin-bottom:4px; }
+.cultivation-event__desc { font-size:14px; color:#cbd5f5; margin-bottom:6px; }
+.cultivation-event__hint { font-size:13px; color:#fcd34d; margin-bottom:8px; }
+.cultivation-event__options { display:flex; flex-direction:column; gap:8px; }
+.cultivation-event__options .btn { display:flex; flex-direction:column; align-items:flex-start; text-align:left; }
+.cultivation-event__options .btn .btn-title { font-weight:600; }
+.cultivation-event__options .btn .btn-desc { font-size:12px; color:#cbd5f5; margin-top:2px; }
+.cultivation-log { margin-top:12px; }
+.cultivation-log__title { font-size:14px; color:#94a3b8; margin-bottom:6px; }
+.cultivation-log ul { max-height:200px; overflow:auto; background:rgba(148,163,184,0.06); border-radius:8px; padding:8px 12px; list-style:none; margin:0; }
+.cultivation-log li { font-size:13px; padding:4px 0; border-bottom:1px solid rgba(148,163,184,0.1); }
+.cultivation-log li:last-child { border-bottom:none; }
+
+.cultivation-lobby__meta { font-size:13px; color:#94a3b8; margin-bottom:12px; }
+.cultivation-lobby__actions { margin-bottom:12px; }
+.cultivation-talent-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-bottom:16px; }
+.cultivation-talent { padding:12px; border:1px solid rgba(148,163,184,0.25); border-radius:10px; background:rgba(148,163,184,0.06); cursor:pointer; transition:border-color 0.2s, background 0.2s; }
+.cultivation-talent:hover { border-color:#38bdf8; }
+.cultivation-talent.selected { border-color:#38bdf8; background:rgba(56,189,248,0.18); }
+.cultivation-talent__name { font-size:15px; font-weight:600; margin-bottom:4px; }
+.cultivation-talent__desc { font-size:13px; color:#cbd5f5; margin-bottom:6px; }
+.cultivation-talent__effects { font-size:12px; color:#bae6fd; }
+.cultivation-attr-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:16px; }
+.cultivation-attr { background:rgba(148,163,184,0.08); border-radius:8px; padding:10px 12px; }
+.cultivation-attr label { display:block; font-weight:600; margin-bottom:4px; }
+.cultivation-attr__value { font-size:13px; color:#cbd5f5; }
+.cultivation-attr input[type=number] { width:70px; margin-left:6px; padding:4px; border-radius:4px; border:1px solid rgba(148,163,184,0.4); background:#0b1220; color:#e2e8f0; }
+.cultivation-start { text-align:right; }
+.cultivation-start .btn.is-disabled { opacity:0.5; pointer-events:none; }
+
+.btn.is-loading { position:relative; pointer-events:none; opacity:0.7; }
+.btn.is-loading::after { content:""; position:absolute; right:10px; top:50%; width:12px; height:12px; border:2px solid rgba(255,255,255,0.6); border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; transform:translateY(-50%); }
+
 .cookie-disabled { padding:24px; border-radius:16px; text-align:center; background:rgba(15,23,42,0.6); color:#cbd5f5; }
 .cookie-report { padding:16px; border-radius:14px; background:rgba(30,41,59,0.8); box-shadow:0 4px 14px rgba(0,0,0,0.12); display:flex; flex-direction:column; gap:8px; }
 .cookie-report .report-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:6px; font-size:13px; color:#cbd5f5; }

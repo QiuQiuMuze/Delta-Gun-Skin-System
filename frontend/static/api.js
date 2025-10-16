@@ -211,6 +211,11 @@ const API = {
   cookieStatus: () => API.json("/cookie-factory/status"),
   cookieLogin: () => API.json("/cookie-factory/login", "POST"),
   cookieAct: (payload) => API.json("/cookie-factory/act", "POST", payload || {}),
+  cultivationStatus: () => API.json("/cultivation/status"),
+  cultivationRefresh: () => API.json("/cultivation/refresh", "POST", {}),
+  cultivationBegin: (payload) => API.json("/cultivation/begin", "POST", payload || {}),
+  cultivationAdvance: (payload) => API.json("/cultivation/advance", "POST", payload || {}),
+  updatePresence: (payload) => API.json("/presence/update", "POST", payload || {}),
 
   // ---- Admin（JWT 管理接口）----
   adminUsers: (q = "", page = 1, page_size = 50) => {
@@ -233,6 +238,8 @@ const API = {
     return API.json("/admin/sms-log" + (usp.toString() ? "?" + usp.toString() : ""));
   },
 
+  adminPresence: () => API.json("/admin/presence"),
+
 
   // ★ 新增：加/扣 三角币、扣 法币
   adminGrantCoins: (username, amount_coins) =>
@@ -252,6 +259,7 @@ const API = {
 
   cookieAdminStatus: () => API.json("/admin/cookie-factory"),
   cookieAdminToggle: (enabled) => API.json("/admin/cookie-factory/toggle", "POST", { enabled }),
+  cookieCultivationToggle: (enabled) => API.json("/admin/cookie-factory/cultivation-toggle", "POST", { enabled }),
 
 
   adminAuthModeGet: () => API.json("/admin/auth-mode"),
