@@ -8,6 +8,74 @@ const escapeHtml = (s)=> String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt
 // ★★★ 关键：让 API 使用“每标签页独立会话”并迁移旧 token
 API.initSession();
 
+const PresenceTracker = {
+  _route: "home",
+  _activity: null,
+  _details: {},
+  _timer: null,
+  _lastSent: 0,
+  init() {
+    if (this._timer) {
+      clearInterval(this._timer);
+    }
+    this._timer = setInterval(() => this.ping(false), 20000);
+    window.addEventListener("focus", () => this.ping(true));
+    window.addEventListener("beforeunload", () => {
+      try { this.ping(true); } catch (_) { /* 忽略 */ }
+    });
+  },
+  setPage(route, pageObj) {
+    this._route = route || "home";
+    let info = null;
+    try {
+      if (pageObj && typeof pageObj.presence === "function") {
+        info = pageObj.presence();
+      }
+    } catch (_) {
+      info = null;
+    }
+    this.updateDetails(info || {});
+  },
+  updateDetails(info) {
+    if (!info || typeof info !== "object") info = {};
+    const activity = typeof info.activity === "string" ? info.activity.trim() : "";
+    this._activity = activity || null;
+    this._details = info.details && typeof info.details === "object" ? info.details : {};
+    this.ping(true);
+  },
+  compose() {
+    if (!API.token) {
+      this._lastSent = 0;
+      return null;
+    }
+    const page = this._route || "home";
+    const activity = this._activity || `page:${page}`;
+    return { page, activity, details: this._details || {} };
+  },
+  async ping(force = false) {
+    if (!API.token) {
+      this._lastSent = 0;
+      return;
+    }
+    const now = Date.now();
+    const minGap = force ? 0 : 15000;
+    if (!force && now - this._lastSent < minGap) {
+      return;
+    }
+    const payload = this.compose();
+    if (!payload) return;
+    this._lastSent = now;
+    try {
+      await API.updatePresence(payload);
+    } catch (_) {
+      /* 忽略错误，保持静默 */
+    }
+  },
+};
+
+PresenceTracker.init();
+window.PresenceTracker = PresenceTracker;
+
 const Notifier = {
   pushDiamond(payload = {}) {
     const wrap = $notify();
@@ -151,6 +219,7 @@ const Pages = {
   shop: ShopPage,
   gacha: GachaPage,
   cookie: CookieFactoryPage,
+  cultivation: CultivationPage,
   inventory: InventoryPage,
   craft: CraftPage,
   market: MarketPage,
@@ -183,6 +252,7 @@ async function renderRoute() {
 
   renderNav();
   const p = Pages[r] || Pages.home;
+  PresenceTracker.setPage(r, p);
   const html = await (p.render?.() ?? "");
   $page().innerHTML = html;
   p.bind?.();
