@@ -909,6 +909,46 @@ const CultivationPage = {
         this.updateStartButton();
       });
     });
+    const originCards = this._root.querySelectorAll('.cultivation-origin');
+    originCards.forEach(card => {
+      card.addEventListener('click', () => {
+        if (card.classList.contains('is-locked')) return;
+        const id = card.dataset.id;
+        if (!id) return;
+        if (this._selection.originId !== id) {
+          this._selection.originId = id;
+          this._selection.sectId = null;
+          this._selection.masterId = null;
+        }
+        this.updateLineageAvailability(lobby);
+        this.updateStartButton();
+      });
+    });
+    const sectCards = this._root.querySelectorAll('.cultivation-sect');
+    sectCards.forEach(card => {
+      card.addEventListener('click', () => {
+        if (card.classList.contains('is-locked')) return;
+        const id = card.dataset.id;
+        if (!id) return;
+        if (this._selection.sectId !== id) {
+          this._selection.sectId = id;
+          this._selection.masterId = null;
+        }
+        this.updateLineageAvailability(lobby);
+        this.updateStartButton();
+      });
+    });
+    const masterCards = this._root.querySelectorAll('.cultivation-master');
+    masterCards.forEach(card => {
+      card.addEventListener('click', () => {
+        if (card.classList.contains('is-locked') || card.classList.contains('is-hidden')) return;
+        const id = card.dataset.id;
+        if (!id) return;
+        this._selection.masterId = id;
+        this.updateLineageAvailability(lobby);
+        this.updateStartButton();
+      });
+    });
     const inputs = this._root.querySelectorAll('input[data-alloc]');
     inputs.forEach(input => {
       input.addEventListener('change', () => {
