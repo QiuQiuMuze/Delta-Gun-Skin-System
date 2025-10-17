@@ -13,27 +13,28 @@
     _toggleButton: null,
     _musicPresets: {
       cultivation: {
-        key: 'cultivation-v3',
-        seed: 54101,
-        tempo: 54,
+        key: 'cultivation-v4',
+        seed: 68117,
+        tempo: 48,
         scale: 'pentatonic',
-        root: 174,
+        root: 196,
         bars: 16,
         pad: true,
         sparkle: true,
-        warmth: 0.4,
-        volume: 0.62,
+        warmth: 0.36,
+        volume: 0.66,
         progression: [0, 3, 5, 2],
         chordStyle: 'sustain',
         chordOctave: -1,
-        arpeggio: { amp: 0.22, subdivision: 2, span: 3, swing: 0.14, randomness: 0.25, pan: 0.15 },
-        melody: { density: 0.48, resolution: 2, range: [-1, 4], legato: 1.4, vibrato: 0.03, detune: 0.006, accent: 0.38, spread: 0.32, randomness: 0.28 },
-        drone: { amp: 0.22, octave: -2, fifth: 0.35, shimmer: 0.18 },
-        pulse: { intervalBeats: 4, width: 1.5, amp: 0.26, freq: 46, shape: 'heartbeat', noise: 0.08, spread: 0.32 },
-        atmosphere: { type: 'wind', amp: 0.08, motion: 0.28, swayFreq: 0.018 },
+        arpeggio: { amp: 0.18, subdivision: 2, span: 4, swing: 0.18, randomness: 0.22, pan: 0.2 },
+        melody: { density: 0.4, resolution: 2, range: [-1, 5], legato: 1.65, vibrato: 0.045, detune: 0.005, accent: 0.32, spread: 0.36, randomness: 0.26, leaps: 0.18 },
+        drone: { amp: 0.28, octave: -2, fifth: 0.42, shimmer: 0.24, vibrato: 0.015 },
+        pulse: { intervalBeats: 6, width: 1.8, amp: 0.2, freq: 42, shape: 'heartbeat', noise: 0.05, spread: 0.28 },
+        atmosphere: { type: 'wind', amp: 0.06, motion: 0.42, swayFreq: 0.012 },
+        celestial: { amp: 0.22, density: 0.7, steps: [4, 7, 9], octave: 2, shimmer: 0.5, drift: 0.18 },
         percussion: {
-          amp: 0.14,
-          hat: { rate: 1, randomness: 0.22, cutoff: 0.45, pan: -0.1 }
+          amp: 0.1,
+          hat: { rate: 0.75, randomness: 0.2, cutoff: 0.4, pan: -0.15 }
         }
       },
       gacha: {
@@ -829,6 +830,51 @@
         }
       }
 
+      const celestialCfg = preset.celestial || null;
+      if (celestialCfg && celestialCfg.amp > 0 && progression.length) {
+        const density = Math.max(4, Math.floor(totalBeats * Math.max(0.2, celestialCfg.density || 0.6)));
+        const steps = Array.isArray(celestialCfg.steps) && celestialCfg.steps.length ? celestialCfg.steps : [4, 7, 9];
+        const octave = Number.isFinite(celestialCfg.octave) ? celestialCfg.octave : 2;
+        const shimmerAmt = Math.max(0, Math.min(1, celestialCfg.shimmer || 0));
+        const drift = Math.max(0, Math.min(1, celestialCfg.drift || 0));
+        for (let i = 0; i < density; i++) {
+          const beatStart = (i / density) * totalBeats + rng() * 0.8;
+          const barIndex = Math.floor(Math.max(0, Math.min(bars - 1, beatStart / beatsPerBar)));
+          const chordDegree = progression[barIndex % progression.length];
+          const step = steps[i % steps.length];
+          const degree = chordDegree + step;
+          const freq = toFreq(resolveDegree(degree, octave));
+          const lengthBeats = 0.9 + rng() * 0.7;
+          const pan = (rng() * 2 - 1) * 0.55;
+          const amp = celestialCfg.amp * (0.7 + rng() * 0.4);
+          const detune = (rng() * 2 - 1) * 0.012 * (1 + drift * 0.6);
+          writeTone(Math.max(0, beatStart), lengthBeats, freq, amp, pan, {
+            attackPortion: 0.48,
+            releaseCurve: 3.6,
+            vibrato: 0.055,
+            vibratoFreq: 3.2,
+            detune,
+            wave: 'sine',
+            sustain: 0.62,
+            spread: 0.8,
+            noise: 0.05
+          });
+          if (shimmerAmt > 0) {
+            writeTone(Math.max(0, beatStart + lengthBeats * 0.45), lengthBeats * 0.6, freq * 2, amp * shimmerAmt, pan * 0.6, {
+              attackPortion: 0.32,
+              releaseCurve: 3.2,
+              vibrato: 0.07,
+              vibratoFreq: 5.1,
+              detune: detune * 0.8,
+              wave: 'sine',
+              sustain: 0.5,
+              spread: 0.85,
+              noise: 0.03
+            });
+          }
+        }
+      }
+
       this._denoiseStereo(left, right);
       this._smoothBuffer(left);
       this._smoothBuffer(right);
@@ -900,6 +946,16 @@
           const rarity = String(opts.rarity || 'common').toUpperCase();
           const flags = [rarity, opts.diamond ? 'D' : '', opts.exquisite ? 'E' : ''];
           return `rarity:${flags.join('')}`;
+        }
+        case 'gacha-celebrate':
+        case 'craft-celebrate': {
+          const rarity = String(opts.rarity || 'common').toUpperCase();
+          const flags = [rarity, opts.diamond ? 'D' : '', opts.exquisite ? 'E' : ''];
+          return `${name}:${flags.join('')}`;
+        }
+        case 'craft-reveal': {
+          const rarity = String(opts.rarity || 'common').toUpperCase();
+          return `craft-reveal:${rarity}`;
         }
         case 'trial-result': {
           const fortune = String(opts.fortune || '').toLowerCase();
@@ -1057,29 +1113,92 @@
           const diamond = !!opts.diamond;
           const exquisite = !!opts.exquisite;
           let baseFreq = 520;
-          let extra = [];
           if (rarity === 'BRICK') {
-            baseFreq = diamond ? 1260 : 980;
-            extra = [{ offset: 0.2, length: 0.45, shape: 'sine', freq: baseFreq + 160, freqEnd: baseFreq + 320, amp: 0.55, attack: 1.4, decay: 2.4 }];
+            baseFreq = diamond ? 1280 : 980;
           } else if (rarity === 'PURPLE') {
             baseFreq = 880;
           } else if (rarity === 'BLUE') {
             baseFreq = 720;
           } else if (rarity === 'GREEN') {
             baseFreq = 600;
-          } else {
-            baseFreq = 520;
           }
-          base.duration = 0.75;
+          const noiseAmp = 0.16 + (exquisite ? 0.04 : 0) + (diamond ? 0.08 : 0);
+          const lowAmp = rarity === 'BRICK' ? 0.22 + (exquisite ? 0.06 : 0) + (diamond ? 0.08 : 0) : 0;
+          base.duration = diamond ? 1.15 : exquisite ? 0.95 : 0.8;
           base.steps = [
-            { offset: 0, length: 0.55, shape: 'triangle', freq: baseFreq, freqEnd: baseFreq + 120, amp: 0.62, attack: 1.8, decay: 2.6 },
-            { offset: 0.1, length: 0.4, shape: 'noise', amp: 0.18, decay: 3.0 }
-          ].concat(extra);
+            { offset: 0, length: 0.6, shape: 'triangle', freq: baseFreq, freqEnd: baseFreq + 180, amp: 0.66, attack: 2.0, decay: 2.6 },
+            { offset: 0.04, length: 0.55, shape: 'sine', freq: baseFreq + 140, freqEnd: baseFreq + 320, amp: 0.46, attack: 1.6, decay: 2.4 },
+            { offset: 0.08, length: 0.6, shape: 'noise', amp: noiseAmp, decay: 3.6 }
+          ];
+          if (lowAmp > 0) {
+            base.steps.push({ offset: 0, length: 0.7, shape: 'sine', freq: baseFreq - 320, freqEnd: baseFreq - 40, amp: lowAmp, attack: 1.5, decay: 3.4 });
+          }
           if (exquisite) {
-            base.steps.push({ offset: 0.32, length: 0.3, shape: 'sine', freq: baseFreq + 260, freqEnd: baseFreq + 420, amp: 0.5, attack: 1.3, decay: 2.2 });
+            base.steps.push({ offset: 0.28, length: 0.38, shape: 'sine', freq: baseFreq + 320, freqEnd: baseFreq + 480, amp: 0.52, attack: 1.3, decay: 2.2 });
           }
           if (diamond) {
-            base.steps.push({ offset: 0.42, length: 0.32, shape: 'triangle', freq: baseFreq + 420, freqEnd: baseFreq + 520, amp: 0.45, attack: 1.6, decay: 2.4 });
+            base.steps.push({ offset: 0.34, length: 0.48, shape: 'triangle', freq: baseFreq + 420, freqEnd: baseFreq + 620, amp: 0.48, attack: 1.6, decay: 2.6 });
+            base.steps.push({ offset: 0.02, length: 0.75, shape: 'noise', amp: 0.1, decay: 3.8, pan: 0 });
+          }
+          break;
+        }
+        case 'gacha-celebrate': {
+          const diamond = !!opts.diamond;
+          const exquisite = !!opts.exquisite;
+          const rarity = String(opts.rarity || '').toUpperCase();
+          const baseFreq = diamond ? 1260 : exquisite ? 1020 : 880;
+          base.duration = diamond ? 1.6 : 1.2;
+          base.steps = [
+            { offset: 0, length: 1.0, shape: 'sine', freq: baseFreq, freqEnd: baseFreq + 260, amp: 0.6, attack: 1.5, decay: 2.8 },
+            { offset: 0.1, length: 0.9, shape: 'triangle', freq: baseFreq * 0.6, freqEnd: baseFreq, amp: 0.48, attack: 1.8, decay: 3.0 },
+            { offset: 0, length: 1.1, shape: 'noise', amp: diamond ? 0.34 : exquisite ? 0.26 : 0.22, decay: 4.2 }
+          ];
+          if (diamond || rarity === 'BRICK') {
+            base.steps.push({ offset: 0, length: 1.2, shape: 'sine', freq: 320, freqEnd: 520, amp: 0.32, attack: 1.4, decay: 3.4 });
+          }
+          if (diamond) {
+            base.steps.push({ offset: 0.45, length: 0.5, shape: 'sine', freq: baseFreq + 480, freqEnd: baseFreq + 760, amp: 0.5, attack: 1.4, decay: 2.4 });
+          }
+          break;
+        }
+        case 'craft-start':
+          base.duration = 1.1;
+          base.steps = [
+            { offset: 0, length: 0.9, shape: 'noise', amp: 0.22, decay: 3.8 },
+            { offset: 0, length: 0.85, shape: 'sine', freq: 340, freqEnd: 620, amp: 0.48, attack: 1.8, decay: 2.8 }
+          ];
+          break;
+        case 'craft-reveal': {
+          const rarity = String(opts.rarity || '').toUpperCase();
+          let baseFreq = 680;
+          if (rarity === 'BRICK') baseFreq = 980;
+          else if (rarity === 'PURPLE') baseFreq = 820;
+          else if (rarity === 'BLUE') baseFreq = 700;
+          base.duration = 0.9;
+          base.steps = [
+            { offset: 0, length: 0.65, shape: 'triangle', freq: baseFreq, freqEnd: baseFreq + 180, amp: 0.6, attack: 1.9, decay: 2.6 },
+            { offset: 0.06, length: 0.55, shape: 'sine', freq: baseFreq + 160, freqEnd: baseFreq + 320, amp: 0.46, attack: 1.5, decay: 2.4 }
+          ];
+          break;
+        }
+        case 'craft-celebrate': {
+          const diamond = !!opts.diamond;
+          const exquisite = !!opts.exquisite;
+          const rarity = String(opts.rarity || '').toUpperCase();
+          const baseFreq = diamond ? 1220 : exquisite ? 980 : (rarity === 'BRICK' ? 920 : 780);
+          base.duration = diamond ? 1.5 : 1.1;
+          base.steps = [
+            { offset: 0, length: 0.95, shape: 'sine', freq: baseFreq, freqEnd: baseFreq + 220, amp: 0.58, attack: 1.5, decay: 2.6 },
+            { offset: 0.12, length: 0.8, shape: 'triangle', freq: baseFreq * 0.7, freqEnd: baseFreq + 60, amp: 0.46, attack: 1.7, decay: 2.9 }
+          ];
+          if (rarity === 'BRICK') {
+            base.steps.push({ offset: 0, length: 1.0, shape: 'sine', freq: 360, freqEnd: 520, amp: 0.28, attack: 1.5, decay: 3.0 });
+          }
+          if (exquisite) {
+            base.steps.push({ offset: 0.38, length: 0.45, shape: 'sine', freq: baseFreq + 360, freqEnd: baseFreq + 520, amp: 0.5, attack: 1.3, decay: 2.2 });
+          }
+          if (diamond) {
+            base.steps.push({ offset: 0.5, length: 0.55, shape: 'triangle', freq: baseFreq + 480, freqEnd: baseFreq + 680, amp: 0.46, attack: 1.5, decay: 2.4 });
           }
           break;
         }
