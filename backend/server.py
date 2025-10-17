@@ -2392,6 +2392,10 @@ def _cultivation_option_reward_level(option: Dict[str, Any]) -> float:
 def _cultivation_set_option_requirements(run: Dict[str, Any], event_type: str, options: List[Dict[str, Any]]) -> None:
     stage_index = int(run.get("stage_index", 0))
     base_requirement = _cultivation_stage_requirement(stage_index)
+    if event_type == "merchant":
+        for option in options:
+            option.pop("requirement", None)
+        return
     for option in options:
         focus = option.get("focus") or "mind"
         opt_type = option.get("type") or "insight"
@@ -2499,6 +2503,16 @@ def _cultivation_option_success_profile(run: Dict[str, Any], option: Dict[str, A
     focus = option.get("focus") or "mind"
     stat_value = int(stats.get(focus, 0))
     luck_value = int(stats.get("luck", 0))
+    meta = option.get("meta") or {}
+    if meta.get("skip_judgement"):
+        return {
+            "focus": focus,
+            "stat_value": stat_value,
+            "requirement": 0,
+            "ratio": 1.0,
+            "success": 1.0,
+            "crit": 0.0,
+        }
     requirement_info = option.get("requirement") or {}
     requirement_val = int(requirement_info.get("value") or 0)
     if requirement_val <= 0:
@@ -2519,6 +2533,8 @@ def _cultivation_option_success_profile(run: Dict[str, Any], option: Dict[str, A
         base_success += float(flags.get("combat_bonus") or 0.0) * 0.2
     elif opt_type == "alchemy" and flags.get("alchemy_mastery"):
         base_success += 0.2
+    elif opt_type == "escape":
+        base_success += float(flags.get("escape_bonus") or 0.0) * 0.3
     base_success += min(0.08, luck_value * 0.01)
     base_success = max(0.05, min(0.95, base_success))
     crit_base = 0.04 + max(0.0, ratio - 0.7) * 0.11 + min(0.06, luck_value * 0.008)
@@ -2762,33 +2778,273 @@ CULTIVATION_MASTERS = [
         "coins": 14,
         "traits": ["悟道奇才"],
     },
+    {
+        "id": "jianxin",
+        "name": "剑心道人",
+        "title": "剑阵长老",
+        "motto": "剑意不灭，战意长存",
+        "sect": "azure_sword",
+        "min_status": 2,
+        "stats": {"body": 1, "mind": 1},
+        "flags": {"combat_bonus": 0.18, "combat_resist": 0.05},
+        "coins": 8,
+        "traits": ["剑阵护身", "战斗胜率提升"],
+    },
+    {
+        "id": "qinghe",
+        "name": "清鹤上人",
+        "title": "飞羽剑主",
+        "motto": "剑随云起，进退自如",
+        "sect": "azure_sword",
+        "min_status": 1,
+        "stats": {"body": 1, "luck": 1},
+        "flags": {"escape_bonus": 0.25},
+        "coins": 12,
+        "traits": ["轻身遁影", "脱困更易"],
+    },
+    {
+        "id": "yuechan",
+        "name": "月禅仙子",
+        "title": "太阴副殿主",
+        "motto": "月华照心，静守长夜",
+        "sect": "moon_temple",
+        "min_status": 3,
+        "stats": {"spirit": 2},
+        "flags": {"setback_reduce": 5},
+        "coins": 10,
+        "traits": ["守心如月", "失败损伤大减"],
+    },
+    {
+        "id": "luoxia",
+        "name": "落霞真君",
+        "title": "月光祭司",
+        "motto": "霞光晖映，护持同门",
+        "sect": "moon_temple",
+        "min_status": 2,
+        "stats": {"spirit": 1, "mind": 1},
+        "flags": {"chance_bonus": 0.08, "setback_reduce": 2},
+        "coins": 9,
+        "traits": ["机缘引导", "减伤护佑"],
+    },
+    {
+        "id": "tiexin",
+        "name": "铁心尊者",
+        "title": "雷崖统领",
+        "motto": "雷霆淬骨，方得大成",
+        "sect": "thunder_valley",
+        "min_status": 1,
+        "stats": {"body": 2},
+        "flags": {"combat_resist": 0.35},
+        "coins": 6,
+        "traits": ["体魄坚韧", "战斗受伤更少"],
+    },
+    {
+        "id": "yunlei",
+        "name": "云雷散人",
+        "title": "雷纹刻师",
+        "motto": "纹引雷行，攻守自得",
+        "sect": "thunder_valley",
+        "min_status": 2,
+        "stats": {"body": 1, "mind": 1},
+        "flags": {"combat_bonus": 0.12},
+        "coins": 11,
+        "traits": ["雷纹加持", "战斗收益提升"],
+    },
+    {
+        "id": "musheng",
+        "name": "牧生翁",
+        "title": "灵木守望",
+        "motto": "木心无垠，泽被万物",
+        "sect": "spirit_pavilion",
+        "min_status": 1,
+        "stats": {"spirit": 1, "luck": 1},
+        "flags": {"hazard_hint": 1.2},
+        "coins": 7,
+        "traits": ["先机洞察", "福泽庇护"],
+    },
+    {
+        "id": "qingsu",
+        "name": "青苏真人",
+        "title": "木灵祭司",
+        "motto": "以木化劫，柔能胜刚",
+        "sect": "spirit_pavilion",
+        "min_status": 2,
+        "stats": {"spirit": 2},
+        "flags": {"setback_reduce": 3},
+        "coins": 8,
+        "traits": ["灵木护体", "挫折缓冲"],
+    },
+    {
+        "id": "piaoyi",
+        "name": "飘逸散仙",
+        "title": "浮空游尊",
+        "motto": "云游四海，机缘自至",
+        "sect": "wandering",
+        "min_status": 1,
+        "stats": {"luck": 2},
+        "flags": {"chance_bonus": 0.18},
+        "coins": 18,
+        "traits": ["机缘倍增"],
+    },
+    {
+        "id": "hanjiang",
+        "name": "寒江客",
+        "title": "散修盟策士",
+        "motto": "谋定而动，危中求机",
+        "sect": "wandering",
+        "min_status": 2,
+        "stats": {"mind": 1, "luck": 1},
+        "flags": {"hazard_hint": 1, "chance_bonus": 0.06},
+        "coins": 15,
+        "traits": ["洞察险机", "机缘加成"],
+    },
+    {
+        "id": "xuanxing",
+        "name": "玄星大祭司",
+        "title": "星河占师",
+        "motto": "执星而行，洞悉天机",
+        "sect": "emerald_palace",
+        "min_status": 3,
+        "stats": {"mind": 1, "spirit": 1},
+        "flags": {"insight_bonus": 0.18},
+        "coins": 16,
+        "traits": ["星图悟道", "推演先机"],
+    },
+    {
+        "id": "yaohui",
+        "name": "曜辉上师",
+        "title": "星辉讲主",
+        "motto": "星河漫漫，智慧为舟",
+        "sect": "emerald_palace",
+        "min_status": 2,
+        "stats": {"mind": 1, "spirit": 1},
+        "flags": {"insight_bonus": 0.1, "chance_bonus": 0.05},
+        "coins": 12,
+        "traits": ["星辉护佑", "悟性提升"],
+    },
 ]
 
 CULTIVATION_ARTIFACT_POOL = [
-    {"name": "星河飞剑", "desc": "蕴含星辰之力，可破万法"},
-    {"name": "玄光镜", "desc": "照见心魔，护持道心"},
-    {"name": "雷霆战鼓", "desc": "激发真雷，一击震退强敌"},
-    {"name": "紫霜佩铃", "desc": "摇动时凝聚寒霜守护周身"},
-    {"name": "灵木法冠", "desc": "引动万木生机疗愈创伤"},
-    {"name": "云海羽衣", "desc": "御风而行，千里瞬至"},
+    {
+        "name": "星河飞剑",
+        "desc": "蕴含星辰之力，可破万法，强身健体。",
+        "stats": {"body": 1},
+        "flags": {"combat_bonus": 0.12},
+    },
+    {
+        "name": "玄光镜",
+        "desc": "照见心魔，护持道心，使神识更稳。",
+        "stats": {"mind": 1},
+        "flags": {"setback_reduce": 3},
+    },
+    {
+        "name": "雷霆战鼓",
+        "desc": "激发真雷，一击震退强敌，淬炼筋骨。",
+        "stats": {"body": 1},
+        "flags": {"combat_resist": 0.2},
+    },
+    {
+        "name": "紫霜佩铃",
+        "desc": "摇动时凝聚寒霜守护周身，灵性更盛。",
+        "stats": {"spirit": 1},
+        "flags": {"hazard_hint": 1},
+    },
+    {
+        "name": "灵木法冠",
+        "desc": "引动万木生机疗愈创伤，心神安定。",
+        "stats": {"spirit": 1},
+        "flags": {"setback_reduce": 2},
+    },
+    {
+        "name": "云海羽衣",
+        "desc": "御风而行，千里瞬至，机缘自来。",
+        "stats": {"luck": 1},
+        "flags": {"chance_bonus": 0.12},
+    },
 ]
 
 CULTIVATION_COMPANION_POOL = [
-    {"name": "柳霜", "note": "剑修师姐", "desc": "行事干练，擅长指点剑道窍门"},
-    {"name": "白起", "note": "雷谷师兄", "desc": "豪迈爽朗，总在危局前驱"},
-    {"name": "顾清仪", "note": "炼丹妙手", "desc": "善以丹术疗伤，随时支援"},
-    {"name": "封晚晴", "note": "月殿圣女", "desc": "心思缜密，擅长谋划布局"},
-    {"name": "牧野", "note": "逍遥游侠", "desc": "行踪不定，却总能伸出援手"},
-    {"name": "枝岚", "note": "灵木道灵", "desc": "化形木灵，能借自然庇护同伴"},
+    {
+        "name": "柳霜",
+        "note": "剑修师姐",
+        "desc": "行事干练，指点剑道窍门，心神也更沉稳。",
+        "stats": {"mind": 1},
+        "flags": {"combat_bonus": 0.08},
+    },
+    {
+        "name": "白起",
+        "note": "雷谷师兄",
+        "desc": "豪迈爽朗，总在危局前驱，让你战伤更轻。",
+        "stats": {"body": 1},
+        "flags": {"combat_resist": 0.15},
+    },
+    {
+        "name": "顾清仪",
+        "note": "炼丹妙手",
+        "desc": "善以丹术疗伤，随时支援，悟性也被启发。",
+        "stats": {"mind": 1},
+        "flags": {"setback_reduce": 2},
+    },
+    {
+        "name": "封晚晴",
+        "note": "月殿圣女",
+        "desc": "心思缜密，擅长谋划布局，让机缘更易把握。",
+        "stats": {"spirit": 1},
+        "flags": {"chance_bonus": 0.1},
+    },
+    {
+        "name": "牧野",
+        "note": "逍遥游侠",
+        "desc": "行踪不定，却总能伸出援手，增添福缘。",
+        "stats": {"luck": 1},
+        "flags": {"hazard_hint": 1},
+    },
+    {
+        "name": "枝岚",
+        "note": "灵木道灵",
+        "desc": "化形木灵，能借自然庇护同伴，提升灵性。",
+        "stats": {"spirit": 1},
+        "flags": {"setback_reduce": 1},
+    },
 ]
 
 CULTIVATION_TECHNIQUE_POOL = [
-    {"name": "紫霄御雷诀", "desc": "引动九霄神雷护体攻敌"},
-    {"name": "星沉剑意", "desc": "以星辰轨迹推演剑势"},
-    {"name": "太阴凝华术", "desc": "借月华凝炼心神稳固境界"},
-    {"name": "木灵回春篇", "desc": "调动生机，重塑经脉活力"},
-    {"name": "游龙步", "desc": "化身游龙，身形难以捕捉"},
-    {"name": "玄心定神章", "desc": "熄灭杂念，抵御心魔侵蚀"},
+    {
+        "name": "紫霄御雷诀",
+        "desc": "引动九霄神雷护体攻敌，令战力暴涨。",
+        "stats": {"body": 1},
+        "flags": {"combat_bonus": 0.1},
+    },
+    {
+        "name": "星沉剑意",
+        "desc": "以星辰轨迹推演剑势，悟性提升。",
+        "stats": {"mind": 1},
+        "flags": {"insight_bonus": 0.08},
+    },
+    {
+        "name": "太阴凝华术",
+        "desc": "借月华凝炼心神稳固境界，神识更坚。",
+        "stats": {"spirit": 1},
+        "flags": {"setback_reduce": 2},
+    },
+    {
+        "name": "木灵回春篇",
+        "desc": "调动生机，重塑经脉活力，身心双修。",
+        "stats": {"body": 1, "spirit": 1},
+        "flags": {"setback_reduce": 1},
+    },
+    {
+        "name": "游龙步",
+        "desc": "化身游龙，身形难以捕捉，脱困更易。",
+        "stats": {"luck": 1},
+        "flags": {"escape_bonus": 0.2},
+    },
+    {
+        "name": "玄心定神章",
+        "desc": "熄灭杂念，抵御心魔侵蚀，悟道更顺。",
+        "stats": {"mind": 1},
+        "flags": {"insight_bonus": 0.12},
+    },
 ]
 
 
@@ -2834,6 +3090,17 @@ CULTIVATION_DEFAULT_TONE = {
     "technique": "highlight",
 }
 
+CULTIVATION_FLAG_DESCRIPTIONS = {
+    "combat_bonus": "战斗胜率提升",
+    "combat_resist": "战斗伤害减免",
+    "setback_reduce": "失败损伤减轻",
+    "hazard_hint": "陷阱几率降低",
+    "chance_bonus": "机缘收益提高",
+    "insight_bonus": "悟道成功率提升",
+    "alchemy_mastery": "炼丹圆满",
+    "escape_bonus": "脱困更易",
+}
+
 
 def _cultivation_random_artifact(rng: random.Random) -> Optional[Dict[str, Any]]:
     if not CULTIVATION_ARTIFACT_POOL:
@@ -2848,6 +3115,8 @@ def _cultivation_random_artifact(rng: random.Random) -> Optional[Dict[str, Any]]
         "desc": desc,
         "log": log,
         "tone": CULTIVATION_DEFAULT_TONE.get("artifact", "highlight"),
+        "stats": dict(item.get("stats") or {}),
+        "flags": dict(item.get("flags") or {}),
     }
 
 
@@ -2868,6 +3137,8 @@ def _cultivation_random_companion(rng: random.Random) -> Optional[Dict[str, Any]
         "desc": desc,
         "log": log,
         "tone": CULTIVATION_DEFAULT_TONE.get("companion", "success"),
+        "stats": dict(item.get("stats") or {}),
+        "flags": dict(item.get("flags") or {}),
     }
 
 
@@ -2884,6 +3155,8 @@ def _cultivation_random_technique(rng: random.Random) -> Optional[Dict[str, Any]
         "desc": desc,
         "log": log,
         "tone": CULTIVATION_DEFAULT_TONE.get("technique", "highlight"),
+        "stats": dict(item.get("stats") or {}),
+        "flags": dict(item.get("flags") or {}),
     }
 
 
@@ -2912,8 +3185,58 @@ def _cultivation_record_gain(run: Dict[str, Any], loot: Optional[Dict[str, Any]]
         return False
     if any(isinstance(existing, dict) and existing.get("name") == name for existing in bucket):
         return False
+    stats_bonus = {
+        key: int(value)
+        for key, value in (loot.get("stats") or {}).items()
+        if isinstance(value, (int, float)) and int(value) != 0
+    }
+    flag_bonus = {
+        key: value
+        for key, value in (loot.get("flags") or {}).items()
+        if value is not None
+    }
+    effects_summary: List[str] = []
+    if stats_bonus:
+        stats_store = run.setdefault("stats", {})
+        for stat_key, delta in stats_bonus.items():
+            current = int(stats_store.get(stat_key, 0))
+            stats_store[stat_key] = current + delta
+            label = _cultivation_stat_label(stat_key)
+            effects_summary.append(f"{label}+{delta}")
+            if stat_key == "body":
+                extra_health = max(2.0, delta * 4.0)
+                run["max_health"] = float(run.get("max_health", 0.0)) + extra_health
+                run["health"] = min(
+                    float(run.get("max_health", 0.0)),
+                    float(run.get("health", 0.0)) + extra_health,
+                )
+            elif stat_key == "spirit":
+                run["lifespan"] = int(run.get("lifespan", 0)) + max(2, delta * 2)
+    if flag_bonus:
+        flag_store = run.setdefault("talent_flags", {})
+        for flag_key, raw_val in flag_bonus.items():
+            if isinstance(raw_val, (int, float)):
+                flag_store[flag_key] = float(flag_store.get(flag_key, 0.0)) + float(raw_val)
+            else:
+                flag_store[flag_key] = raw_val
+            label = CULTIVATION_FLAG_DESCRIPTIONS.get(flag_key)
+            if label:
+                effects_summary.append(label)
+    if stats_bonus:
+        entry["effects"] = _cultivation_render_bonus(stats_bonus)
+    if flag_bonus:
+        entry.setdefault("flags", []).extend(
+            [CULTIVATION_FLAG_DESCRIPTIONS.get(k, k) for k in flag_bonus.keys()]
+        )
     bucket.append(entry)
     log_text = loot.get("log")
+    if log_text and effects_summary:
+        summary_text = "，".join(effects_summary)
+        log_text = f"{log_text}（{summary_text}）"
+    desc_text = entry.get("desc") or ""
+    if effects_summary:
+        summary_text = "，".join(effects_summary)
+        entry["desc"] = f"{desc_text}（{summary_text}）" if desc_text else f"（{summary_text}）"
     if log_text:
         _cultivation_log(run, log_text, tone)
     return True
@@ -2931,6 +3254,10 @@ def _cultivation_view_items(items: Optional[List[Dict[str, Any]]]) -> List[Dict[
             entry["desc"] = item.get("desc")
         if item.get("note"):
             entry["note"] = item.get("note")
+        if item.get("effects"):
+            entry["effects"] = list(item.get("effects") or [])
+        if item.get("flags"):
+            entry["flags"] = list(item.get("flags") or [])
         view.append(entry)
     return view
 
@@ -5624,7 +5951,12 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
                 (-2, 2),
                 (24, 36),
                 "与行脚商贩讨价还价。",
-                meta={"cost": cost, "loot": artifact, "note": "法宝交易"},
+                meta={
+                    "cost": cost,
+                    "loot": artifact,
+                    "note": "法宝交易",
+                    "skip_judgement": True,
+                },
             )
         )
     technique_rng = random.Random(event_seed ^ 0x2020)
@@ -5645,7 +5977,12 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
                 (-1, 3),
                 (20, 32),
                 "用铜钱换取功法残卷。",
-                meta={"cost": cost, "loot": technique, "note": "功法交易"},
+                meta={
+                    "cost": cost,
+                    "loot": technique,
+                    "note": "功法交易",
+                    "skip_judgement": True,
+                },
             )
         )
     if not options:
@@ -5656,10 +5993,11 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
                 "今日商贩未携带珍品，只能作罢。",
                 "luck",
                 "merchant_leave",
-                (12, 20),
-                (-1, 2),
-                (14, 22),
+                (0, 0),
+                (0, 0),
+                (0, 0),
                 "拱手作别行脚商贩。",
+                meta={"note": "空手而归", "skip_judgement": True, "neutral": True},
             )
         )
     options.append(
@@ -5669,11 +6007,11 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
             "保留资源，继续赶路。",
             "luck",
             "merchant_leave",
-            (14, 22),
-            (-1, 3),
-            (16, 24),
+            (0, 0),
+            (0, 0),
+            (0, 0),
             "谢绝商贩的热情邀约。",
-            meta={"note": "离开"},
+            meta={"note": "离开", "skip_judgement": True, "neutral": True},
         )
     )
     description = "一位行脚商贩摆开摊位，低声兜售珍贵法器与功法。"
@@ -6445,17 +6783,24 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
         health_delta *= max(0.2, 1.0 - resist)
         score_gain *= 1.0 + float(flags.get("combat_bonus") or 0.0)
     if option.get("type") == "escape":
-        progress_gain *= 0.65
-        score_gain *= 0.7
+        escape_bonus = float(flags.get("escape_bonus") or 0.0)
+        progress_gain *= max(0.4, 0.65 + escape_bonus * 0.35)
+        score_gain *= max(0.4, 0.7 + escape_bonus * 0.3)
         if health_delta < 0:
-            health_delta *= 0.5
+            health_delta *= max(0.25, 0.5 - escape_bonus * 0.2)
         else:
-            health_delta += rng.uniform(1.0, 3.0)
+            health_delta += rng.uniform(1.0, 3.0) * (1.0 + escape_bonus * 0.5)
     if option.get("type") == "alchemy" and flags.get("alchemy_mastery"):
         progress_gain *= 1.3
         score_gain *= 1.25
     if health_delta < 0 and flags.get("setback_reduce"):
         health_delta = min(0.0, health_delta + float(flags.get("setback_reduce")))
+
+    neutral_choice = bool(meta.get("neutral"))
+    if neutral_choice:
+        progress_gain = 0.0
+        score_gain = 0.0
+        health_delta = 0.0
 
     success_threshold = profile.get("success", 0.3)
     crit_threshold = profile.get("crit", min(success_threshold * 0.5, 0.12))
@@ -6473,7 +6818,11 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
         quality = "brilliant"
         run["alchemy_mastery_used"] = True
 
-    if quality == "failure":
+    if neutral_choice:
+        progress_gain = 0.0
+        score_gain = 0.0
+        health_delta = 0.0
+    elif quality == "failure":
         penalty = rng.uniform(0.25, 0.55)
         progress_loss = rng.uniform(18, 42)
         progress_gain = progress_gain * penalty - progress_loss
@@ -6512,7 +6861,7 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
     if updated_health > max_health:
         updated_health = max_health
     aging_rng = random.Random(event.get("seed", 0) ^ 0x5F5E100)
-    aging = aging_rng.uniform(0.5, 1.8)
+    aging = 0.0 if neutral_choice else aging_rng.uniform(0.5, 1.8)
     updated_health -= aging
     run["health"] = updated_health
     run["age"] = int(run.get("age") or 0) + 1
@@ -6528,7 +6877,7 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
     run["pending_event"] = None
 
     extra_rng = random.Random(event.get("seed", 0) ^ 0xA51C3)
-    if quality != "failure" and extra_rng.random() < 0.3:
+    if (not neutral_choice) and quality != "failure" and extra_rng.random() < 0.3:
         opp_text, opp_score, _, loot = _cultivation_opportunity(extra_rng, stats)
         run["score"] += opp_score
         _cultivation_log(run, f"【机缘】{opp_text}", "chance")
@@ -6540,7 +6889,7 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
         run["score"] += mishap_penalty
         _cultivation_log(run, f"【挫折】{mishap_text} 体魄{run['health'] - prev_extra:+.1f}", "danger")
         _cultivation_record_gain(run, loot)
-    if extra_rng.random() < 0.2:
+    if (not neutral_choice) and extra_rng.random() < 0.2:
         chance_text, chance_gain, loot = _cultivation_chance(extra_rng, stats)
         run["score"] += chance_gain
         _cultivation_log(run, f"【灵感】{chance_text}", "highlight")
