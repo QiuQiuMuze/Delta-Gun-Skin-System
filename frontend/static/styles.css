@@ -768,6 +768,10 @@ h3 + .muted.small { margin-top:-6px; }
 .cultivation-option-pill.warning { background:rgba(250,204,21,0.2); color:#fef3c7; border:1px solid rgba(250,204,21,0.4); }
 .cultivation-option-pill.highlight { background:rgba(167,139,250,0.22); color:#ede9fe; border:1px solid rgba(167,139,250,0.4); }
 .cultivation-option-pill.note { background:rgba(96,165,250,0.18); color:#dbeafe; border:1px solid rgba(59,130,246,0.35); }
+.cultivation-option-risk { margin-top:6px; font-size:12px; line-height:1.4; color:#fef3c7; text-align:left; }
+.cultivation-option-risk.risk-warning { color:#fde68a; }
+.cultivation-option-risk.risk-danger { color:#fecaca; }
+.cultivation-option-risk.risk-boon { color:#bbf7d0; }
 .cultivation-log { margin-top:12px; }
 .cultivation-log__title { font-size:14px; color:#94a3b8; margin-bottom:6px; }
 .cultivation-log ul { max-height:200px; overflow:auto; background:rgba(148,163,184,0.06); border-radius:8px; padding:8px 12px; list-style:none; margin:0; }
