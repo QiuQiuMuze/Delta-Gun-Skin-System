@@ -627,24 +627,53 @@ const CultivationPage = {
       const debug = opt.debug || null;
       let debugLine = '';
       if (debug) {
-        const requirementVal = Number(debug.requirement || 0);
-        const statLabel = debug.stat ? this.statLabel(debug.stat) : '';
+        const components = Array.isArray(debug.components) ? debug.components : [];
+        const primaryComponent = components.find(item => item && item.is_primary);
+        const auxiliaryComponents = components.filter(item => item && !item.is_primary);
+        const requirementVal = Number(primaryComponent ? primaryComponent.requirement : debug.requirement || 0);
+        const primaryStat = primaryComponent && primaryComponent.stat ? primaryComponent.stat : (debug.stat || '');
+        const statLabel = primaryStat ? this.statLabel(primaryStat) : '';
         const requirementText = requirementVal > 0
           ? `${escapeHtml(statLabel || '属性')} ≥ ${this.fmtInt(requirementVal)}`
           : '';
         const successRate = Number(debug.success_rate);
         const critRate = Number(debug.crit_rate);
         const ratioVal = Number(debug.ratio);
+        const ratioFloor = Number(debug.ratio_floor);
+        const ratioPeak = Number(debug.ratio_peak);
         const trialParts = [];
         if (Number.isFinite(successRate)) trialParts.push(`成功 ${this.fmtPercent(successRate, 1)}`);
         if (Number.isFinite(critRate) && critRate > 0) trialParts.push(`暴击 ${this.fmtPercent(critRate, 1)}`);
-        if (Number.isFinite(ratioVal)) trialParts.push(`属性倍率 ${ratioVal.toFixed(2)}`);
+        if (Number.isFinite(ratioVal)) trialParts.push(`综合倍率 ${ratioVal.toFixed(2)}`);
+        if (Number.isFinite(ratioFloor) && (Number.isFinite(ratioVal) ? ratioFloor < ratioVal - 0.01 : true)) {
+          trialParts.push(`短板 ${ratioFloor.toFixed(2)}`);
+        }
+        if (Number.isFinite(ratioPeak) && Number.isFinite(ratioVal) && ratioPeak > ratioVal + 0.01) {
+          trialParts.push(`爆发 ${ratioPeak.toFixed(2)}`);
+        }
         const rows = [];
         if (requirementText) {
           rows.push(`<div class="row"><span>需求</span><strong>${requirementText}</strong></div>`);
         }
         if (trialParts.length) {
           rows.push(`<div class="row"><span>判定</span><strong>${escapeHtml(trialParts.join(' · '))}</strong></div>`);
+        }
+        if (auxiliaryComponents.length) {
+          const auxLines = auxiliaryComponents.map(component => {
+            if (!component || !component.stat) return '';
+            const label = this.statLabel(component.stat);
+            const req = this.fmtInt(component.requirement || 0);
+            const compRatio = Number(component.ratio);
+            const compWeight = Number(component.weight);
+            const ratioText = Number.isFinite(compRatio) ? `倍率${compRatio.toFixed(2)}` : '';
+            const weightText = Number.isFinite(compWeight) ? `权重${compWeight.toFixed(2)}` : '';
+            const metaParts = [ratioText, weightText].filter(Boolean).join(' · ');
+            const metaText = metaParts ? `（${escapeHtml(metaParts)}）` : '';
+            return `${escapeHtml(label)} ≥ ${req}${metaText}`;
+          }).filter(Boolean).join('<br>');
+          if (auxLines) {
+            rows.push(`<div class="row"><span>协同</span><strong>${auxLines}</strong></div>`);
+          }
         }
         const trap = debug.trap || {};
         if (trap && typeof trap === 'object') {
