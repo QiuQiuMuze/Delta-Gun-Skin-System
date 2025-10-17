@@ -727,7 +727,7 @@ const CultivationPage = {
     const originsList = Array.isArray(lobby.origins) ? lobby.origins : [];
     const sectsList = Array.isArray(lobby.sects) ? lobby.sects : [];
     const mastersList = Array.isArray(lobby.masters) ? lobby.masters : [];
-    const originCards = originsList.map(origin => {
+    const originCardsHtml = originsList.map(origin => {
       const id = escapeHtml(origin.id || '');
       const selected = origin.id === this._selection.originId ? ' selected' : '';
       const tag = origin.status_label ? `<span class="cultivation-lineage-card__tag">${escapeHtml(origin.status_label)}</span>` : '';
@@ -744,7 +744,7 @@ const CultivationPage = {
         </div>
       `;
     }).join('') || '<div class="muted">暂无出身选项</div>';
-    const sectCards = sectsList.map(sect => {
+    const sectCardsHtml = sectsList.map(sect => {
       const id = escapeHtml(sect.id || '');
       const selected = sect.id === this._selection.sectId ? ' selected' : '';
       const effects = this.renderEffectPills(sect.effects);
@@ -759,7 +759,7 @@ const CultivationPage = {
         </div>
       `;
     }).join('') || '<div class="muted">暂无宗门选项</div>';
-    const masterCards = mastersList.map(master => {
+    const masterCardsHtml = mastersList.map(master => {
       const id = escapeHtml(master.id || '');
       const selected = master.id === this._selection.masterId ? ' selected' : '';
       const title = master.title ? ` · ${escapeHtml(master.title)}` : '';
@@ -789,15 +789,15 @@ const CultivationPage = {
         <div class="cultivation-lineage-select">
           <div class="cultivation-lineage-select__group">
             <div class="group-title">选择出身</div>
-            <div class="group-body">${originCards}</div>
+            <div class="group-body">${originCardsHtml}</div>
           </div>
           <div class="cultivation-lineage-select__group">
             <div class="group-title">选择宗门</div>
-            <div class="group-body">${sectCards}</div>
+            <div class="group-body">${sectCardsHtml}</div>
           </div>
           <div class="cultivation-lineage-select__group">
             <div class="group-title">选择师承</div>
-            <div class="group-body">${masterCards}</div>
+            <div class="group-body">${masterCardsHtml}</div>
           </div>
         </div>
         <div class="cultivation-talent-area">
@@ -863,8 +863,8 @@ const CultivationPage = {
         this.updateStartButton();
       });
     });
-    const originCards = this._root.querySelectorAll('.cultivation-origin');
-    originCards.forEach(card => {
+    const originCardNodes = this._root.querySelectorAll('.cultivation-origin');
+    originCardNodes.forEach(card => {
       card.addEventListener('click', () => {
         if (card.classList.contains('is-locked')) return;
         const id = card.dataset.id;
@@ -879,8 +879,8 @@ const CultivationPage = {
         this.updateStartButton();
       });
     });
-    const sectCards = this._root.querySelectorAll('.cultivation-sect');
-    sectCards.forEach(card => {
+    const sectCardNodes = this._root.querySelectorAll('.cultivation-sect');
+    sectCardNodes.forEach(card => {
       card.addEventListener('click', () => {
         if (card.classList.contains('is-locked')) return;
         const id = card.dataset.id;
@@ -894,8 +894,8 @@ const CultivationPage = {
         this.updateStartButton();
       });
     });
-    const masterCards = this._root.querySelectorAll('.cultivation-master');
-    masterCards.forEach(card => {
+    const masterCardNodes = this._root.querySelectorAll('.cultivation-master');
+    masterCardNodes.forEach(card => {
       card.addEventListener('click', () => {
         if (card.classList.contains('is-locked') || card.classList.contains('is-hidden')) return;
         const id = card.dataset.id;
@@ -905,46 +905,6 @@ const CultivationPage = {
         if (changed) {
           window.AudioEngine?.playSfx?.('lineage');
         }
-        this.updateLineageAvailability(lobby);
-        this.updateStartButton();
-      });
-    });
-    const originCards = this._root.querySelectorAll('.cultivation-origin');
-    originCards.forEach(card => {
-      card.addEventListener('click', () => {
-        if (card.classList.contains('is-locked')) return;
-        const id = card.dataset.id;
-        if (!id) return;
-        if (this._selection.originId !== id) {
-          this._selection.originId = id;
-          this._selection.sectId = null;
-          this._selection.masterId = null;
-        }
-        this.updateLineageAvailability(lobby);
-        this.updateStartButton();
-      });
-    });
-    const sectCards = this._root.querySelectorAll('.cultivation-sect');
-    sectCards.forEach(card => {
-      card.addEventListener('click', () => {
-        if (card.classList.contains('is-locked')) return;
-        const id = card.dataset.id;
-        if (!id) return;
-        if (this._selection.sectId !== id) {
-          this._selection.sectId = id;
-          this._selection.masterId = null;
-        }
-        this.updateLineageAvailability(lobby);
-        this.updateStartButton();
-      });
-    });
-    const masterCards = this._root.querySelectorAll('.cultivation-master');
-    masterCards.forEach(card => {
-      card.addEventListener('click', () => {
-        if (card.classList.contains('is-locked') || card.classList.contains('is-hidden')) return;
-        const id = card.dataset.id;
-        if (!id) return;
-        this._selection.masterId = id;
         this.updateLineageAvailability(lobby);
         this.updateStartButton();
       });
