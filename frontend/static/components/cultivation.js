@@ -15,6 +15,16 @@ const CultivationPage = {
       return String(Math.round(n));
     }
   },
+  fmtPercent(value, digits = 1) {
+    const num = Number(value || 0);
+    if (!Number.isFinite(num)) return '0%';
+    try {
+      return `${(num * 100).toFixed(digits)}%`;
+    } catch (e) {
+      const scaled = Math.round(num * Math.pow(10, digits + 2)) / Math.pow(10, digits + 2);
+      return `${Math.round(scaled * 100)}%`;
+    }
+  },
   toneClass(tone) {
     if (!tone) return '';
     const safe = String(tone).toLowerCase().replace(/[^a-z0-9_-]/g, '');
@@ -561,128 +571,8 @@ const CultivationPage = {
     `;
   },
   buildOptionRiskHints(event) {
-    const options = Array.isArray(event?.options) ? event.options : [];
-    if (!options.length) return {};
-    const baseSeed = Number(event?.seed || 0) || 0;
-    const stats = (this._state?.run?.stats) || (this._state?.lobby?.base_stats) || {};
-    const chooseText = (list, key) => {
-      if (!Array.isArray(list) || !list.length) return '';
-      const index = Math.abs((baseSeed + key) % list.length);
-      return list[index];
-    };
-    const fortuneTexts = [
-      '✨ 若顺利完成，将有机会收获巨大利益。',
-      '✨ 此选项潜藏机缘，或许会有意外惊喜。',
-      '🌈 成功后有望触发额外奖励。',
-    ];
-    const decorated = options.map((opt, idx) => {
-      const meta = opt?.meta || {};
-      const healthRange = Array.isArray(opt?.health) ? opt.health : [];
-      const progressRange = Array.isArray(opt?.progress) ? opt.progress : [];
-      const scoreRange = Array.isArray(opt?.score) ? opt.score : [];
-      const minHealth = Number.isFinite(Number(healthRange[0])) ? Number(healthRange[0]) : 0;
-      const maxProgress = Number.isFinite(Number(progressRange[1])) ? Number(progressRange[1]) : 0;
-      const maxScore = Number.isFinite(Number(scoreRange[1])) ? Number(scoreRange[1]) : 0;
-      const coinGain = Number(meta.gain_coins || 0);
-      const rewardScore = Math.max(maxProgress, maxScore, coinGain);
-      const hasLoot = !!(meta.loot || meta.loot_name);
-      const hasSacrifice = Array.isArray(meta.sacrifice) && meta.sacrifice.length > 0;
-      const hasCost = Number(meta.cost || 0) > 0;
-      const isTrial = (opt?.type || '') === 'trial';
-      const focusKey = typeof opt?.focus === 'string' ? opt.focus : '';
-      const focusLabel = focusKey ? this.statLabel(focusKey) : '';
-      const focusValueRaw = focusKey ? Number(stats?.[focusKey]) : NaN;
-      const focusValue = Number.isFinite(focusValueRaw) ? focusValueRaw : NaN;
-      const abilityLow = Number.isFinite(focusValue) ? focusValue < 8 : false;
-      const riskScore = (
-        Math.max(0, -minHealth) * 2 +
-        (hasSacrifice ? 40 : 0) +
-        (isTrial ? 36 : 0) +
-        (hasCost ? 6 : 0) +
-        (abilityLow ? (8 - Math.max(focusValue, 0)) * 3 : 0)
-      );
-      return {
-        idx,
-        minHealth,
-        rewardScore: rewardScore + (hasLoot ? 40 : 0),
-        hasLoot,
-        hasSacrifice,
-        hasCost,
-        isTrial,
-        focusKey,
-        focusLabel,
-        focusValue,
-        abilityLow,
-        meta,
-        riskScore,
-      };
-    });
-    const buildCautionText = (item) => {
-      const statLabel = item.focusLabel ? `${item.focusLabel}${Number.isFinite(item.focusValue) ? this.fmtInt(item.focusValue) : ''}` : '自身实力';
-      if (item.isTrial) {
-        if (item.abilityLow) {
-          return `☠️ ${statLabel}略显不足，恐难通过考验。`;
-        }
-        return '⚠️ 这是一次严峻考验，失败可能遭受重创。';
-      }
-      if (item.hasSacrifice) {
-        return '☠️ 需要献祭重要资源，稍有不慎便会受创。';
-      }
-      if (item.minHealth <= -12) {
-        return '☠️ 失败会造成严重伤势，请确保底蕴充足。';
-      }
-      if (item.abilityLow) {
-        return `⚠️ ${statLabel}偏低，成功率不高，需谨慎抉择。`;
-      }
-      if (item.minHealth < -4) {
-        return '⚠️ 可能会受伤，行动前务必衡量体魄。';
-      }
-      if (item.hasCost) {
-        return '⚠️ 需要额外投入资源，未必能换回收益。';
-      }
-      return '⚠️ 机缘伴随风险，切勿掉以轻心。';
-    };
-    const buildRewardText = (item) => {
-      const loot = item.meta?.loot || {};
-      const lootName = item.meta?.loot_name || loot?.name;
-      if (lootName) {
-        return `✨ 顺利完成可望得到${lootName}。`;
-      }
-      if (item.meta?.gain_coins) {
-        return `✨ 成功将获得约${this.fmtInt(item.meta.gain_coins)}枚铜钱。`;
-      }
-      if (item.rewardScore > 0) {
-        return chooseText(fortuneTexts, item.idx + 7) || '✨ 若成功，修行将迈进一步。';
-      }
-      return '✨ 若成功，修行将迈进一步。';
-    };
-    const hints = {};
-    const riskSorted = decorated.slice().sort((a, b) => (b.riskScore || 0) - (a.riskScore || 0));
-    const dangerCandidate = riskSorted[0] || null;
-    if (dangerCandidate) {
-      const severe = dangerCandidate.minHealth <= -12 || dangerCandidate.hasSacrifice || dangerCandidate.isTrial;
-      hints[dangerCandidate.idx] = {
-        tone: severe ? 'danger' : 'warning',
-        text: buildCautionText(dangerCandidate),
-      };
-    }
-    const rewardSorted = decorated
-      .map(item => ({
-        ...item,
-        rewardScore: item.rewardScore + (item.hasCost ? -10 : 0),
-      }))
-      .sort((a, b) => (b.rewardScore || 0) - (a.rewardScore || 0));
-    let rewardCandidate = rewardSorted.find(item => item.rewardScore > 0 || item.hasLoot || item.meta?.gain_coins);
-    if (rewardCandidate && hints[rewardCandidate.idx]) {
-      rewardCandidate = rewardSorted.find(item => !hints[item.idx] && (item.rewardScore > 0 || item.hasLoot || item.meta?.gain_coins));
-    }
-    if (rewardCandidate) {
-      hints[rewardCandidate.idx] = {
-        tone: 'boon',
-        text: buildRewardText(rewardCandidate),
-      };
-    }
-    return hints;
+    void event;
+    return {};
   },
   renderEvent(event) {
     const hint = event.hint ? `<div class="cultivation-event__hint">${escapeHtml(event.hint)}</div>` : '';
@@ -694,8 +584,7 @@ const CultivationPage = {
     const trialBlock = trial
       ? `<div class="cultivation-event__trial"><div class="headline">⚡ 特殊考验</div><div class="meta">判定属性：<span>${escapeHtml(trialStatLabel)}</span> · 难度 ${trialDifficulty}</div><div class="note">需等待天命裁决，判定时长约 ${this.fmtInt(Math.round(trialDelay / 1000))} 秒。</div></div>`
       : '';
-    const riskHints = this.buildOptionRiskHints(event);
-    const options = (event.options || []).map((opt, index) => {
+    const options = (event.options || []).map(opt => {
       const id = escapeHtml(opt.id || '');
       const title = escapeHtml(opt.label || '');
       const detail = escapeHtml(opt.detail || '');
@@ -731,16 +620,88 @@ const CultivationPage = {
       if (tags.length) {
         metaLine = `<div class="btn-meta">${tags.join('')}</div>`;
       }
-      const riskInfo = riskHints[index];
-      const riskLine = riskInfo
-        ? `<div class="cultivation-option-risk${riskInfo.tone ? ` risk-${escapeHtml(riskInfo.tone)}` : ''}">${escapeHtml(riskInfo.text || '')}</div>`
+      const fortune = opt.fortune || null;
+      const fortuneLine = fortune
+        ? `<div class="cultivation-option-fortune ${this.toneClass(fortune.tone)}"><span class="label">${escapeHtml(fortune.label || '')}</span>${fortune.description ? `<span class="desc">${escapeHtml(fortune.description)}</span>` : ''}</div>`
         : '';
+      const debug = opt.debug || null;
+      let debugLine = '';
+      if (debug) {
+        const components = Array.isArray(debug.components) ? debug.components : [];
+        const primaryComponent = components.find(item => item && item.is_primary);
+        const auxiliaryComponents = components.filter(item => item && !item.is_primary);
+        const requirementVal = Number(primaryComponent ? primaryComponent.requirement : debug.requirement || 0);
+        const primaryStat = primaryComponent && primaryComponent.stat ? primaryComponent.stat : (debug.stat || '');
+        const statLabel = primaryStat ? this.statLabel(primaryStat) : '';
+        const requirementText = requirementVal > 0
+          ? `${escapeHtml(statLabel || '属性')} ≥ ${this.fmtInt(requirementVal)}`
+          : '';
+        const successRate = Number(debug.success_rate);
+        const critRate = Number(debug.crit_rate);
+        const ratioVal = Number(debug.ratio);
+        const ratioFloor = Number(debug.ratio_floor);
+        const ratioPeak = Number(debug.ratio_peak);
+        const trialParts = [];
+        if (Number.isFinite(successRate)) trialParts.push(`成功 ${this.fmtPercent(successRate, 1)}`);
+        if (Number.isFinite(critRate) && critRate > 0) trialParts.push(`暴击 ${this.fmtPercent(critRate, 1)}`);
+        if (Number.isFinite(ratioVal)) trialParts.push(`综合倍率 ${ratioVal.toFixed(2)}`);
+        if (Number.isFinite(ratioFloor) && (Number.isFinite(ratioVal) ? ratioFloor < ratioVal - 0.01 : true)) {
+          trialParts.push(`短板 ${ratioFloor.toFixed(2)}`);
+        }
+        if (Number.isFinite(ratioPeak) && Number.isFinite(ratioVal) && ratioPeak > ratioVal + 0.01) {
+          trialParts.push(`爆发 ${ratioPeak.toFixed(2)}`);
+        }
+        const rows = [];
+        if (requirementText) {
+          rows.push(`<div class="row"><span>需求</span><strong>${requirementText}</strong></div>`);
+        }
+        if (trialParts.length) {
+          rows.push(`<div class="row"><span>判定</span><strong>${escapeHtml(trialParts.join(' · '))}</strong></div>`);
+        }
+        if (auxiliaryComponents.length) {
+          const auxLines = auxiliaryComponents.map(component => {
+            if (!component || !component.stat) return '';
+            const label = this.statLabel(component.stat);
+            const req = this.fmtInt(component.requirement || 0);
+            const compRatio = Number(component.ratio);
+            const compWeight = Number(component.weight);
+            const ratioText = Number.isFinite(compRatio) ? `倍率${compRatio.toFixed(2)}` : '';
+            const weightText = Number.isFinite(compWeight) ? `权重${compWeight.toFixed(2)}` : '';
+            const metaParts = [ratioText, weightText].filter(Boolean).join(' · ');
+            const metaText = metaParts ? `（${escapeHtml(metaParts)}）` : '';
+            return `${escapeHtml(label)} ≥ ${req}${metaText}`;
+          }).filter(Boolean).join('<br>');
+          if (auxLines) {
+            rows.push(`<div class="row"><span>协同</span><strong>${auxLines}</strong></div>`);
+          }
+        }
+        const trap = debug.trap || {};
+        if (trap && typeof trap === 'object') {
+          if (trap.is_trap) {
+            const trapChance = Number(trap.chance);
+            const trapSeverity = Number(trap.severity);
+            const trapParts = [];
+            if (Number.isFinite(trapChance)) trapParts.push(`概率 ${this.fmtPercent(trapChance, 1)}`);
+            if (Number.isFinite(trapSeverity) && trapSeverity > 0) trapParts.push(`伤害×${trapSeverity.toFixed(2)}`);
+            if (trap.flavor) trapParts.push(String(trap.flavor));
+            const trapText = trapParts.length ? escapeHtml(trapParts.join(' · ')) : '触发后将受到重创';
+            rows.push(`<div class="row trap"><span>陷阱</span><strong>${trapText}</strong></div>`);
+          } else if (trap.is_trap === false || trap.is_trap === 'false') {
+            rows.push('<div class="row trap safe"><span>陷阱</span><strong>未侦测</strong></div>');
+          }
+        }
+        if (!rows.length) {
+          rows.push('<div class="row"><span>诊断</span><strong>暂无额外信息</strong></div>');
+        }
+        debugLine = `<div class="cultivation-option-debug">${rows.join('')}</div>`;
+      }
       return `
         <button class="btn" data-sfx="custom" data-choice="${id}">
           <div class="btn-title">${title}</div>
           <div class="btn-desc">${detail}</div>
           ${metaLine}
-          ${riskLine}
+          ${fortuneLine}
+          ${debugLine}
         </button>
       `;
     }).join('');
