@@ -4718,12 +4718,14 @@ def _cultivation_render_talent(talent: Dict[str, Any]) -> Dict[str, Any]:
 def _cultivation_pick_talents(rng: random.Random) -> List[Dict[str, Any]]:
     weighted_pool: List[Tuple[Dict[str, Any], float]] = []
     rarity_weights = {"blue": 1.0, "purple": 0.45, "gold": 0.12}
+    talents_by_rarity: Dict[str, List[Dict[str, Any]]] = {"blue": [], "purple": [], "gold": []}
     for talent in CULTIVATION_TALENTS:
         rarity = str(talent.get("rarity") or "blue")
         weight = float(talent.get("weight") or rarity_weights.get(rarity, 1.0))
         if weight <= 0:
             continue
         weighted_pool.append((talent, weight))
+        talents_by_rarity.setdefault(rarity, []).append(talent)
     picks: List[Dict[str, Any]] = []
     roll_cap = min(CULTIVATION_TALENT_ROLLS, len(CULTIVATION_TALENTS))
     pool = list(weighted_pool)
@@ -7664,7 +7666,7 @@ def cultivation_begin(
         selected_ids.append(tid)
     if len(selected_ids) > max_talents:
         raise HTTPException(400, f"最多可选择 {max_talents} 项天赋")
-    selected_actual = []
+    selected_actual: List[Dict[str, Any]] = []
     for tid in selected_ids:
         talent = _cultivation_find_talent(tid)
         if not talent:
@@ -7709,6 +7711,36 @@ def cultivation_begin(
                 base_stats[key] = int(base_stats.get(key, 0)) + int(value)
             except Exception:
                 continue
+    auto_render: List[Dict[str, Any]] = []
+    if len(selected_actual) < max_talents:
+        available_cards: List[Dict[str, Any]] = []
+        for card in lobby.get("talents", []):
+            if not isinstance(card, dict):
+                continue
+            tid = str(card.get("id") or "").strip()
+            if not tid:
+                continue
+            available_cards.append(card)
+        if available_cards:
+            rng = random.Random(secrets.randbits(64))
+            rng.shuffle(available_cards)
+            filled_any = False
+            for card in available_cards:
+                if len(selected_actual) >= max_talents:
+                    break
+                tid = str(card.get("id") or "").strip()
+                if not tid:
+                    continue
+                if any(talent.get("id") == tid for talent in selected_actual):
+                    continue
+                talent = _cultivation_find_talent(tid)
+                if not talent:
+                    continue
+                selected_actual.append(talent)
+                filled_any = True
+            if filled_any:
+                auto_render = [_cultivation_render_talent(t) for t in selected_actual]
+
     stats, flags = _cultivation_apply_talents(base_stats, selected_actual)
     innate_flags: Dict[str, Any] = {}
     for bonus_source in (origin_choice, sect_choice, master_choice):
@@ -7726,7 +7758,7 @@ def cultivation_begin(
             flags[flag_key] = flag_val
         else:
             flags[flag_key] = flag_val
-    display_talents = [_cultivation_render_talent(t) for t in selected_actual]
+    display_talents = auto_render if auto_render else [_cultivation_render_talent(t) for t in selected_actual]
     starting_coins = int(origin_choice.get("coins") or 0) + int(sect_choice.get("coins") or 0) + int(master_choice.get("coins") or 0)
     run = _cultivation_start_run(
         node,
