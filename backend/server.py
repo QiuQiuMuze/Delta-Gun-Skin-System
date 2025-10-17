@@ -2396,7 +2396,6 @@ def _cultivation_set_option_requirements(run: Dict[str, Any], event_type: str, o
         for option in options:
             option.pop("requirement", None)
         return
-    stat_order = [key for key, _ in CULTIVATION_STAT_KEYS]
     session = str(run.get("session") or "")
     step = int(run.get("step") or 0)
     for idx, option in enumerate(options):
@@ -2438,19 +2437,45 @@ def _cultivation_set_option_requirements(run: Dict[str, Any], event_type: str, o
                 desired_total = 3
             else:
                 desired_total = 4
-        available_stats = [stat for stat in stat_order if stat != focus]
+        available_stats = [stat for stat, _ in CULTIVATION_STAT_KEYS if stat != focus]
         desired_total = min(1 + len(available_stats), desired_total)
         extras: List[str] = []
         if desired_total > 1 and available_stats:
             extras = rng.sample(available_stats, desired_total - 1)
-        primary_weight = 1.0 + rng.uniform(0.2, 0.6)
+        primary_stats = [focus]
+        if extras and rng.random() < 0.65:
+            mix_target = 1
+            if rng.random() < 0.55:
+                mix_target += 1
+            if rng.random() < 0.3:
+                mix_target += 1
+            mix_target = min(len(extras), mix_target)
+            if mix_target > 0:
+                chosen_primary = rng.sample(extras, mix_target)
+                primary_stats.extend(chosen_primary)
+                extras = [stat for stat in extras if stat not in chosen_primary]
+        primary_weight_total = 1.0 + rng.uniform(0.2, 0.6)
+        per_primary_weight = primary_weight_total / max(1, len(primary_stats))
         primary_value = max(
             base_requirement,
             int(round(total_requirement * (0.9 + rng.uniform(-0.08, 0.18)))),
         )
         components: List[Dict[str, Any]] = []
+        for stat in primary_stats[1:]:
+            comp_value = max(
+                base_requirement,
+                int(round(primary_value * (0.88 + rng.uniform(-0.05, 0.14)))),
+            )
+            components.append(
+                {
+                    "stat": stat,
+                    "value": comp_value,
+                    "weight": round(per_primary_weight, 3),
+                    "is_primary": True,
+                }
+            )
         for stat in extras:
-            comp_weight = 0.7 + rng.uniform(0.0, 0.6)
+            comp_weight = 0.55 + rng.uniform(0.05, 0.55)
             comp_value = max(
                 base_requirement,
                 int(round(total_requirement * (0.72 + rng.uniform(-0.05, 0.18)))),
@@ -2460,14 +2485,16 @@ def _cultivation_set_option_requirements(run: Dict[str, Any], event_type: str, o
                     "stat": stat,
                     "value": comp_value,
                     "weight": round(comp_weight, 3),
+                    "is_primary": False,
                 }
             )
         requirement_info: Dict[str, Any] = {
             "stat": focus,
             "value": int(primary_value),
-            "weight": round(primary_weight, 3),
+            "weight": round(per_primary_weight, 3),
             "reward_level": reward_level,
             "event_bias": event_bias,
+            "is_primary": True,
         }
         if components:
             requirement_info["components"] = components
@@ -2620,7 +2647,7 @@ def _cultivation_option_success_profile(run: Dict[str, Any], option: Dict[str, A
                 "stat_value": comp_stat_val,
                 "weight": comp_weight,
                 "ratio": comp_ratio,
-                "is_primary": False,
+                "is_primary": bool(comp.get("is_primary")),
             }
         )
     if total_weight <= 0:
@@ -7161,15 +7188,20 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
 
     success_threshold = profile.get("success", 0.3)
     crit_threshold = profile.get("crit", min(success_threshold * 0.5, 0.12))
-    roll = rng.random()
-    if roll < crit_threshold:
-        quality = "brilliant"
-    elif roll < success_threshold:
-        quality = "success"
+    if neutral_choice:
+        success_threshold = 1.0
+        crit_threshold = 0.0
+        quality = "neutral"
     else:
-        quality = "failure"
-    if event.get("event_type") in {"merchant", "sacrifice"}:
-        quality = "success"
+        roll = rng.random()
+        if roll < crit_threshold:
+            quality = "brilliant"
+        elif roll < success_threshold:
+            quality = "success"
+        else:
+            quality = "failure"
+        if event.get("event_type") in {"merchant", "sacrifice"}:
+            quality = "success"
 
     if option.get("type") == "alchemy" and flags.get("alchemy_mastery") and not run.get("alchemy_mastery_used"):
         quality = "brilliant"
@@ -7225,10 +7257,13 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
     net_health = run["health"] - prev_health
 
     event_type = event.get("event_type") or "general"
-    tone_map = {"brilliant": "highlight", "success": "success", "failure": "danger"}
-    prefix_map = {"brilliant": "【绝佳】", "success": "【顺利】", "failure": "【失利】"}
+    tone_map = {"brilliant": "highlight", "success": "success", "failure": "danger", "neutral": "info"}
+    prefix_map = {"brilliant": "【绝佳】", "success": "【顺利】", "failure": "【失利】", "neutral": "【稳妥】"}
     narrative = _cultivation_outcome_text(event_type, option.get("label"), focus, quality, rng, run)
-    log_text = f"{prefix_map[quality]}{narrative}（修为{applied_progress:+.0f} · 体魄{net_health:+.1f}）"
+    if neutral_choice:
+        log_text = f"{prefix_map[quality]}{narrative}"
+    else:
+        log_text = f"{prefix_map[quality]}{narrative}（修为{applied_progress:+.0f} · 体魄{net_health:+.1f}）"
     _cultivation_log(run, log_text, tone_map[quality])
 
     run["pending_event"] = None
@@ -7335,6 +7370,8 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
         "tone": tone_map[quality],
         "quality": quality,
     }
+    if neutral_choice:
+        outcome["neutral"] = True
     if trap_triggered:
         outcome["trap_triggered"] = True
         outcome["trap_penalty"] = round(trap_penalty, 1)
