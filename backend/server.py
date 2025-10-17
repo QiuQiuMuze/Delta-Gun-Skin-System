@@ -2081,6 +2081,7 @@ CULTIVATION_TALENTS = [
 CULTIVATION_TALENT_ROLLS = 4
 CULTIVATION_BASE_POINTS = 10
 CULTIVATION_MAX_TALENTS = 2
+CULTIVATION_WEEKLY_BRICK_CAP = 20
 CULTIVATION_REFRESH_COUNT = 5
 CULTIVATION_STAGE_NAMES = ["凡人", "炼气", "筑基", "金丹", "元婴", "化神", "飞升"]
 CULTIVATION_STAGE_THRESHOLDS = [320, 780, 1380, 2100, 2980, 4100]
@@ -6098,6 +6099,13 @@ def _cultivation_choose_ending(run: Dict[str, Any]) -> str:
     return rng.choice(pool)
 
 
+def _cultivation_is_good_ending(ending_type: Optional[str]) -> bool:
+    key = (ending_type or "").strip().lower()
+    if not key:
+        return True
+    return key in {"ascend"}
+
+
 def _cultivation_finalize(
     db: Session,
     profile: CookieFactoryProfile,
@@ -6134,8 +6142,23 @@ def _cultivation_finalize(
     threshold = int(cfg.get("score_threshold", 0) or 0)
     reward_allocation: Dict[str, int] = {}
     bricks_awarded = 0
-    if threshold and score >= threshold:
-        bricks_awarded = 1 + (1 if score >= threshold * 2 else 0)
+    reward_reason: Optional[str] = None
+    ending_type = run.get("ending_type")
+    good_ending = _cultivation_is_good_ending(ending_type)
+    week_start = cookie_week_start(now)
+    weekly_state = node.get("weekly_reward") if isinstance(node.get("weekly_reward"), dict) else {}
+    if int(weekly_state.get("week_start") or 0) != week_start:
+        weekly_state = {"week_start": week_start, "awarded": 0}
+    awarded_this_week = int(weekly_state.get("awarded") or 0)
+    weekly_remaining = max(0, CULTIVATION_WEEKLY_BRICK_CAP - awarded_this_week)
+    if not good_ending:
+        reward_reason = "ending"
+    elif weekly_remaining <= 0:
+        reward_reason = "cap"
+    elif threshold and score < threshold:
+        reward_reason = "score"
+    else:
+        bricks_awarded = min(2, weekly_remaining)
         available_seasons = SEASON_IDS[:6] if len(SEASON_IDS) >= 6 else (SEASON_IDS or [])
         if not available_seasons:
             available_seasons = [LATEST_SEASON or BRICK_SEASON_FALLBACK]
@@ -6144,6 +6167,8 @@ def _cultivation_finalize(
             grant_user_bricks(db, user, sid, 1)
             reward_allocation[sid] = reward_allocation.get(sid, 0) + 1
         profile.total_bricks_earned = int(profile.total_bricks_earned or 0) + bricks_awarded
+        weekly_state["awarded"] = awarded_this_week + bricks_awarded
+    node["weekly_reward"] = weekly_state
 
     ending = _cultivation_choose_ending(run)
 
@@ -6171,7 +6196,13 @@ def _cultivation_finalize(
         "age": int(run.get("age", 0)),
         "ending": ending,
         "events": result_log,
-        "reward": {"bricks": bricks_awarded, "by_season": reward_allocation},
+        "reward": {
+            "bricks": bricks_awarded,
+            "by_season": reward_allocation,
+            "reason": reward_reason,
+            "weekly_awarded": int(weekly_state.get("awarded") or awarded_this_week),
+            "weekly_cap": CULTIVATION_WEEKLY_BRICK_CAP,
+        },
         "timestamp": now,
         "talents": [t.get("name") for t in run_talents],
         "talent_details": talent_details,
@@ -6201,7 +6232,13 @@ def _cultivation_finalize(
         "age": int(run.get("age", 0)),
         "ending": ending,
         "events": result_log,
-        "reward": {"bricks": bricks_awarded, "by_season": reward_allocation},
+        "reward": {
+            "bricks": bricks_awarded,
+            "by_season": reward_allocation,
+            "reason": reward_reason,
+            "weekly_awarded": int(weekly_state.get("awarded") or awarded_this_week),
+            "weekly_cap": CULTIVATION_WEEKLY_BRICK_CAP,
+        },
         "summary": summary,
         "lineage": _cultivation_view_lineage(run),
         "artifacts": _cultivation_view_items(run.get("artifacts")),

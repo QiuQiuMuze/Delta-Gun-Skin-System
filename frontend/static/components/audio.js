@@ -161,26 +161,52 @@
       this._toggleButton.classList.toggle('is-muted', !!this._muted);
       this._toggleButton.innerHTML = `<span class="audio-toggle__icon">${this._muted ? '🔇' : '🔊'}</span>`;
     },
+    _stopChannel(channel) {
+      if (!this.ctx) return;
+      const entry = this._music.get(channel);
+      if (!entry) return;
+      try {
+        entry.source.stop();
+      } catch (_) {}
+      try {
+        entry.source.disconnect();
+      } catch (_) {}
+      try {
+        entry.gain.disconnect();
+      } catch (_) {}
+      this._music.delete(channel);
+    },
+    stopAllMusic(immediate = false, exceptChannel = null) {
+      if (!this.ctx) return;
+      const skip = typeof exceptChannel === 'string' ? exceptChannel : null;
+      Array.from(this._music.keys()).forEach(channel => {
+        if (skip && channel === skip) return;
+        if (immediate) {
+          this._stopChannel(channel);
+        } else {
+          this.fadeOut(channel, 0.35);
+        }
+      });
+    },
     setRoute(route) {
       this.ensure();
       if (!this.ctx) return;
+      const preset = this._musicPresets[route];
       if (route === this._currentRoute) {
-        const preset = this._musicPresets[route];
         if (preset) {
           this.playMusic(route, preset);
+        } else {
+          this.stopAllMusic(true);
         }
         return;
       }
       this._currentRoute = route;
-      const preset = this._musicPresets[route];
-      Array.from(this._music.keys()).forEach(channel => {
-        if (!preset || channel !== route) {
-          this.fadeOut(channel, 0.9);
-        }
-      });
-      if (preset) {
-        this.playMusic(route, preset);
+      if (!preset) {
+        this.stopAllMusic(true);
+        return;
       }
+      this.stopAllMusic(false, route);
+      this.playMusic(route, preset);
     },
     fadeOut(channel, duration = 0.6) {
       if (!this.ctx) return;
