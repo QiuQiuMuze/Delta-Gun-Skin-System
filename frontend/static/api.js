@@ -226,6 +226,9 @@ const API = {
     return API.json("/admin/users" + (usp.toString() ? "?" + usp.toString() : ""));
   },
 
+  adminSetUserNote: (username, note) =>
+    API.json("/admin/user-note", "POST", { username, note }),
+
   adminGrantFiat: (username, amount_fiat) =>
     API.json("/admin/grant-fiat", "POST", { username, amount_fiat }),
 
