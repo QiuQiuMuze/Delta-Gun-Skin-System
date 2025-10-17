@@ -20,19 +20,18 @@
         root: 196,
         bars: 16,
         pad: true,
-        sparkle: true,
-        sparkleLevel: 0.085,
+        sparkle: 0.1,
         warmth: 0.36,
         volume: 0.66,
         progression: [0, 3, 5, 2],
         chordStyle: 'sustain',
         chordOctave: -1,
         arpeggio: { amp: 0.18, subdivision: 2, span: 4, swing: 0.18, randomness: 0.22, pan: 0.2 },
-        melody: { density: 0.4, resolution: 2, range: [-1, 5], legato: 1.65, vibrato: 0.045, detune: 0.005, accent: 0.32, spread: 0.36, randomness: 0.26, leaps: 0.18 },
+        melody: { density: 0.4, resolution: 2, range: [-1, 4], legato: 1.65, vibrato: 0.038, detune: 0.004, accent: 0.26, spread: 0.34, randomness: 0.24, leaps: 0.16 },
         drone: { amp: 0.28, octave: -2, fifth: 0.42, shimmer: 0.24, vibrato: 0.015 },
-        pulse: { intervalBeats: 6, width: 1.8, amp: 0.2, freq: 42, shape: 'heartbeat', noise: 0.05, spread: 0.28 },
+        pulse: { intervalBeats: 6, width: 1.8, amp: 0.16, freq: 42, shape: 'heartbeat', noise: 0.03, spread: 0.28 },
         atmosphere: { type: 'wind', amp: 0.06, motion: 0.42, swayFreq: 0.012 },
-        celestial: { amp: 0.16, density: 0.7, steps: [5, 7, 10], octave: 1, shimmer: 0.28, drift: 0.16 },
+        celestial: { amp: 0.16, density: 0.6, steps: [4, 7, 9], octave: 2, shimmer: 0.36, drift: 0.14, vibrato: 0.045, sustain: 0.7, noise: 0.03 },
         percussion: {
           amp: 0.1,
           hat: { rate: 0.75, randomness: 0.2, cutoff: 0.4, pan: -0.15 }
@@ -84,13 +83,13 @@
         arpeggio: { amp: 0.28, subdivision: 2, span: 4, randomness: 0.38, swing: 0.2, pan: 0.22 },
         melody: { density: 0.72, resolution: 2, range: [0, 6], legato: 1.1, vibrato: 0.015, detune: 0.004, accent: 0.52, spread: 0.5, randomness: 0.32 },
         percussion: {
-          amp: 0.19,
+          amp: 0.2,
           resolution: 4,
-          kick: { pattern: [1, 0, 0.4, 0, 0.8, 0, 0.2, 0], decay: 2.6 },
-          snare: { pattern: [0, 0, 1, 0], tone: 640, noise: 0.32 },
-          hat: { rate: 2, randomness: 0.38, swing: 0.22, cutoff: 0.5, pan: 0.18 }
+          kick: { pattern: [1, 0, 0, 0], decay: 2.6 },
+          snare: { pattern: [0, 0, 1, 0], tone: 680, noise: 0.32 },
+          hat: { rate: 2, randomness: 0.4, swing: 0.22, cutoff: 0.52, pan: 0.18 }
         },
-        pulse: { intervalBeats: 1, width: 0.55, amp: 0.13, freq: 176, shape: 'pluck', noise: 0.018, spread: 0.3 }
+        pulse: { intervalBeats: 1, width: 0.55, amp: 0.14, freq: 176, shape: 'pluck', noise: 0.015, spread: 0.35 }
       }
     },
     ensure() {
@@ -270,8 +269,8 @@
       const root = preset.root || 220;
       const melodyGain = typeof preset.warmth === 'number' ? preset.warmth : 0.5;
       const padGain = preset.pad ? 0.25 : 0.12;
-      const sparkleGain = typeof preset.sparkleLevel === 'number'
-        ? Math.max(0, preset.sparkleLevel)
+      const sparkleGain = typeof preset.sparkle === 'number'
+        ? Math.max(0, preset.sparkle)
         : (preset.sparkle ? 0.14 : 0.05);
       const swing = !!preset.swing;
 
@@ -840,6 +839,12 @@
         const octave = Number.isFinite(celestialCfg.octave) ? celestialCfg.octave : 2;
         const shimmerAmt = Math.max(0, Math.min(1, celestialCfg.shimmer || 0));
         const drift = Math.max(0, Math.min(1, celestialCfg.drift || 0));
+        const vibrato = typeof celestialCfg.vibrato === 'number' ? Math.max(0, celestialCfg.vibrato) : 0.055;
+        const vibratoFreq = typeof celestialCfg.vibratoFreq === 'number' ? celestialCfg.vibratoFreq : 3.2;
+        const sustain = typeof celestialCfg.sustain === 'number'
+          ? Math.max(0.2, Math.min(0.9, celestialCfg.sustain))
+          : 0.62;
+        const baseNoise = typeof celestialCfg.noise === 'number' ? Math.max(0, celestialCfg.noise) : 0.05;
         for (let i = 0; i < density; i++) {
           const beatStart = (i / density) * totalBeats + rng() * 0.8;
           const barIndex = Math.floor(Math.max(0, Math.min(bars - 1, beatStart / beatsPerBar)));
@@ -854,13 +859,13 @@
           writeTone(Math.max(0, beatStart), lengthBeats, freq, amp, pan, {
             attackPortion: 0.48,
             releaseCurve: 3.6,
-            vibrato: 0.055,
-            vibratoFreq: 3.2,
+            vibrato,
+            vibratoFreq,
             detune,
             wave: 'sine',
-            sustain: 0.62,
+            sustain,
             spread: 0.8,
-            noise: 0.05
+            noise: baseNoise
           });
           if (shimmerAmt > 0) {
             writeTone(Math.max(0, beatStart + lengthBeats * 0.45), lengthBeats * 0.6, freq * 2, amp * shimmerAmt, pan * 0.6, {
@@ -872,7 +877,7 @@
               wave: 'sine',
               sustain: 0.5,
               spread: 0.85,
-              noise: 0.03
+              noise: Math.min(baseNoise * 0.7, 0.04)
             });
           }
         }
