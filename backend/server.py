@@ -6509,11 +6509,17 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
                 f"消耗{cost}铜钱换取珍稀法宝。",
                 "mind",
                 "merchant_buy",
-                (18, 28),
-                (-2, 2),
-                (24, 36),
+                (0, 0),
+                (0, 0),
+                (0, 0),
                 "与行脚商贩讨价还价。",
-                meta={"cost": cost, "loot": artifact, "note": "法宝交易"},
+                meta={
+                    "cost": cost,
+                    "loot": artifact,
+                    "note": "法宝交易",
+                    "skip_judgement": True,
+                    "neutral": True,
+                },
             )
         )
     technique_rng = random.Random(event_seed ^ 0x2020)
@@ -6530,11 +6536,17 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
                 f"支出{cost}铜钱获得一套玄妙功法。",
                 "spirit",
                 "merchant_buy",
-                (16, 26),
-                (-1, 3),
-                (20, 32),
+                (0, 0),
+                (0, 0),
+                (0, 0),
                 "用铜钱换取功法残卷。",
-                meta={"cost": cost, "loot": technique, "note": "功法交易"},
+                meta={
+                    "cost": cost,
+                    "loot": technique,
+                    "note": "功法交易",
+                    "skip_judgement": True,
+                    "neutral": True,
+                },
             )
         )
     if not options:
@@ -6545,10 +6557,11 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
                 "今日商贩未携带珍品，只能作罢。",
                 "luck",
                 "merchant_leave",
-                (12, 20),
-                (-1, 2),
-                (14, 22),
+                (0, 0),
+                (0, 0),
+                (0, 0),
                 "拱手作别行脚商贩。",
+                meta={"note": "空手而归", "skip_judgement": True, "neutral": True},
             )
         )
     options.append(
@@ -6558,11 +6571,11 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
             "保留资源，继续赶路。",
             "luck",
             "merchant_leave",
-            (14, 22),
-            (-1, 3),
-            (16, 24),
+            (0, 0),
+            (0, 0),
+            (0, 0),
             "谢绝商贩的热情邀约。",
-            meta={"note": "离开"},
+            meta={"note": "离开", "skip_judgement": True, "neutral": True},
         )
     )
     description = "一位行脚商贩摆开摊位，低声兜售珍贵法器与功法。"
