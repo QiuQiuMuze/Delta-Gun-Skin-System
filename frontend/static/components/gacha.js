@@ -464,7 +464,8 @@ const GachaPage = {
     const latestKey = this._latestSeasonKey();
     const primarySeason = normalizedSeason || latestKey || null;
     const detailList = Array.isArray(me.unopened_bricks_detail) ? me.unopened_bricks_detail : [];
-    let seasonAvailable = 0;
+    const totalAvailable = Math.max(0, Number(me.unopened_bricks ?? 0));
+    let seasonAvailable = totalAvailable;
     if (detailList.length) {
       const desiredKey = normalizedSeason || latestKey;
       let match = null;
@@ -481,10 +482,11 @@ const GachaPage = {
         });
       }
       if (match) {
-        seasonAvailable = Number(match.count || 0);
+        const matchCount = Number(match.count || 0);
+        if (Number.isFinite(matchCount)) {
+          seasonAvailable = Math.max(matchCount, seasonAvailable);
+        }
       }
-    } else {
-      seasonAvailable = Number(me.unopened_bricks ?? 0);
     }
     const needs = {
       keys: Math.max(0, count - (me.keys ?? 0)),
@@ -517,11 +519,16 @@ const GachaPage = {
         seenSeasons.add(token);
         attemptOrder.push(normalized || null);
       };
-      if (primarySeason) pushSeason(primarySeason);
-      if (normalizedSeason && latestKey && normalizedSeason !== latestKey) {
-        pushSeason(latestKey);
+      if (seasonAvailable <= 0) {
+        pushSeason(null);
+        if (primarySeason) pushSeason(primarySeason);
+      } else {
+        if (primarySeason) pushSeason(primarySeason);
+        if (normalizedSeason && latestKey && normalizedSeason !== latestKey) {
+          pushSeason(latestKey);
+        }
+        pushSeason(null);
       }
-      pushSeason(null);
 
       let bestQuote = null;
       let bestSeason = primarySeason;
@@ -555,6 +562,15 @@ const GachaPage = {
         brickSourceLabel = fallbackLabel;
       }
       if (!brickSourceLabel) brickSourceLabel = "系统库存";
+
+      if ((!brickQuote || (brickQuote?.available || 0) <= 0) && bestSeason !== null) {
+        const fallbackQuote = await API.brickQuote(needs.bricks, null);
+        if ((fallbackQuote?.available || 0) > (brickQuote?.available || 0)) {
+          brickQuote = fallbackQuote;
+          brickPurchaseSeason = null;
+          brickSourceLabel = this._seasonLabel(null) || "系统库存";
+        }
+      }
 
       const availableQty = Math.max(0, brickQuote?.available || 0);
       if (!brickQuote || availableQty <= 0) {
