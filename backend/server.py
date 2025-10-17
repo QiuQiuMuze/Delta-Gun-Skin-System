@@ -88,6 +88,8 @@ class User(Base):
     gift_coin_balance = Column(Integer, default=0)
     gift_unopened_bricks = Column(Integer, default=0)
     gift_brick_quota = Column(Integer, default=0)
+    last_login_ts = Column(Integer, default=0)
+    admin_note = Column(Text, default="")
 
 class Skin(Base):
     __tablename__ = "skins"
@@ -3002,6 +3004,9 @@ CULTIVATION_EVENT_BLUEPRINTS = {
             "omen": ["霞光自天边坠落", "古钟无声自鸣", "灵泉泛起金波", "道纹自地面浮现"],
             "guide": ["一缕神识牵引", "隐约仙音指路", "古老符文闪烁", "命星轻轻颤动"],
             "gift": ["残存传承", "古老遗物", "秘术雏形", "奇特灵植"],
+            "benefactor": ["迷途商队", "受伤樵夫", "胆怯药童", "风餐露宿的旅者"],
+            "mortal_need": ["请求护送抵达城镇", "希望守护临时营地", "寻找遗失货箱", "想请人照料灵田"],
+            "reward": ["一袋铜钱", "满箱灵石", "沉甸甸的赏金", "珍藏的灵材"],
         },
         "description": {
             "templates": [
@@ -3096,6 +3101,45 @@ CULTIVATION_EVENT_BLUEPRINTS = {
                         "心神呼应，灵感倍增",
                         "同心同气，共证妙理",
                     ],
+                },
+            },
+            {
+                "id": "aid_mortal",
+                "focus": "body",
+                "type": "chance",
+                "progress": (46, 76),
+                "health": (-3, 4),
+                "score": (48, 80),
+                "label": {
+                    "templates": [
+                        "扶助{benefactor}",
+                        "出手解困凡俗",
+                        "护送{benefactor}脱险",
+                    ],
+                },
+                "detail": {
+                    "templates": [
+                        "趁机帮助{benefactor}，替他们{mortal_need}，对方愿以{reward}酬谢。",
+                        "以{focus_label}稳住局势，协助凡俗处理危机，换取{reward}。",
+                        "在{guide}的指引下出手援助，凡人感激地奉上{reward}。",
+                    ],
+                },
+                "flavor": {
+                    "templates": [
+                        "善缘相报，铜钱叮当",
+                        "凡俗敬畏，感念修者",
+                        "功德流转，灵财自来",
+                    ],
+                },
+                "meta": {
+                    "gain_coins": (36, 78),
+                    "note": {
+                        "templates": [
+                            "凡俗酬谢",
+                            "灵石赏赐",
+                            "义举获铜钱",
+                        ],
+                    },
                 },
             },
         ],
@@ -5598,6 +5642,31 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
     options: List[Dict[str, Any]] = []
     stats = run.get("stats") or {}
     stat_labels = {k: label for k, label in CULTIVATION_STAT_KEYS}
+    def resolve_meta(meta_spec: Any, ctx: Dict[str, Any], rng_obj: random.Random) -> Optional[Dict[str, Any]]:
+        if not isinstance(meta_spec, dict):
+            return None
+        meta: Dict[str, Any] = {}
+        for key, raw in meta_spec.items():
+            value: Any = raw
+            if isinstance(raw, dict) and "templates" in raw:
+                value = _dynamic_text(raw, ctx, rng_obj)
+            elif isinstance(raw, (list, tuple)) and len(raw) == 2:
+                try:
+                    lo = float(raw[0])
+                    hi = float(raw[1])
+                except (TypeError, ValueError):
+                    lo = hi = None
+                if lo is not None and hi is not None:
+                    if hi < lo:
+                        lo, hi = hi, lo
+                    value = rng_obj.randint(int(math.floor(lo)), int(math.ceil(hi)))
+            if key == "gain_coins":
+                try:
+                    value = int(value)
+                except (TypeError, ValueError):
+                    value = 0
+            meta[key] = value
+        return meta or None
     dominant = None
     if stats:
         dominant = max(stats.items(), key=lambda item: int(item[1]))[0]
@@ -5634,6 +5703,7 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
         label = _dynamic_text(spec.get("label"), option_context, option_rng) or spec_id
         detail = _dynamic_text(spec.get("detail"), option_context, option_rng)
         flavor = _dynamic_text(spec.get("flavor"), option_context, option_rng)
+        meta = resolve_meta(spec.get("meta"), option_context, option_rng)
         options.append(
             _cultivation_option(
                 spec_id,
@@ -5645,6 +5715,7 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
                 spec.get("health") or (-4, 2),
                 spec.get("score") or (40, 60),
                 flavor or "",
+                meta=meta,
             )
         )
 
@@ -5661,6 +5732,7 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
             label = _dynamic_text(dom_spec.get("label"), option_context, option_rng) or spec_id
             detail = _dynamic_text(dom_spec.get("detail"), option_context, option_rng)
             flavor = _dynamic_text(dom_spec.get("flavor"), option_context, option_rng)
+            meta = resolve_meta(dom_spec.get("meta"), option_context, option_rng)
             options.append(
                 _cultivation_option(
                     spec_id,
@@ -5672,6 +5744,7 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
                     dom_spec.get("health") or (-5, 5),
                     dom_spec.get("score") or (58, 92),
                     flavor or "",
+                    meta=meta,
                 )
             )
 
@@ -7210,6 +7283,7 @@ def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
         raise HTTPException(401, "密码错误")
     free_mode = get_auth_free_mode(db)
     if free_mode:
+        u.last_login_ts = int(time.time())
         u.session_ver = int(u.session_ver or 0) + 1
         db.commit()
         token = mk_jwt(u.username, u.session_ver)
@@ -7236,6 +7310,7 @@ def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
         raise HTTPException(400, "账号未绑定有效手机号，请联系管理员")
     if not verify_otp(db, phone, "login2", data.code):
         raise HTTPException(401, "验证码错误或已过期")
+    u.last_login_ts = int(time.time())
     u.session_ver = int(u.session_ver or 0) + 1
     db.commit()
     token = mk_jwt(u.username, u.session_ver)
@@ -9056,6 +9131,10 @@ def _migrate_ext():
     cols = [row["name"] for row in cur.fetchall()]
     if "is_admin" not in cols:
         cur.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+    if "last_login_ts" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN last_login_ts INTEGER NOT NULL DEFAULT 0")
+    if "admin_note" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN admin_note TEXT NOT NULL DEFAULT ''")
     # admin_pending
     cur.execute("""CREATE TABLE IF NOT EXISTS admin_pending(
       username TEXT PRIMARY KEY,
@@ -9344,15 +9423,34 @@ def admin_users(q: _Optional[str]=None, page: int=1, page_size: int=20, admin=_D
     con=_conn(); cur=con.cursor()
     if q:
       qq = f"%{q}%"
-      cur.execute("""SELECT username, phone, fiat, coins, is_admin FROM users
+      cur.execute("""SELECT username, phone, fiat, coins, is_admin, last_login_ts, admin_note FROM users
                      WHERE username LIKE ? OR phone LIKE ?
                      ORDER BY id DESC LIMIT ? OFFSET ?""", (qq, qq, page_size, off))
     else:
-      cur.execute("""SELECT username, phone, fiat, coins, is_admin FROM users
+      cur.execute("""SELECT username, phone, fiat, coins, is_admin, last_login_ts, admin_note FROM users
                      ORDER BY id DESC LIMIT ? OFFSET ?""", (page_size, off))
     items=[dict(r) for r in cur.fetchall()]
     con.close()
     return {"items": items, "page": page, "page_size": page_size}
+
+@ext.post("/admin/user-note")
+def admin_set_user_note(payload: dict, admin=_Depends(_require_admin)):
+    username = (payload or {}).get("username", "")
+    note_raw = (payload or {}).get("note", "")
+    username = username.strip()
+    if not username:
+        raise _HTTPException(400, "username required")
+    note = str(note_raw or "")
+    note = note.strip()
+    if len(note) > 500:
+        raise _HTTPException(400, "备注长度不能超过500字")
+    con = _conn(); cur = con.cursor()
+    cur.execute("UPDATE users SET admin_note=? WHERE username=?", (note, username))
+    if cur.rowcount <= 0:
+        con.close()
+        raise _HTTPException(404, "user not found")
+    con.commit(); con.close()
+    return {"ok": True, "note": note}
 
 @ext.get("/admin/user-inventory")
 def admin_user_inventory(username: str, admin=_Depends(_require_admin)):

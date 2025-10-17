@@ -514,7 +514,7 @@ const CookieFactoryPage = {
     const loginTitle = weekly.daily_login_claimed ? `今日签到奖励已领取，连续 ${fmtInt(weekly.login_streak || 0)} 天` : "每日首次进入饼干工厂可获得 2 块砖兑换额度。";
     const prestigeTitle = totalCookies < 1_000_000
       ? "需要至少 100 万枚饼干才能升天。升天后将重置饼干、建筑和小游戏进度，请继续冲刺产量。"
-      : "升天会重置饼干、建筑与小游戏，但能获得声望点并提升下一轮的产量加成。";
+      : "升天会重置饼干、建筑与小游戏，但会赠予声望点、永久产量加成，并提升下一轮的联动增益。";
     const goldenClass = `btn${golden.available ? "" : " is-disabled"}`;
     const loginClass = weekly.daily_login_claimed ? "btn ghost" : "btn";
     const sugarClass = `btn${sugar.available ? "" : " is-disabled"}`;
@@ -533,16 +533,27 @@ const CookieFactoryPage = {
         })
       : ["解锁更多建筑后将出现小游戏，带来活跃积分与产量加成。"];
     const bonusMultiplier = Number(profile.bonus_multiplier || 1);
+    const nextBonusMultiplier = Number(profile.next_bonus_multiplier || bonusMultiplier || 1);
     const bonusPercentRaw = (bonusMultiplier - 1) * 100;
     const bonusPercent = bonusPercentRaw > 0 ? bonusPercentRaw.toFixed(1) : "0";
     const prestigeRequirement = 1_000_000;
     const prestigeShortfall = Math.max(0, prestigeRequirement - totalCookies);
+    const prestigeBonusPerAscend = 2;
+    const prestigeBonusPerPoint = 5;
+    const totalPrestigeBonus = (Number(profile.prestige || 0) * prestigeBonusPerAscend)
+      + (Number(profile.prestige_points || 0) * prestigeBonusPerPoint);
+    const totalPrestigeBonusLabel = totalPrestigeBonus.toFixed(1);
+    const deltaBonusGain = Math.max(0, nextBonusMultiplier - bonusMultiplier);
+    const deltaBonusGainPercent = (deltaBonusGain * 100).toFixed(1);
+    const nextBonusLabel = nextBonusMultiplier.toFixed(2);
     const prestigeLines = [
       `当前声望 ${fmtInt(profile.prestige || 0)} 次，声望点 ${fmtInt(profile.prestige_points || 0)}`,
       prestigeShortfall > 0
         ? `还需 ${fmt(prestigeShortfall)} 枚饼干即可升天`
         : "已满足升天条件，点击可立刻获得声望点",
-      `升天会重置饼干、建筑与小游戏，并额外提升联动加成（当前 +${bonusPercent}%）`,
+      `累积声望提供永久产量加成：升天次数 ×2% + 声望点 ×5%（当前 +${totalPrestigeBonusLabel}%）`,
+      `升天会让三角洲联动加成提升至 ×${nextBonusLabel}（较当前 +${deltaBonusGainPercent}%）`,
+      `升天会重置饼干、建筑与小游戏，并立即返还 20 点活跃积分（当前联动加成 +${bonusPercent}%）`,
     ];
     const guideEntries = [
       {
@@ -591,6 +602,15 @@ const CookieFactoryPage = {
       ? `<ul class="cookie-guide__list">${activeGuide.lines.map(line => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`
       : '<div class="muted small">暂无提示</div>';
     const guideSection = `<div class="cookie-guide"><div class="cookie-guide__tabs">${guideTabs}</div><div class="cookie-guide__detail">${guideDetail}</div></div>`;
+    const prestigeHelpSection = `<div class="cookie-section cookie-prestige-help">
+      <h3>🌟 升天轮回说明</h3>
+      <div class="cookie-section__hint">达到 100 万枚饼干即可升天，重开后继承声望与联动增益。</div>
+      <ul class="cookie-prestige__list">
+        <li>每次升天永久 +2% 基础产量；声望点依累计饼干换算，每点再加 +5%。</li>
+        <li>升天立即返还 20 点活跃积分，并让下一轮三角洲联动加成提升至 ×${nextBonusLabel}（较当前 +${deltaBonusGainPercent}%）。</li>
+        <li>饼干、建筑与小游戏等级会重置，但声望、活跃记录与兑换进度都会保留，黄金饼干冷却也会重置为 3 分钟。</li>
+      </ul>
+    </div>`;
 
     return `
       ${noticeStack}
@@ -609,6 +629,7 @@ const CookieFactoryPage = {
         </div>
       </div>
       ${guideSection}
+      ${prestigeHelpSection}
       ${funSection}
       <div class="cookie-actions">
         <button class="${goldenClass}" id="cookie-golden" aria-disabled="${golden.available ? "false" : "true"}" title="${escapeHtml(goldenTitle)}">✨ 黄金饼干${golden.ready_in > 0 ? `（${Math.ceil(golden.ready_in / 60)} 分钟后）` : ""}</button>
