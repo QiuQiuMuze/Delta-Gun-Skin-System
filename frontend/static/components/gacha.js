@@ -740,6 +740,9 @@ const GachaPage = {
       judgeRow.className = "row-reveal";
       judgeRow.innerHTML = `鉴定：${badge}`;
       item.appendChild(judgeRow);
+      if (b.exquisite || isDiamond) {
+        window.AudioEngine?.playSfx?.('gacha-celebrate', { rarity: 'BRICK', diamond: isDiamond, exquisite: !!b.exquisite });
+      }
 
       if (window.SkinVisuals) {
         await this._sleep(300); if (this._skip) return this._revealAll();
@@ -809,6 +812,12 @@ const GachaPage = {
       body.appendChild(tr);
       const rarity = String(x?.rarity || '').toUpperCase();
       window.AudioEngine?.playSfx?.('rarity', { rarity });
+      if (rarity === 'BRICK') {
+        const isDiamond = this._isDiamondTemplate(x.template) || this._isDiamondTemplate(x.hidden_template);
+        if (isDiamond || x.exquisite) {
+          window.AudioEngine?.playSfx?.('gacha-celebrate', { rarity, diamond: isDiamond, exquisite: !!x.exquisite });
+        }
+      }
       this._timer = setTimeout(step, Math.min(650, 250 + i*25));
     };
     step();
@@ -845,6 +854,17 @@ const GachaPage = {
         ${brickNote}
         ${tableHTML}
       </div>`;
+    if (bricks.length) {
+      const diamondHit = bricks.find(item => this._isDiamondTemplate(item.template) || this._isDiamondTemplate(item.hidden_template));
+      if (diamondHit) {
+        window.AudioEngine?.playSfx?.('gacha-celebrate', { rarity: 'BRICK', diamond: true, exquisite: !!diamondHit.exquisite });
+      } else {
+        const exquisiteHit = bricks.find(item => item.exquisite);
+        if (exquisiteHit) {
+          window.AudioEngine?.playSfx?.('gacha-celebrate', { rarity: 'BRICK', diamond: false, exquisite: true });
+        }
+      }
+    }
     window.AudioEngine?.playSfx?.('skip');
     this._setDrawDisabled(false);
     this._opening = false;
