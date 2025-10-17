@@ -208,11 +208,12 @@ const CookieFactoryPage = {
       ? requirementRaw
       : this.calculatePrestigeRequirement(profile.prestige || 0);
     const canPrestige = cycleCookies >= requirement;
+    const requirementLabel = fmtInt(requirement);
     const prestigeBtn = document.getElementById("cookie-prestige");
     if (prestigeBtn) {
       const prestigeTitle = canPrestige
-        ? "升天会重置饼干、建筑与小游戏，但会赠予声望点、永久产量加成，并提升下一轮的联动增益。"
-        : `需要至少 ${fmt(requirement)} 枚饼干才能升天（本轮已产出 ${fmt(cycleCookies)}）。升天后将重置饼干、建筑和小游戏进度，请继续冲刺产量。`;
+        ? `当前升天目标为 ${requirementLabel} 枚饼干。升天会重置饼干、建筑与小游戏，但会赠予声望点、永久产量加成，并提升下一轮的联动增益。`
+        : `需要至少 ${requirementLabel} 枚饼干才能升天（本轮已产出 ${fmt(cycleCookies)}）。首次升天需 1000 万饼干，之后每多一次升天目标都会额外增加 1000 万。`;
       if (canPrestige) {
         prestigeBtn.classList.remove("is-disabled");
         prestigeBtn.removeAttribute("disabled");
@@ -220,6 +221,9 @@ const CookieFactoryPage = {
         prestigeBtn.classList.add("is-disabled");
         prestigeBtn.setAttribute("disabled", "disabled");
       }
+      prestigeBtn.innerHTML = canPrestige
+        ? "🌟 升天重置"
+        : `🌟 升天重置（需 ${requirementLabel}）`;
       prestigeBtn.setAttribute("title", prestigeTitle);
     }
     const weeklyHead = document.getElementById("cookie-weekly-head");
@@ -550,9 +554,10 @@ const CookieFactoryPage = {
     const prestigeRequirement = Number.isFinite(rawRequirement) && rawRequirement > 0 ? rawRequirement : this.calculatePrestigeRequirement(profile.prestige || 0);
     const prestigeShortfall = Math.max(0, prestigeRequirement - cycleCookies);
     const canPrestige = prestigeShortfall <= 0;
+    const prestigeRequirementLabel = fmtInt(prestigeRequirement);
     const prestigeTitle = canPrestige
-      ? "升天会重置饼干、建筑与小游戏，但会赠予声望点、永久产量加成，并提升下一轮的联动增益。"
-      : `需要至少 ${fmt(prestigeRequirement)} 枚饼干才能升天（本轮已产出 ${fmt(cycleCookies)}）。升天后将重置饼干、建筑和小游戏进度，请继续冲刺产量。`;
+      ? `当前升天目标为 ${prestigeRequirementLabel} 枚饼干。升天会重置饼干、建筑与小游戏，但会赠予声望点、永久产量加成，并提升下一轮的联动增益。`
+      : `需要至少 ${prestigeRequirementLabel} 枚饼干才能升天（本轮已产出 ${fmt(cycleCookies)}）。首次升天需 1000 万饼干，之后每多一次升天目标都会额外增加 1000 万。`;
     const goldenClass = `btn${golden.available ? "" : " is-disabled"}`;
     const loginClass = weekly.daily_login_claimed ? "btn ghost" : "btn";
     const sugarClass = `btn${sugar.available ? "" : " is-disabled"}`;
@@ -584,6 +589,7 @@ const CookieFactoryPage = {
     const nextBonusLabel = nextBonusMultiplier.toFixed(2);
     const prestigeLines = [
       `当前声望 ${fmtInt(profile.prestige || 0)} 次，声望点 ${fmtInt(profile.prestige_points || 0)}`,
+      `首次升天至少需要 1000 万饼干，之后每多一次升天目标都会再增加 1000 万（本轮目标 ${prestigeRequirementLabel}）`,
       canPrestige
         ? `本轮已累计 ${fmt(cycleCookies)} 枚饼干，满足升天条件`
         : `本轮累计 ${fmt(cycleCookies)} / 目标 ${fmt(prestigeRequirement)}，还需 ${fmt(prestigeShortfall)} 枚饼干即可升天`,
@@ -672,7 +678,7 @@ const CookieFactoryPage = {
         <button class="${goldenClass}" id="cookie-golden" aria-disabled="${golden.available ? "false" : "true"}" title="${escapeHtml(goldenTitle)}">✨ 黄金饼干${golden.ready_in > 0 ? `（${Math.ceil(golden.ready_in / 60)} 分钟后）` : ""}</button>
         <button class="${loginClass}" id="cookie-login" aria-disabled="false" title="${escapeHtml(loginTitle)}">📬 每日签到</button>
         <button class="${sugarClass}" id="cookie-sugar" aria-disabled="${sugar.available ? "false" : "true"}" title="${escapeHtml(sugarTitle)}">🍭 收获糖块${sugar.ready_in > 0 ? `（${Math.ceil(sugar.ready_in / 3600)} 小时后）` : ""}</button>
-        <button class="btn${canPrestige ? "" : " is-disabled"}" id="cookie-prestige" ${canPrestige ? "" : "disabled"} title="${escapeHtml(prestigeTitle)}">🌟 升天重置</button>
+        <button class="btn${canPrestige ? "" : " is-disabled"}" id="cookie-prestige" ${canPrestige ? "" : "disabled"} title="${escapeHtml(prestigeTitle)}">${canPrestige ? "🌟 升天重置" : `🌟 升天重置（需 ${escapeHtml(prestigeRequirementLabel)}）`}</button>
       </div>
       <div class="cookie-section">
         <h3>🏭 建筑</h3>
