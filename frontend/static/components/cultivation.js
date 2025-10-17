@@ -4,6 +4,7 @@ const CultivationPage = {
   _selection: { talents: new Set(), allocations: {}, originId: null, sectId: null, masterId: null },
   _lastEventId: null,
   _endingPlayed: false,
+  _lastTalentRoll: null,
   _loading: false,
   fmtInt(value) {
     const n = Number(value || 0);
@@ -40,6 +41,35 @@ const CultivationPage = {
     if (sect && Number.isFinite(Number(sect.coins))) total += Number(sect.coins);
     if (master && Number.isFinite(Number(master.coins))) total += Number(master.coins);
     return total;
+  },
+  normalizeTalents(list, legend = null) {
+    const array = Array.isArray(list) ? list : [];
+    const seen = new Set();
+    const normalized = [];
+    array.forEach(item => {
+      if (!item) return;
+      const info = typeof item === 'object' ? { ...item } : { name: item };
+      const keyParts = [];
+      if (info.id) keyParts.push(String(info.id));
+      if (info.name) keyParts.push(String(info.name));
+      if (info.rarity || info.rarity_key || info.rarity_label) {
+        keyParts.push(String(info.rarity || info.rarity_key || info.rarity_label));
+      }
+      const fallbackKey = JSON.stringify({ name: info.name || '', rarity: info.rarity || info.rarity_label || '' });
+      const dedupeKey = keyParts.length ? keyParts.join('|') : fallbackKey;
+      if (seen.has(dedupeKey)) return;
+      seen.add(dedupeKey);
+      const rarityKey = (info.rarity_key || info.rarity || '').toString().toLowerCase();
+      const legendEntry = legend && typeof legend === 'object' ? legend[rarityKey] : null;
+      if (!info.rarity_label && legendEntry && legendEntry.label) {
+        info.rarity_label = legendEntry.label;
+      }
+      if (!info.rarity_tone && legendEntry && legendEntry.tone) {
+        info.rarity_tone = legendEntry.tone;
+      }
+      normalized.push(info);
+    });
+    return normalized;
   },
   renderEffectPills(effects) {
     if (!Array.isArray(effects) || !effects.length) {
@@ -109,17 +139,19 @@ const CultivationPage = {
       </div>
     `;
   },
-  renderTalentChips(items) {
-    const list = Array.isArray(items) ? items : [];
+  renderTalentChips(items, legend = null) {
+    const list = this.normalizeTalents(items, legend);
     if (!list.length) return '';
     const chips = list.map(item => {
       if (!item) return '';
       const name = escapeHtml((item.name != null ? item.name : item) || '');
       if (!name) return '';
       const tone = item.rarity_tone ? ` rarity-${escapeHtml(item.rarity_tone)}` : '';
-      const rarityLabel = item.rarity_label ? `<span class="cultivation-talent-chip__rarity">${escapeHtml(item.rarity_label)}</span>` : '';
+      const badgeText = item.rarity_label || (item.rarity ? String(item.rarity).toUpperCase() : '');
+      const rarityLabel = badgeText ? `<span class="cultivation-talent-chip__rarity">${escapeHtml(badgeText)}</span>` : '';
       const descAttr = item.desc ? ` title="${escapeHtml(item.desc)}"` : '';
-      return `<span class="cultivation-chip talent${tone}"${descAttr}>${rarityLabel}<span class="cultivation-chip__label">${name}</span></span>`;
+      const rarityAttr = item.rarity ? ` data-rarity="${escapeHtml(String(item.rarity))}"` : '';
+      return `<span class="cultivation-chip talent${tone}"${descAttr}${rarityAttr}>${rarityLabel}<span class="cultivation-chip__label">${name}</span></span>`;
     }).filter(Boolean).join('');
     if (!chips) return '';
     return `<div class="cultivation-talent-chips">${chips}</div>`;
@@ -259,6 +291,7 @@ const CultivationPage = {
     this._selection = { talents: new Set(), allocations: {}, originId: null, sectId: null, masterId: null };
     this._lastEventId = null;
     this._endingPlayed = false;
+    this._lastTalentRoll = null;
     await this.refresh();
   },
   presence() {
@@ -285,6 +318,9 @@ const CultivationPage = {
     this._loading = true;
     try {
       const data = await API.cultivationStatus();
+      if (data && data.lobby) {
+        data.lobby = { ...data.lobby, talents: this.normalizeTalents(data.lobby.talents, data.lobby.talent_rarities) };
+      }
       this._state = data || {};
       this.resetSelection();
       this.renderStatus();
@@ -496,6 +532,87 @@ const CultivationPage = {
       </div>
     `;
   },
+  buildOptionRiskHints(event) {
+    const options = Array.isArray(event?.options) ? event.options : [];
+    if (!options.length) return {};
+    const baseSeed = Number(event?.seed || 0) || 0;
+    const decorated = options.map((opt, idx) => {
+      const meta = opt?.meta || {};
+      const healthRange = Array.isArray(opt?.health) ? opt.health : [];
+      const progressRange = Array.isArray(opt?.progress) ? opt.progress : [];
+      const scoreRange = Array.isArray(opt?.score) ? opt.score : [];
+      const minHealth = Number.isFinite(Number(healthRange[0])) ? Number(healthRange[0]) : 0;
+      const maxProgress = Number.isFinite(Number(progressRange[1])) ? Number(progressRange[1]) : 0;
+      const maxScore = Number.isFinite(Number(scoreRange[1])) ? Number(scoreRange[1]) : 0;
+      const coinGain = Number(meta.gain_coins || 0);
+      const rewardScore = Math.max(maxProgress, maxScore, coinGain);
+      const hasLoot = !!(meta.loot || meta.loot_name);
+      const hasSacrifice = Array.isArray(meta.sacrifice) && meta.sacrifice.length > 0;
+      const hasCost = Number(meta.cost || 0) > 0;
+      const isTrial = (opt?.type || '') === 'trial';
+      return {
+        idx,
+        minHealth,
+        rewardScore: rewardScore + (hasLoot ? 40 : 0),
+        hasLoot,
+        hasSacrifice,
+        hasCost,
+        isTrial,
+      };
+    });
+    const chooseText = (list, key) => {
+      if (!Array.isArray(list) || !list.length) return '';
+      const index = Math.abs((baseSeed + key) % list.length);
+      return list[index];
+    };
+    const cautionTexts = [
+      '⚠️ 此举风险颇高，需衡量自身底蕴。',
+      '⚠️ 稍有不慎便会受创，请谨慎抉择。',
+    ];
+    const perilTexts = [
+      '☠️ 风险极大，实力不足者恐遭重创。',
+      '☠️ 天险难渡，需有绝对把握方可尝试。',
+    ];
+    const fortuneTexts = [
+      '✨ 若顺利完成，将有机会收获巨大利益。',
+      '✨ 此选项潜藏机缘，或许会有意外惊喜。',
+      '🌈 成功后有望触发额外奖励。',
+    ];
+    const hints = {};
+    const dangerCandidate = decorated.reduce((best, item) => {
+      if (!best) return item;
+      if (item.minHealth < best.minHealth) return item;
+      if (item.minHealth === best.minHealth) {
+        if (item.hasSacrifice && !best.hasSacrifice) return item;
+        if (item.isTrial && !best.isTrial) return item;
+      }
+      return best;
+    }, null);
+    if (dangerCandidate && (dangerCandidate.minHealth < -4 || dangerCandidate.hasSacrifice || dangerCandidate.isTrial || dangerCandidate.hasCost)) {
+      const severe = dangerCandidate.minHealth <= -18 || dangerCandidate.hasSacrifice || dangerCandidate.isTrial;
+      hints[dangerCandidate.idx] = {
+        tone: severe ? 'danger' : 'warning',
+        text: chooseText(severe ? perilTexts : cautionTexts, dangerCandidate.idx + 3),
+      };
+    }
+    const rewardSorted = decorated
+      .map(item => ({
+        ...item,
+        rewardScore: item.rewardScore + (item.hasCost ? -10 : 0),
+      }))
+      .sort((a, b) => (b.rewardScore || 0) - (a.rewardScore || 0));
+    let rewardCandidate = rewardSorted.find(item => (item.rewardScore > 0 || item.hasLoot));
+    if (rewardCandidate && hints[rewardCandidate.idx]) {
+      rewardCandidate = rewardSorted.find(item => !hints[item.idx] && (item.rewardScore > 0 || item.hasLoot));
+    }
+    if (rewardCandidate) {
+      hints[rewardCandidate.idx] = {
+        tone: 'boon',
+        text: chooseText(fortuneTexts, rewardCandidate.idx + 7),
+      };
+    }
+    return hints;
+  },
   renderEvent(event) {
     const hint = event.hint ? `<div class="cultivation-event__hint">${escapeHtml(event.hint)}</div>` : '';
     const theme = event.theme_label ? `<div class="cultivation-event__tag">✨ ${escapeHtml(event.theme_label)}机缘</div>` : '';
@@ -506,7 +623,8 @@ const CultivationPage = {
     const trialBlock = trial
       ? `<div class="cultivation-event__trial"><div class="headline">⚡ 特殊考验</div><div class="meta">判定属性：<span>${escapeHtml(trialStatLabel)}</span> · 难度 ${trialDifficulty}</div><div class="note">需等待天命裁决，判定时长约 ${this.fmtInt(Math.round(trialDelay / 1000))} 秒。</div></div>`
       : '';
-    const options = (event.options || []).map(opt => {
+    const riskHints = this.buildOptionRiskHints(event);
+    const options = (event.options || []).map((opt, index) => {
       const id = escapeHtml(opt.id || '');
       const title = escapeHtml(opt.label || '');
       const detail = escapeHtml(opt.detail || '');
@@ -542,11 +660,16 @@ const CultivationPage = {
       if (tags.length) {
         metaLine = `<div class="btn-meta">${tags.join('')}</div>`;
       }
+      const riskInfo = riskHints[index];
+      const riskLine = riskInfo
+        ? `<div class="cultivation-option-risk${riskInfo.tone ? ` risk-${escapeHtml(riskInfo.tone)}` : ''}">${escapeHtml(riskInfo.text || '')}</div>`
+        : '';
       return `
         <button class="btn" data-sfx="custom" data-choice="${id}">
           <div class="btn-title">${title}</div>
           <div class="btn-desc">${detail}</div>
           ${metaLine}
+          ${riskLine}
         </button>
       `;
     }).join('');
@@ -683,11 +806,14 @@ const CultivationPage = {
   renderLobby(lobby) {
     const fmtInt = (v) => this.fmtInt(v);
     const points = fmtInt(lobby.points || 0);
-    const talents = Array.isArray(lobby.talents) ? lobby.talents : [];
+    const talents = this.normalizeTalents(lobby.talents, lobby.talent_rarities);
     const baseStats = lobby.base_stats || {};
     const coinsPreview = fmtInt(this.calcStartingCoins(lobby));
     const rarityLegend = lobby.talent_rarities || {};
     const refreshLeft = Number(lobby.refreshes_left || 0);
+    if (lobby.roll_id) {
+      this._lastTalentRoll = lobby.roll_id;
+    }
     const talentCards = talents.map(t => {
       const effectText = Array.isArray(t.effects) && t.effects.length
         ? t.effects.map(e => `${escapeHtml(e.label || '')} +${fmtInt(e.value || 0)}`).join('、')
@@ -827,7 +953,13 @@ const CultivationPage = {
           refreshBtn.classList.add('is-loading');
           const data = await API.cultivationRefresh();
           if (data && data.lobby) {
-            this._state.lobby = data.lobby;
+            this._state.lobby = {
+              ...data.lobby,
+              talents: this.normalizeTalents(data.lobby.talents, data.lobby.talent_rarities)
+            };
+            if (this._state.lobby.roll_id) {
+              this._lastTalentRoll = this._state.lobby.roll_id;
+            }
             this.resetSelection();
             window.AudioEngine?.playSfx?.('refresh-complete');
             this.renderStatus();
