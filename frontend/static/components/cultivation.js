@@ -522,7 +522,7 @@ const CultivationPage = {
       if (num < 0) return fixed;
       return digits === 0 ? '0' : Number(0).toFixed(digits);
     };
-    const outcomeBlock = outcome ? (() => {
+    const outcomeBlock = (outcome && !outcome.neutral) ? (() => {
       const cls = this.toneClass(outcome.tone);
       const narrative = outcome.narrative ? `<div class="cultivation-outcome__narrative">${escapeHtml(outcome.narrative)}</div>` : '';
       const progress = fmtSigned(outcome.progress_gain || 0, 1);
@@ -628,14 +628,29 @@ const CultivationPage = {
       let debugLine = '';
       if (debug) {
         const components = Array.isArray(debug.components) ? debug.components : [];
-        const primaryComponent = components.find(item => item && item.is_primary);
+        const primaryComponents = components.filter(item => item && item.is_primary);
         const auxiliaryComponents = components.filter(item => item && !item.is_primary);
-        const requirementVal = Number(primaryComponent ? primaryComponent.requirement : debug.requirement || 0);
-        const primaryStat = primaryComponent && primaryComponent.stat ? primaryComponent.stat : (debug.stat || '');
-        const statLabel = primaryStat ? this.statLabel(primaryStat) : '';
-        const requirementText = requirementVal > 0
-          ? `${escapeHtml(statLabel || '属性')} ≥ ${this.fmtInt(requirementVal)}`
-          : '';
+        const fallbackStat = debug.stat ? this.statLabel(debug.stat) : '';
+        const fallbackReq = Number(debug.requirement || 0);
+        let requirementText = '';
+        if (primaryComponents.length) {
+          const lines = primaryComponents.map(component => {
+            if (!component || !component.stat) return '';
+            const label = this.statLabel(component.stat);
+            const req = this.fmtInt(component.requirement || 0);
+            const ratioVal = Number(component.ratio);
+            const weightVal = Number(component.weight);
+            const detailParts = [];
+            if (Number.isFinite(ratioVal)) detailParts.push(`当前${ratioVal.toFixed(2)}`);
+            if (Number.isFinite(weightVal)) detailParts.push(`权重${weightVal.toFixed(2)}`);
+            const extra = detailParts.length ? `（${escapeHtml(detailParts.join(' · '))}）` : '';
+            return `${escapeHtml(label)} ≥ ${req}${extra}`;
+          }).filter(Boolean);
+          requirementText = lines.join('<br>');
+        } else if (fallbackReq > 0) {
+          const label = fallbackStat || '属性';
+          requirementText = `${escapeHtml(label)} ≥ ${this.fmtInt(fallbackReq)}`;
+        }
         const successRate = Number(debug.success_rate);
         const critRate = Number(debug.crit_rate);
         const ratioVal = Number(debug.ratio);
