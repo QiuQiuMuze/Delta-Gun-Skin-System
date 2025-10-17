@@ -1,63 +1,48 @@
-# 三角洲抽砖模拟器
+# 三角洲砖皮系统
 
-这是一个完整的 Web 版“三角洲抽砖”体验，涵盖抽卡、市场、钱包、管理员工具等系统。最新版本已经加入“饼干工厂 × 三角洲抽砖”联动小游戏，让玩家通过经营饼干来换取砖。
+基于 **FastAPI + MongoDB** 的后端与 **Next.js + React Query + Tailwind CSS** 的前端，提供三角洲抽砖赛季与皮肤资料的现代化展示。
 
-## 主要功能
-- **抽卡系统**：支持单抽、十连，包含保底与多彩模板通知。
-- **砖市场**：玩家可以以 ≥40 三角币的价格挂单出售或委托收购砖，并自动处理撮合、手续费和返还逻辑。
-- **交易邮箱**：个人信息页新增“邮箱”标签，按砖/皮肤、买入/卖出分类显示最近的成交记录及净收益。
-- **管理员工具**：管理员可搜索用户、发放/扣除资产、审批充值、切换短信模式，并独家查看玩家的砖买卖列表。
-- **饼干工厂小游戏**：玩家点击大饼干、购买建筑、参与小游戏、升天、签到等行为会累积饼干与活跃度，每周结算最多 100 块砖。
+## 技术栈
 
-## 饼干工厂联动说明
-- **开启方式**：管理员在“管理员”界面中勾选“对玩家开放饼干工厂”即可开放，关闭后普通玩家将无法看到入口。
-- **玩法亮点**：
-  - 点击大饼干与黄金饼干获取即时奖励，并获得活跃积分。
-  - 购入光标、奶奶、工厂、矿井、时空传送门、时光机等建筑以提高 CPS。
-  - 经营花园、神殿、证券市场等小游戏获得额外加成和声望点数。
-  - 升天重置可获取声望点，提高下一轮效率。
-  - 每日签到获得 2 块“登录砖”，连续 7 天额外送出约 14 块奖励。
-- **砖结算**：
-  - 每 1 亿饼干≈1 块基础砖，产量越高比率越低。
-  - 每 10 活跃积分可兑换 1 块砖，每日封顶约 10 块。
-  - 每周上限 100 块砖，系统会在周一自动结算。
-  - 若连续两天未登录，下周效率下降约 30%。
-  - 在“三角洲”中消费或出售砖，会为下周饼干工厂提供约 5% 的产量加成，上限 25%。
+- **前端**：React、Next.js 14、TypeScript、Tailwind CSS、@tanstack/react-query
+- **后端**：FastAPI、Motor (MongoDB 驱动)、Pydantic v2、Uvicorn
+- **数据库**：MongoDB（默认连接 `mongodb://localhost:27017`）
 
 ## 本地运行
+
+### 后端
+
 ```bash
-bash run.sh
+# 启动 FastAPI 后端
+./run.sh
 ```
-> 注意：首次运行会拉取依赖，可能需要联网环境。
 
-"""# 1️⃣ 查看当前提交历史（本地）
-git log --oneline
+脚本会创建虚拟环境并安装依赖，随后以 `uvicorn app.main:app --reload` 方式启动服务，默认端口为 `8000`。如需修改 MongoDB 地址，可在根目录创建 `.env` 文件并设置：
 
-# 2️⃣ 获取远程最新版本（不合并）
-git fetch origin
+```
+DELTA_MONGODB_URI=mongodb://localhost:27017
+DELTA_MONGODB_DB_NAME=delta_gun_skin
+DELTA_ALLOWED_ORIGINS=["http://localhost:3000"]
+```
 
-# 3️⃣ 强制用远程 main 分支覆盖本地
-git reset --hard main
+依赖中已锁定 `motor==3.3.1` 与 `pymongo==4.3.3`，避免了 `_QUERY_OPTIONS` 导入错误。
 
-# 4️⃣ （可选）回档到指定历史提交（把 <commit_id> 换成 git log 里的一行）
-git reset --hard <commit_id>
+### 前端
 
-# 5️⃣ 强制推送到远程，覆盖 GitHub 上的内容
-git push origin main --force
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-# 1) 抓取远端所有更新并清理已删除的远端分支引用
-git fetch --all --prune
+默认向 `http://localhost:8000/api` 请求赛季数据，可通过设置 `NEXT_PUBLIC_API_BASE_URL` 指向不同的后端地址。
 
-# 2) 看看本地分支与远端的对应关系（带上游、落后/领先情况）
-git branch -vv
+## 项目结构
 
-# 3) 对比本地与远端（会看到 origin/Chinese-language 指向 e48ab11 之类的新提交）
-git log --oneline --decorate --graph -n 20 --all
+```
+backend/      # FastAPI 应用（app.main、Mongo 数据访问、赛季路由）
+frontend/     # Next.js 14 前端（App Router + Tailwind + React Query）
+run.sh        # 便捷脚本：创建虚拟环境并启动后端
+```
 
-# 确保在 Chinese-language 分支
-git switch main
-
-# 注意：这会丢弃本地未提交改动，请先 commit 或 stash
-git reset --hard origin/main
-
-"""
+欢迎根据需要扩展赛季数据、鉴权或运营后台等高级功能。
