@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Depends, HTTPException, Header, Query, Path
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from typing import Optional, Literal, List, Dict, Any, Tuple
+from typing import Optional, Literal, List, Dict, Any, Tuple, Set
 from datetime import datetime, timedelta
 import time, os, secrets, jwt, re, json, random, math, hashlib
 
@@ -1978,13 +1978,13 @@ CULTIVATION_TALENTS = [
         "flags": {"combat_bonus": 0.2},
     },
     {
-        "id": "phoenix_blood",
-        "name": "凤血重生",
+        "id": "phoenix_nirvana",
+        "name": "凤凰涅槃",
         "rarity": "gold",
         "weight": 0.05,
-        "desc": "寿元 +15，濒死时有小概率重生",
-        "effects": {},
-        "flags": {"lifespan_bonus": 15, "resurrection": 0.12},
+        "desc": "寿元 +20，濒死时有较高概率重生，浴火后全属性微增",
+        "effects": {"body": 1, "mind": 1, "spirit": 1},
+        "flags": {"lifespan_bonus": 20, "resurrection": 0.35},
     },
     {
         "id": "spirit_talker",
@@ -2035,11 +2035,52 @@ CULTIVATION_TALENTS = [
         "effects": {"body": 1, "spirit": 2},
         "flags": {"combat_resist": 0.35, "setback_reduce": 3},
     },
+    {
+        "id": "herbal_sage",
+        "name": "灵草心语",
+        "rarity": "blue",
+        "desc": "悟性 +1，气运 +1，遇到丹药相关奇遇时奖励提升",
+        "effects": {"mind": 1, "luck": 1},
+        "flags": {"chance_bonus": 0.12, "alchemy_mastery": 0.5},
+    },
+    {
+        "id": "moonlit_stride",
+        "name": "月影流光",
+        "rarity": "blue",
+        "desc": "体魄 +1，气运 +1，探索事件中所受损耗略减",
+        "effects": {"body": 1, "luck": 1},
+        "flags": {"combat_resist": 0.2, "setback_reduce": 2},
+    },
+    {
+        "id": "void_whisper",
+        "name": "虚空耳语",
+        "rarity": "purple",
+        "desc": "悟性 +1，心性 +2，随机机缘质量提升",
+        "effects": {"mind": 1, "spirit": 2},
+        "flags": {"chance_bonus": 0.22, "insight_bonus": 0.08},
+    },
+    {
+        "id": "dragon_scale_guard",
+        "name": "龙麟护体",
+        "rarity": "purple",
+        "desc": "体魄 +3，战斗与劫难事件中伤害大幅降低",
+        "effects": {"body": 3},
+        "flags": {"combat_resist": 0.6},
+    },
+    {
+        "id": "celestial_benediction",
+        "name": "天衍赐福",
+        "rarity": "gold",
+        "weight": 0.06,
+        "desc": "气运 +3，悟性 +2，奇遇获得额外奖励并减少劫难",
+        "effects": {"luck": 3, "mind": 2},
+        "flags": {"chance_bonus": 0.3, "setback_reduce": 4},
+    },
 ]
 
 CULTIVATION_TALENT_ROLLS = 4
 CULTIVATION_BASE_POINTS = 10
-CULTIVATION_MAX_TALENTS = 3
+CULTIVATION_MAX_TALENTS = 2
 CULTIVATION_REFRESH_COUNT = 5
 CULTIVATION_STAGE_NAMES = ["凡人", "炼气", "筑基", "金丹", "元婴", "化神", "飞升"]
 CULTIVATION_STAGE_THRESHOLDS = [320, 780, 1380, 2100, 2980, 4100]
@@ -3419,7 +3460,7 @@ CULTIVATION_STAT_KEYS = [
     ("luck", "气运"),
 ]
 
-CULTIVATION_TALENTS = [
+CULTIVATION_TALENTS_LEGACY_V1 = [
     {
         "id": "iron_body",
         "name": "金刚体魄",
@@ -3479,11 +3520,11 @@ CULTIVATION_TALENTS = [
     },
 ]
 
-CULTIVATION_BASE_POINTS = 8
-CULTIVATION_MAX_TALENTS = 2
-CULTIVATION_REFRESH_COUNT = 3
-CULTIVATION_STAGE_NAMES = ["凡人", "炼气", "筑基", "金丹", "元婴", "化神", "飞升"]
-CULTIVATION_STAGE_THRESHOLDS = [120, 260, 420, 660, 960, 1320]
+CULTIVATION_BASE_POINTS_LEGACY_V1 = 8
+CULTIVATION_MAX_TALENTS_LEGACY_V1 = 2
+CULTIVATION_REFRESH_COUNT_LEGACY_V1 = 3
+CULTIVATION_STAGE_NAMES_LEGACY_V1 = ["凡人", "炼气", "筑基", "金丹", "元婴", "化神", "飞升"]
+CULTIVATION_STAGE_THRESHOLDS_LEGACY_V1 = [120, 260, 420, 660, 960, 1320]
 
 
 
@@ -4235,7 +4276,7 @@ CULTIVATION_STAT_KEYS = [
     ("luck", "气运"),
 ]
 
-CULTIVATION_TALENTS = [
+CULTIVATION_TALENTS_LEGACY_V2 = [
     {
         "id": "iron_body",
         "name": "金刚体魄",
@@ -4294,11 +4335,11 @@ CULTIVATION_TALENTS = [
     },
 ]
 
-CULTIVATION_BASE_POINTS = 8
-CULTIVATION_MAX_TALENTS = 2
-CULTIVATION_REFRESH_COUNT = 3
-CULTIVATION_STAGE_NAMES = ["凡人", "炼气", "筑基", "金丹", "元婴", "化神", "飞升"]
-CULTIVATION_STAGE_THRESHOLDS = [120, 260, 420, 660, 960, 1320]
+CULTIVATION_BASE_POINTS_LEGACY_V2 = 8
+CULTIVATION_MAX_TALENTS_LEGACY_V2 = 2
+CULTIVATION_REFRESH_COUNT_LEGACY_V2 = 3
+CULTIVATION_STAGE_NAMES_LEGACY_V2 = ["凡人", "炼气", "筑基", "金丹", "元婴", "化神", "飞升"]
+CULTIVATION_STAGE_THRESHOLDS_LEGACY_V2 = [120, 260, 420, 660, 960, 1320]
 
 
 def _json_object(raw: str, default: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -4684,25 +4725,37 @@ def _cultivation_pick_talents(rng: random.Random) -> List[Dict[str, Any]]:
             continue
         weighted_pool.append((talent, weight))
     picks: List[Dict[str, Any]] = []
-    count = min(CULTIVATION_TALENT_ROLLS, len(weighted_pool))
+    roll_cap = min(CULTIVATION_TALENT_ROLLS, len(CULTIVATION_TALENTS))
     pool = list(weighted_pool)
-    for _ in range(count):
-        total = sum(weight for _, weight in pool)
+    used_ids: Set[Optional[str]] = set()
+    while len(picks) < roll_cap and pool:
+        filtered: List[Tuple[int, Dict[str, Any], float]] = []
+        for idx, (talent, weight) in enumerate(pool):
+            talent_id = talent.get("id")
+            if talent_id and talent_id in used_ids:
+                continue
+            filtered.append((idx, talent, weight))
+        if not filtered:
+            break
+        total = sum(weight for _, _, weight in filtered)
         if total <= 0:
             break
         roll = rng.uniform(0, total)
         acc = 0.0
         choice_index = None
-        for idx, (talent, weight) in enumerate(pool):
+        chosen_pool_index = None
+        for original_idx, talent, weight in filtered:
             acc += weight
             if roll <= acc:
                 picks.append(talent)
-                choice_index = idx
+                choice_index = original_idx
+                used_ids.add(talent.get("id"))
                 break
         if choice_index is None:
             break
-        pool.pop(choice_index)
-    return [_cultivation_render_talent(talent) for talent in picks]
+        chosen_pool_index = choice_index
+        pool.pop(chosen_pool_index)
+    return [_cultivation_render_talent(talent) for talent in picks[:roll_cap]]
 
 
 def _cultivation_stat_label(stat: str) -> str:
