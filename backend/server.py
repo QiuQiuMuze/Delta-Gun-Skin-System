@@ -2095,6 +2095,26 @@ CULTIVATION_WEEKLY_BRICK_CAP = 20
 CULTIVATION_REFRESH_COUNT = 5
 CULTIVATION_STAGE_NAMES = ["凡人", "炼气", "筑基", "金丹", "元婴", "化神", "飞升"]
 CULTIVATION_STAGE_THRESHOLDS = [320, 780, 1380, 2100, 2980, 4100]
+CULTIVATION_STAGE_BASE_REQUIREMENTS = [2, 4, 7, 11, 15, 20, 25]
+CULTIVATION_REQUIREMENT_VARIANCE = 2
+CULTIVATION_REQUIREMENT_DIFF_WEIGHT = 0.1
+CULTIVATION_EVENT_TYPE_REQUIREMENTS = {
+    "meditation": 0,
+    "adventure": 2,
+    "opportunity": 3,
+    "training": 1,
+    "tribulation": 5,
+    "merchant": 2,
+    "sacrifice": 3,
+    "trial": 4,
+    "mortal_trial": 1,
+    "qi_refinement": 1,
+    "foundation_pulse": 2,
+    "golden_core_storm": 4,
+    "nascent_journey": 5,
+    "divine_insight": 6,
+}
+CULTIVATION_FOCUS_REQUIREMENT_BONUS = {"body": 1, "mind": 0, "spirit": 1, "luck": 2}
 CULTIVATION_PROGRESS_SCALE = 0.16
 CULTIVATION_PROGRESS_STAT_WEIGHT = 1.15
 CULTIVATION_SCORE_SCALE = 0.5
@@ -2558,17 +2578,23 @@ def _cultivation_build_trial_event(
             "note": "极限考验",
         },
     )
+    options = [option]
+    _cultivation_attach_requirements(run, "trial", event_seed, options)
     event = {
         "id": f"{run['session']}-{run['step']}-trial",
         "title": spec.get("name") or "极限试炼",
         "description": description,
-        "options": [option],
+        "options": options,
         "seed": event_seed,
         "event_type": "trial",
         "theme_label": "极限试炼",
     }
     if hint:
         event["hint"] = hint
+    elif run.get("talent_flags", {}).get("hazard_hint"):
+        derived_hint = _cultivation_event_hint_from_requirements(options)
+        if derived_hint:
+            event["hint"] = derived_hint
     event["trial_info"] = {
         "id": spec.get("id"),
         "name": spec.get("name"),
@@ -3458,6 +3484,382 @@ CULTIVATION_EVENT_BLUEPRINTS = {
     },
 }
 
+CULTIVATION_STAGE_EVENT_VARIANTS = {
+    0: [
+        {
+            "event_type": "mortal_trial",
+            "title": {"templates": ["凡人砥砺·{title}"]},
+            "context": {
+                "title": ["初入山门", "凡骨磨砺", "山野试心"],
+                "locale": ["青石阶", "松林间", "山脚溪旁"],
+                "mentor": ["外门师兄", "看守长老", "巡山弟子"],
+            },
+            "description": {
+                "templates": [
+                    "你仍是凡人之身，受命于{mentor}，在{locale}完成试炼。",
+                    "凡俗躯体尚显稚嫩，{mentor}指引你在{locale}磨砺自我。",
+                ],
+            },
+            "options": [
+                {
+                    "id": "mortal-temper",
+                    "focus": "body",
+                    "type": "combat",
+                    "progress": (34, 52),
+                    "health": (-3, 4),
+                    "score": (32, 50),
+                    "label": {"templates": ["负重攀爬青石阶"]},
+                    "detail": {"templates": ["扛起石块沿{locale}往返，磨砺体魄。"]},
+                    "flavor": {"templates": ["汗水打湿衣衫，气血鼓荡"]},
+                },
+                {
+                    "id": "mortal-focus",
+                    "focus": "mind",
+                    "type": "insight",
+                    "progress": (30, 48),
+                    "health": (-2, 2),
+                    "score": (30, 48),
+                    "label": {"templates": ["静心抄录门规"]},
+                    "detail": {"templates": ["端坐在{locale}石桌前抄写经义，稳固心神。"]},
+                    "flavor": {"templates": ["墨香袅袅，念头渐定"]},
+                },
+                {
+                    "id": "mortal-heart",
+                    "focus": "spirit",
+                    "type": "insight",
+                    "progress": (28, 44),
+                    "health": (-1, 3),
+                    "score": (28, 46),
+                    "label": {"templates": ["守心观泉"]},
+                    "detail": {"templates": ["在{locale}旁听水声，以心性对抗杂念。"]},
+                    "flavor": {"templates": ["心绪随泉缓缓沉淀"]},
+                },
+                {
+                    "id": "mortal-fate",
+                    "focus": "luck",
+                    "type": "chance",
+                    "progress": (32, 46),
+                    "health": (-2, 3),
+                    "score": (34, 48),
+                    "label": {"templates": ["协助{mentor}处理杂务"]},
+                    "detail": {"templates": ["顺着直觉处理凡务，或许能得到赏识。"]},
+                    "flavor": {"templates": ["机缘潜伏于平凡之间"]},
+                },
+            ],
+        }
+    ],
+    1: [
+        {
+            "event_type": "qi_refinement",
+            "title": {"templates": ["炼气·灵息调和"]},
+            "context": {
+                "locale": ["灵田之畔", "云台之巅", "灵泉旁"],
+                "guide": ["内门师兄", "执事长老", "丹房真人"],
+            },
+            "description": {
+                "templates": [
+                    "炼气期的你在{locale}调息运功，{guide}远观护法。",
+                    "灵气奔涌，你立于{locale}练气凝神，等待灵息归一。",
+                ],
+            },
+            "options": [
+                {
+                    "id": "refine-body",
+                    "focus": "body",
+                    "type": "combat",
+                    "progress": (44, 68),
+                    "health": (-4, 4),
+                    "score": (42, 66),
+                    "label": {"templates": ["以灵息锻体"]},
+                    "detail": {"templates": ["将吸入的灵气压入四肢百骸，淬炼血肉。"]},
+                    "flavor": {"templates": ["灵气冲刷经络，骨节作响"]},
+                },
+                {
+                    "id": "refine-mind",
+                    "focus": "mind",
+                    "type": "insight",
+                    "progress": (48, 74),
+                    "health": (-3, 3),
+                    "score": (46, 72),
+                    "label": {"templates": ["凝神运转小周天"]},
+                    "detail": {"templates": ["以悟性调动灵息在体内周天流转，稳固根基。"]},
+                    "flavor": {"templates": ["神念如丝，灵机绵延"]},
+                },
+                {
+                    "id": "refine-spirit",
+                    "focus": "spirit",
+                    "type": "insight",
+                    "progress": (42, 68),
+                    "health": (-3, 4),
+                    "score": (44, 70),
+                    "label": {"templates": ["观想灵息化霞"]},
+                    "detail": {"templates": ["守住心念，让灵息在识海凝聚成雾。"]},
+                    "flavor": {"templates": ["心海泛光，灵雾缭绕"]},
+                },
+                {
+                    "id": "refine-fate",
+                    "focus": "luck",
+                    "type": "chance",
+                    "progress": (46, 72),
+                    "health": (-3, 4),
+                    "score": (48, 76),
+                    "label": {"templates": ["顺势采纳天地灵息"]},
+                    "detail": {"templates": ["借天地流转之机引动外界灵息，拓宽灵海。"]},
+                    "flavor": {"templates": ["天机顺引，灵息自来"]},
+                },
+            ],
+        }
+    ],
+    2: [
+        {
+            "event_type": "foundation_pulse",
+            "title": {"templates": ["筑基·灵脉共鸣"]},
+            "context": {
+                "locale": ["灵脉核心", "青铜祭坛", "地火洞府"],
+                "phenomenon": ["灵泉喷薄", "地火翻涌", "符纹闪耀"],
+            },
+            "description": {
+                "templates": [
+                    "筑基期的你立于{locale}，{phenomenon}，灵力震荡。",
+                    "在{locale}间，筑基法力与天地之脉呼应，稍有不慎即受反噬。",
+                ],
+            },
+            "options": [
+                {
+                    "id": "pulse-body",
+                    "focus": "body",
+                    "type": "combat",
+                    "progress": (52, 82),
+                    "health": (-6, 5),
+                    "score": (52, 80),
+                    "label": {"templates": ["强压灵力淬体"]},
+                    "detail": {"templates": ["以肉身承受灵脉冲击，重塑筑基根基。"]},
+                    "flavor": {"templates": ["真气激荡，骨骼轰鸣"]},
+                },
+                {
+                    "id": "pulse-mind",
+                    "focus": "mind",
+                    "type": "insight",
+                    "progress": (58, 90),
+                    "health": (-5, 2),
+                    "score": (58, 88),
+                    "label": {"templates": ["推演灵脉纹路"]},
+                    "detail": {"templates": ["静心参悟灵脉循环，让法力更为精纯。"]},
+                    "flavor": {"templates": ["灵纹浮现，神念入微"]},
+                },
+                {
+                    "id": "pulse-spirit",
+                    "focus": "spirit",
+                    "type": "insight",
+                    "progress": (50, 78),
+                    "health": (-4, 4),
+                    "score": (52, 82),
+                    "label": {"templates": ["稳固道心抵御冲击"]},
+                    "detail": {"templates": ["以心性镇压澎湃灵潮，守住道基。"]},
+                    "flavor": {"templates": ["心念如磐，灵潮回顺"]},
+                },
+                {
+                    "id": "pulse-fate",
+                    "focus": "luck",
+                    "type": "chance",
+                    "progress": (54, 86),
+                    "health": (-5, 5),
+                    "score": (56, 90),
+                    "label": {"templates": ["借势吸纳外来灵粹"]},
+                    "detail": {"templates": ["顺势牵引灵脉秘藏，搏取额外机缘。"]},
+                    "flavor": {"templates": ["命星辉映，灵粹汇聚"]},
+                },
+            ],
+        }
+    ],
+    3: [
+        {
+            "event_type": "golden_core_storm",
+            "title": {"templates": ["金丹·内观雷火"]},
+            "context": {
+                "phenomenon": ["丹田雷火跳跃", "金丹裂纹微现", "天象轰鸣"],
+                "locale": ["九霄观", "雷泽深处", "丹炉之巅"],
+            },
+            "description": {
+                "templates": [
+                    "金丹境界的你于{locale}内坐镇，{phenomenon}。",
+                    "金丹震荡，{phenomenon}，须在{locale}稳住气机。",
+                ],
+            },
+            "options": [
+                {
+                    "id": "core-body",
+                    "focus": "body",
+                    "type": "combat",
+                    "progress": (64, 96),
+                    "health": (-7, 6),
+                    "score": (64, 94),
+                    "label": {"templates": ["以肉身镇压雷火"]},
+                    "detail": {"templates": ["催动血肉抵御丹火炸裂，锻炼金丹外罡。"]},
+                    "flavor": {"templates": ["筋骨如铁，雷火回鸣"]},
+                },
+                {
+                    "id": "core-mind",
+                    "focus": "mind",
+                    "type": "insight",
+                    "progress": (68, 104),
+                    "health": (-6, 4),
+                    "score": (70, 108),
+                    "label": {"templates": ["演化雷霆丹诀"]},
+                    "detail": {"templates": ["心神化作雷意，推演金丹运转之道。"]},
+                    "flavor": {"templates": ["神念化雷，玄光万丈"]},
+                },
+                {
+                    "id": "core-spirit",
+                    "focus": "spirit",
+                    "type": "insight",
+                    "progress": (60, 90),
+                    "health": (-5, 5),
+                    "score": (62, 92),
+                    "label": {"templates": ["以道心牵引天象"]},
+                    "detail": {"templates": ["观测天象，将雷火化作心灯，稳固金丹。"]},
+                    "flavor": {"templates": ["道心如镜，雷云自散"]},
+                },
+                {
+                    "id": "core-fate",
+                    "focus": "luck",
+                    "type": "chance",
+                    "progress": (66, 100),
+                    "health": (-6, 6),
+                    "score": (68, 106),
+                    "label": {"templates": ["引动天机护丹"]},
+                    "detail": {"templates": ["凭气运牵引天地护持，让雷火化作助力。"]},
+                    "flavor": {"templates": ["天机合鸣，命星护体"]},
+                },
+            ],
+        }
+    ],
+    4: [
+        {
+            "event_type": "nascent_journey",
+            "title": {"templates": ["元婴·星海遨游"]},
+            "context": {
+                "phenomenon": ["神魂离窍", "星河浮现", "婴灵吟唱"],
+                "locale": ["星渊幻境", "上清天宫", "太虚神舟"],
+            },
+            "description": {
+                "templates": [
+                    "元婴期的你驾驭神魂穿梭{locale}，{phenomenon}。",
+                    "婴灵出窍，游历{locale}，只待掌握更高法则。",
+                ],
+            },
+            "options": [
+                {
+                    "id": "nascent-body",
+                    "focus": "body",
+                    "type": "combat",
+                    "progress": (72, 112),
+                    "health": (-8, 7),
+                    "score": (72, 110),
+                    "label": {"templates": ["引星辉淬铸元婴肉身"]},
+                    "detail": {"templates": ["让婴灵承载星辉，反哺本体筋骨。"]},
+                    "flavor": {"templates": ["星辉入骨，真体如铜"]},
+                },
+                {
+                    "id": "nascent-mind",
+                    "focus": "mind",
+                    "type": "insight",
+                    "progress": (78, 120),
+                    "health": (-7, 5),
+                    "score": (80, 122),
+                    "label": {"templates": ["参悟星河法则"]},
+                    "detail": {"templates": ["于星渊记录天道脉络，拓宽神识。"]},
+                    "flavor": {"templates": ["神识如海，星辉点点"]},
+                },
+                {
+                    "id": "nascent-spirit",
+                    "focus": "spirit",
+                    "type": "insight",
+                    "progress": (74, 114),
+                    "health": (-6, 6),
+                    "score": (76, 116),
+                    "label": {"templates": ["与婴灵调和心念"]},
+                    "detail": {"templates": ["让婴灵吟唱回荡心海，使神魂合一。"]},
+                    "flavor": {"templates": ["心婴同声，灵光大盛"]},
+                },
+                {
+                    "id": "nascent-fate",
+                    "focus": "luck",
+                    "type": "chance",
+                    "progress": (80, 126),
+                    "health": (-7, 7),
+                    "score": (82, 128),
+                    "label": {"templates": ["捕捉虚空机缘"]},
+                    "detail": {"templates": ["借星海潮汐寻觅命运碎片，强化元婴。"]},
+                    "flavor": {"templates": ["命星灿烂，机缘自来"]},
+                },
+            ],
+        }
+    ],
+    5: [
+        {
+            "event_type": "divine_insight",
+            "title": {"templates": ["化神·寂灭悟道"]},
+            "context": {
+                "phenomenon": ["大道幽鸣", "神念化光", "寂灭潮汐"],
+                "locale": ["太始神坛", "寂灭天渊", "九霄雷域"],
+            },
+            "description": {
+                "templates": [
+                    "化神期的你立足{locale}，{phenomenon}，一步一空。",
+                    "神念融入{locale}，{phenomenon}，只待破茧飞升。",
+                ],
+            },
+            "options": [
+                {
+                    "id": "divine-body",
+                    "focus": "body",
+                    "type": "combat",
+                    "progress": (90, 138),
+                    "health": (-9, 8),
+                    "score": (92, 140),
+                    "label": {"templates": ["以真身融雷化神"]},
+                    "detail": {"templates": ["以本源肉身承受雷域寂灭之力，淬炼神体。"]},
+                    "flavor": {"templates": ["雷鸣万里，神体横空"]},
+                },
+                {
+                    "id": "divine-mind",
+                    "focus": "mind",
+                    "type": "insight",
+                    "progress": (96, 146),
+                    "health": (-8, 6),
+                    "score": (98, 148),
+                    "label": {"templates": ["推演寂灭真解"]},
+                    "detail": {"templates": ["神念化作光雨，与大道幽鸣共振。"]},
+                    "flavor": {"templates": ["神光流转，道韵生花"]},
+                },
+                {
+                    "id": "divine-spirit",
+                    "focus": "spirit",
+                    "type": "insight",
+                    "progress": (92, 140),
+                    "health": (-7, 7),
+                    "score": (94, 142),
+                    "label": {"templates": ["以心神纳寂灭潮"]},
+                    "detail": {"templates": ["心神融入寂灭潮汐，化解万千变数。"]},
+                    "flavor": {"templates": ["心海无波，道意长存"]},
+                },
+                {
+                    "id": "divine-fate",
+                    "focus": "luck",
+                    "type": "chance",
+                    "progress": (98, 152),
+                    "health": (-8, 8),
+                    "score": (100, 156),
+                    "label": {"templates": ["牵引飞升命星"]},
+                    "detail": {"templates": ["以气运与命星契合，吸纳寂灭中的飞升伏笔。"]},
+                    "flavor": {"templates": ["命星耀世，霞光万丈"]},
+                },
+            ],
+        }
+    ],
+}
+
 
 CULTIVATION_OUTCOME_PREFIXES = [
     "{age} 岁的你在{stage}境界中",
@@ -3471,6 +3873,12 @@ CULTIVATION_OUTCOME_BACKDROPS = {
     "opportunity": ["命星灿然回响，", "机缘氤氲环绕，", "天机轻声低语，"],
     "training": ["宗门同门屏息，", "长老目光炯炯，", "讲台道音回荡，"],
     "tribulation": ["雷海咆哮不止，", "劫云压顶欲坠，", "天威滚滚如潮，"],
+    "mortal_trial": ["凡尘烟火缭绕，", "脚下青石微湿，", "门庭静候评判，"],
+    "qi_refinement": ["灵息环绕周身，", "云气徐徐缭绕，", "灵泉雾气升腾，"],
+    "foundation_pulse": ["灵脉震动如鼓，", "地火穿梭咆哮，", "灵泉化作虹桥，"],
+    "golden_core_storm": ["丹田雷鸣轰隆，", "雷火映红半空，", "丹纹明暗交错，"],
+    "nascent_journey": ["婴灵穿梭星海，", "星辉簇拥身侧，", "虚空浮现异象，"],
+    "divine_insight": ["寂灭潮汐回荡，", "神光泻落九天，", "大道低语不绝，"],
     "general": ["灵气翻涌之间，", "天地默然关注，", "周遭玄光升腾，"],
 }
 
@@ -4995,6 +5403,7 @@ def _cultivation_start_run(
         "finished": False,
         "ending_type": None,
         "trial_state": {"completed": []},
+        "entropy": secrets.randbits(32),
     }
     run["artifacts"] = []
     run["companions"] = []
@@ -5055,6 +5464,100 @@ def _cultivation_start_run(
     node["active_run"] = run
     node.pop("lobby", None)
     return run
+
+
+def _cultivation_requirement_value(
+    run: Dict[str, Any],
+    focus: str,
+    event_type: str,
+    meta: Optional[Dict[str, Any]],
+    seed: int,
+) -> int:
+    stage_index = min(int(run.get("stage_index", 0)), len(CULTIVATION_STAGE_BASE_REQUIREMENTS) - 1)
+    base_req = CULTIVATION_STAGE_BASE_REQUIREMENTS[stage_index]
+    type_bonus = CULTIVATION_EVENT_TYPE_REQUIREMENTS.get(event_type, 0)
+    focus_bonus = CULTIVATION_FOCUS_REQUIREMENT_BONUS.get(focus, 0)
+    reward_bonus = 0
+    if isinstance(meta, dict):
+        loot = meta.get("loot")
+        if loot:
+            reward_bonus += 3
+        try:
+            coins = int(meta.get("gain_coins") or 0)
+        except (TypeError, ValueError):
+            coins = 0
+        if coins >= 40:
+            reward_bonus += 2
+        elif coins > 0:
+            reward_bonus += 1
+        sacrifice = meta.get("sacrifice")
+        if isinstance(sacrifice, (list, tuple)) and sacrifice:
+            reward_bonus += 1
+    rng = random.Random(seed)
+    variance = rng.randint(-CULTIVATION_REQUIREMENT_VARIANCE, CULTIVATION_REQUIREMENT_VARIANCE)
+    requirement = base_req + type_bonus + focus_bonus + reward_bonus + variance
+    return max(1, requirement)
+
+
+def _cultivation_risk_profile(stat_value: int, requirement: int) -> Dict[str, Any]:
+    diff = stat_value - requirement
+    if diff >= 4:
+        level = 0
+        hint = "✅ 胜券在握"
+    elif diff >= 1:
+        level = 1
+        hint = "✅ 实力充足，成功率偏高"
+    elif diff >= -1:
+        level = 2
+        hint = "⚠️ 属性略低，成功率不足五成"
+    elif diff >= -3:
+        level = 3
+        hint = "⚠️ 属性不足，失败概率较高"
+    else:
+        level = 4
+        hint = "⚠️ 属性远低，几乎难以成功"
+    return {"value": requirement, "level": level, "hint": hint}
+
+
+def _cultivation_event_hint_from_requirements(options: List[Dict[str, Any]]) -> Optional[str]:
+    if not options:
+        return None
+    worst_level = max(int((opt.get("requirement") or {}).get("level", 0)) for opt in options)
+    if worst_level >= 4:
+        return "⚠️ 风险极高，除非实力超凡"
+    if worst_level >= 3:
+        return "⚠️ 多数选择风险极大，需要谨慎衡量"
+    if worst_level >= 2:
+        return "⚠️ 存在风险，需量力而行"
+    return "✅ 整体风险可控"
+
+
+def _cultivation_attach_requirements(
+    run: Dict[str, Any],
+    event_type: str,
+    base_seed: int,
+    options: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    stats = run.get("stats") or {}
+    for idx, opt in enumerate(options):
+        focus = opt.get("focus") or "mind"
+        option_id = opt.get("id") or f"option-{idx}"
+        meta = opt.get("meta") if isinstance(opt.get("meta"), dict) else None
+        seed = base_seed ^ ((idx + 1) * 4099) ^ (hash(option_id) & 0xFFFFFFFF)
+        requirement = _cultivation_requirement_value(run, focus, event_type, meta, seed)
+        stat_value = int(stats.get(focus, 0))
+        opt["requirement"] = _cultivation_risk_profile(stat_value, requirement)
+    return options
+
+
+def _cultivation_pick_stage_variant(stage_index: int, base_seed: int) -> Optional[Dict[str, Any]]:
+    pool = CULTIVATION_STAGE_EVENT_VARIANTS.get(stage_index)
+    if not pool:
+        return None
+    rng = random.Random(base_seed ^ ((stage_index + 1) * 26513) ^ 0x75BCD15)
+    if rng.random() < 0.45:
+        return pool[rng.randrange(len(pool))]
+    return None
 
 
 def _cultivation_option(
@@ -5160,8 +5663,9 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
             meta={"note": "离开"},
         )
     )
+    _cultivation_attach_requirements(run, "merchant", event_seed, options)
     description = "一位行脚商贩摆开摊位，低声兜售珍贵法器与功法。"
-    return {
+    event = {
         "id": f"{run['session']}-{run['step']}-merchant",
         "title": "行脚商贩",
         "description": description,
@@ -5169,6 +5673,11 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
         "seed": event_seed,
         "event_type": "merchant",
     }
+    if run.get("talent_flags", {}).get("hazard_hint"):
+        hint = _cultivation_event_hint_from_requirements(options)
+        if hint:
+            event["hint"] = hint
+    return event
 
 
 def _cultivation_build_sacrifice_event(run: Dict[str, Any], base_seed: int) -> Dict[str, Any]:
@@ -5252,8 +5761,9 @@ def _cultivation_build_sacrifice_event(run: Dict[str, Any], base_seed: int) -> D
             meta={"note": "离开"},
         )
     )
+    _cultivation_attach_requirements(run, "sacrifice", event_seed, options)
     description = f"{altar_text}，低语声蛊惑你献出心神与铜钱。"
-    return {
+    event = {
         "id": f"{run['session']}-{run['step']}-sacrifice",
         "title": "秘祭商铺",
         "description": description,
@@ -5261,6 +5771,11 @@ def _cultivation_build_sacrifice_event(run: Dict[str, Any], base_seed: int) -> D
         "seed": event_seed,
         "event_type": "sacrifice",
     }
+    if run.get("talent_flags", {}).get("hazard_hint"):
+        hint = _cultivation_event_hint_from_requirements(options)
+        if hint:
+            event["hint"] = hint
+    return event
 
 
 def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Dict[str, Any]:
@@ -5620,7 +6135,8 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
         run["pending_event"] = None
         return
     run["step"] = int(run.get("step") or 0) + 1
-    base_seed = run["seed"] + run["step"] * 7919
+    entropy = int(run.get("entropy") or secrets.randbits(32))
+    base_seed = (run["seed"] ^ (run["step"] * 7919)) ^ entropy
     rng = random.Random(base_seed)
     trial_spec = _cultivation_next_trial(run)
     if trial_spec:
@@ -5639,7 +6155,8 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
         if roll < 0.145:
             run["pending_event"] = _cultivation_build_sacrifice_event(run, base_seed)
             return
-    if near_break and run["stage_index"] >= 1:
+    stage_index = int(run.get("stage_index", 0))
+    if near_break and stage_index >= 1:
         event_type = "tribulation"
     else:
         event_type = rng.choices(
@@ -5678,15 +6195,25 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
     dominant = None
     if stats:
         dominant = max(stats.items(), key=lambda item: int(item[1]))[0]
-    stage_index = int(run.get("stage_index", 0))
     stage_name = CULTIVATION_STAGE_NAMES[min(stage_index, len(CULTIVATION_STAGE_NAMES) - 1)]
-    blueprint = CULTIVATION_EVENT_BLUEPRINTS.get(event_type, {})
+    stage_variant = _cultivation_pick_stage_variant(stage_index, base_seed)
+    if stage_variant:
+        blueprint = stage_variant
+        event_type = stage_variant.get("event_type") or event_type
+    else:
+        blueprint = CULTIVATION_EVENT_BLUEPRINTS.get(event_type, {})
     default_titles = {
         "meditation": "闭关悟道",
         "adventure": "山野历练",
         "opportunity": "奇遇机缘",
         "training": "门派试炼",
         "tribulation": "境界瓶颈",
+        "mortal_trial": "凡人试炼",
+        "qi_refinement": "炼气运功",
+        "foundation_pulse": "灵脉共鸣",
+        "golden_core_storm": "丹雷内视",
+        "nascent_journey": "婴灵遨游",
+        "divine_insight": "化神悟道",
     }
     context: Dict[str, Any] = {
         "stage": stage_name,
@@ -5754,7 +6281,7 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
                     flavor or "",
                     meta=meta,
                 )
-            )
+        )
 
     if not options:
         options.append(
@@ -5771,25 +6298,22 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
             )
         )
 
+    _cultivation_attach_requirements(run, event_type, base_seed, options)
     event = {
         "id": f"{run['session']}-{run['step']}",
         "title": title,
         "description": desc or f"{stage_name}境界的历练悄然展开。",
         "options": options,
-        "seed": run["seed"] + run["step"] * 9973,
+        "seed": base_seed,
         "event_type": event_type,
     }
     if dominant and event_type == "opportunity":
         event["theme_stat"] = dominant
         event["theme_label"] = stat_labels.get(dominant)
     if run.get("talent_flags", {}).get("hazard_hint"):
-        worst = min(opt["health"][0] for opt in options)
-        if worst <= -14:
-            event["hint"] = "⚠️ 风险极大，稍有不慎便会重伤"
-        elif worst <= -8:
-            event["hint"] = "⚠️ 需谨慎，部分选择会造成不小损耗"
-        else:
-            event["hint"] = "✅ 风险可控，可随心抉择"
+        hint = _cultivation_event_hint_from_requirements(options)
+        if hint:
+            event["hint"] = hint
     run["pending_event"] = event
 
 def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, Any]:
@@ -5871,16 +6395,15 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
         health_delta = min(0.0, health_delta + float(flags.get("setback_reduce")))
 
     luck_value = int(stats.get("luck", 0))
-    success_threshold = min(
-        0.93,
-        CULTIVATION_SUCCESS_BASE
-        + stat_value * CULTIVATION_SUCCESS_STAT_WEIGHT
-        + luck_value * CULTIVATION_SUCCESS_LUCK_WEIGHT,
-    )
-    crit_threshold = min(
-        success_threshold * 0.55,
-        0.06 + (stat_value + luck_value) * 0.008,
-    )
+    requirement_info = option.get("requirement") or {}
+    requirement_value = int(requirement_info.get("value") or 0)
+    diff = stat_value - requirement_value
+    success_threshold = 0.5 + diff * CULTIVATION_REQUIREMENT_DIFF_WEIGHT + luck_value * 0.015
+    success_threshold = max(0.1, min(0.95, success_threshold))
+    crit_base = 0.08 + diff * 0.03 + luck_value * 0.006
+    crit_threshold = max(0.03, min(success_threshold * 0.6, crit_base))
+    if crit_threshold > success_threshold - 0.05:
+        crit_threshold = max(0.03, success_threshold - 0.05)
     roll = rng.random()
     if roll < crit_threshold:
         quality = "brilliant"
@@ -6015,6 +6538,8 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
     total_score_gain = run["score"] - prev_score
     final_net_health = run["health"] - prev_health
 
+    run["entropy"] = secrets.randbits(32)
+
     return {
         "progress_gain": round(applied_progress, 1),
         "score_gain": round(total_score_gain, 1),
@@ -6074,6 +6599,17 @@ def _cultivation_run_view(run: Dict[str, Any]) -> Dict[str, Any]:
                     meta_view["note"] = str(meta.get("note"))
                 if meta_view:
                     option_view["meta"] = meta_view
+            requirement = opt.get("requirement")
+            if isinstance(requirement, dict):
+                hint = requirement.get("hint")
+                level = requirement.get("level")
+                if hint:
+                    option_view["risk_hint"] = hint
+                if level is not None:
+                    try:
+                        option_view["risk_level"] = int(level)
+                    except Exception:
+                        pass
             opts_view.append(option_view)
         event_view = {
             "id": event.get("id"),
