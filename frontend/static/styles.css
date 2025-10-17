@@ -703,6 +703,7 @@ h3 + .muted.small { margin-top:-6px; }
 .cultivation-summary__talents .label { font-size:12px; color:#bfdbfe; letter-spacing:0.06em; }
 .cultivation-summary__collections { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
 .cultivation-summary__reward { color:#facc15; margin-bottom:6px; font-weight:600; }
+.cultivation-summary__reward.muted { color:#cbd5f5; font-weight:500; }
 .cultivation-summary__history { margin-top:12px; }
 .cultivation-summary__history .label { font-size:13px; color:#94a3b8; margin-bottom:4px; display:block; }
 .cultivation-summary__history ul { list-style:none; padding:0; margin:0; }
@@ -798,6 +799,10 @@ h3 + .muted.small { margin-top:-6px; }
 .cultivation-ending__meta { font-size:14px; color:#a5f3fc; }
 .cultivation-ending__best { font-size:13px; color:#fde68a; font-weight:600; }
 .cultivation-ending__reward { color:#fde68a; font-weight:600; margin-top:-4px; }
+.cultivation-ending__reward.muted { color:#a5b4fc; font-weight:500; }
+.cultivation-reward__weekly { display:block; font-size:12px; margin-top:4px; color:rgba(255,249,196,0.85); letter-spacing:0.01em; }
+.cultivation-summary__reward .cultivation-reward__weekly { color:rgba(253,230,138,0.85); }
+.cultivation-ending__reward.muted .cultivation-reward__weekly { color:rgba(165,180,252,0.75); }
 .cultivation-ending__coins { font-size:13px; color:#fef3c7; font-weight:600; }
 .cultivation-ending__stats { }
 .cultivation-ending__talents { display:flex; flex-wrap:wrap; gap:8px; font-size:13px; color:#cbd5f5; }

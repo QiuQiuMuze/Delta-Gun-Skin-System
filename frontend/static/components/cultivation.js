@@ -20,6 +20,39 @@ const CultivationPage = {
     const safe = String(tone).toLowerCase().replace(/[^a-z0-9_-]/g, '');
     return safe ? `tone-${safe}` : '';
   },
+  renderRewardNotice(reward, context = 'ending') {
+    if (!reward || typeof reward !== 'object') return '';
+    const baseClass = context === 'summary' ? 'cultivation-summary__reward' : 'cultivation-ending__reward';
+    const bricks = Number(reward.bricks || 0);
+    const capValRaw = Number(reward.weekly_cap || reward.weeklyCap || 0);
+    const hasCap = Number.isFinite(capValRaw) && capValRaw > 0;
+    const awardedRaw = reward.weekly_awarded != null ? Number(reward.weekly_awarded) : bricks;
+    const awardedVal = hasCap && Number.isFinite(awardedRaw)
+      ? Math.max(0, Math.min(capValRaw, awardedRaw))
+      : Math.max(0, Number.isFinite(awardedRaw) ? awardedRaw : 0);
+    const weeklyLine = hasCap
+      ? `<span class="cultivation-reward__weekly">本周修仙奖励 ${this.fmtInt(awardedVal)} / ${this.fmtInt(capValRaw)} 块</span>`
+      : '';
+    if (bricks > 0) {
+      return `<div class="${baseClass}">🎁 获得 ${this.fmtInt(bricks)} 块砖${weeklyLine}</div>`;
+    }
+    const reason = String(reward.reason || '').toLowerCase();
+    let note = '';
+    if (reason === 'ending') {
+      note = '未达成好结局，未能领取砖奖励。';
+    } else if (reason === 'cap') {
+      note = hasCap ? `本周修仙砖奖励已达上限（${this.fmtInt(capValRaw)} 块）。` : '本周修仙砖奖励已达上限。';
+    } else if (reason === 'score') {
+      note = '本次得分未达到奖励要求，未能领取砖奖励。';
+    } else if (reason === 'disabled') {
+      note = '当前奖励未开启，未能获得砖。';
+    }
+    if (!note) {
+      return '';
+    }
+    const noteHtml = escapeHtml(note);
+    return `<div class="${baseClass} muted">${noteHtml}${weeklyLine}</div>`;
+  },
   getOrigin(lobby, id) {
     const list = Array.isArray(lobby?.origins) ? lobby.origins : [];
     return list.find(item => item && item.id === id) || null;
@@ -217,9 +250,7 @@ const CultivationPage = {
     const talents = talentData.length
       ? `<div class="cultivation-ending__talents"><span class="label">天赋</span>${this.renderTalentChips(talentData)}</div>`
       : '';
-    const reward = result.reward && Number(result.reward.bricks) > 0
-      ? `<div class="cultivation-ending__reward">🎁 获得 ${fmtInt(result.reward.bricks)} 块砖</div>`
-      : '';
+    const reward = this.renderRewardNotice(result.reward, 'ending');
     const collections = `
       <div class="cultivation-ending__collections">
         ${this.renderCollection('法宝', result.artifacts, '暂无法宝')}
@@ -419,9 +450,6 @@ const CultivationPage = {
     const playCount = fmtInt(state.play_count || 0);
     const last = state.last_result || {};
     const lastSummary = this.renderLastSummary(last, fmtInt);
-    const rewardInfo = last && last.reward && Number(last.reward.bricks) > 0
-      ? `<div class="cultivation-summary__reward">🎁 获得 ${fmtInt(last.reward.bricks)} 块砖</div>`
-      : '';
     const historyList = Array.isArray(state.history) && state.history.length
       ? state.history.slice().reverse().map(item => `<li><span class="label">${escapeHtml(item.stage || '')}</span><span class="meta">${fmtInt(item.score || 0)} 分 · ${fmtInt(item.age || 0)} 岁</span></li>`).join('')
       : '<li class="muted">暂无历史记录</li>';
@@ -432,7 +460,7 @@ const CultivationPage = {
           <div class="cultivation-summary__stats">🏆 最高 ${bestScore} 分 · 累计 ${playCount} 次</div>
         </div>
         ${lastSummary}
-        ${rewardInfo}
+        ${this.renderRewardNotice(last?.reward, 'summary')}
         <div class="cultivation-summary__history">
           <div class="label">历史记录</div>
           <ul>${historyList}</ul>
