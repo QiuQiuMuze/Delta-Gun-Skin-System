@@ -536,6 +536,17 @@ const CultivationPage = {
     const options = Array.isArray(event?.options) ? event.options : [];
     if (!options.length) return {};
     const baseSeed = Number(event?.seed || 0) || 0;
+    const stats = (this._state?.run?.stats) || (this._state?.lobby?.base_stats) || {};
+    const chooseText = (list, key) => {
+      if (!Array.isArray(list) || !list.length) return '';
+      const index = Math.abs((baseSeed + key) % list.length);
+      return list[index];
+    };
+    const fortuneTexts = [
+      '✨ 若顺利完成，将有机会收获巨大利益。',
+      '✨ 此选项潜藏机缘，或许会有意外惊喜。',
+      '🌈 成功后有望触发额外奖励。',
+    ];
     const decorated = options.map((opt, idx) => {
       const meta = opt?.meta || {};
       const healthRange = Array.isArray(opt?.health) ? opt.health : [];
@@ -550,6 +561,18 @@ const CultivationPage = {
       const hasSacrifice = Array.isArray(meta.sacrifice) && meta.sacrifice.length > 0;
       const hasCost = Number(meta.cost || 0) > 0;
       const isTrial = (opt?.type || '') === 'trial';
+      const focusKey = typeof opt?.focus === 'string' ? opt.focus : '';
+      const focusLabel = focusKey ? this.statLabel(focusKey) : '';
+      const focusValueRaw = focusKey ? Number(stats?.[focusKey]) : NaN;
+      const focusValue = Number.isFinite(focusValueRaw) ? focusValueRaw : NaN;
+      const abilityLow = Number.isFinite(focusValue) ? focusValue < 8 : false;
+      const riskScore = (
+        Math.max(0, -minHealth) * 2 +
+        (hasSacrifice ? 40 : 0) +
+        (isTrial ? 36 : 0) +
+        (hasCost ? 6 : 0) +
+        (abilityLow ? (8 - Math.max(focusValue, 0)) * 3 : 0)
+      );
       return {
         idx,
         minHealth,
@@ -558,41 +581,61 @@ const CultivationPage = {
         hasSacrifice,
         hasCost,
         isTrial,
+        focusKey,
+        focusLabel,
+        focusValue,
+        abilityLow,
+        meta,
+        riskScore,
       };
     });
-    const chooseText = (list, key) => {
-      if (!Array.isArray(list) || !list.length) return '';
-      const index = Math.abs((baseSeed + key) % list.length);
-      return list[index];
-    };
-    const cautionTexts = [
-      '⚠️ 此举风险颇高，需衡量自身底蕴。',
-      '⚠️ 稍有不慎便会受创，请谨慎抉择。',
-    ];
-    const perilTexts = [
-      '☠️ 风险极大，实力不足者恐遭重创。',
-      '☠️ 天险难渡，需有绝对把握方可尝试。',
-    ];
-    const fortuneTexts = [
-      '✨ 若顺利完成，将有机会收获巨大利益。',
-      '✨ 此选项潜藏机缘，或许会有意外惊喜。',
-      '🌈 成功后有望触发额外奖励。',
-    ];
-    const hints = {};
-    const dangerCandidate = decorated.reduce((best, item) => {
-      if (!best) return item;
-      if (item.minHealth < best.minHealth) return item;
-      if (item.minHealth === best.minHealth) {
-        if (item.hasSacrifice && !best.hasSacrifice) return item;
-        if (item.isTrial && !best.isTrial) return item;
+    const buildCautionText = (item) => {
+      const statLabel = item.focusLabel ? `${item.focusLabel}${Number.isFinite(item.focusValue) ? this.fmtInt(item.focusValue) : ''}` : '自身实力';
+      if (item.isTrial) {
+        if (item.abilityLow) {
+          return `☠️ ${statLabel}略显不足，恐难通过考验。`;
+        }
+        return '⚠️ 这是一次严峻考验，失败可能遭受重创。';
       }
-      return best;
-    }, null);
-    if (dangerCandidate && (dangerCandidate.minHealth < -4 || dangerCandidate.hasSacrifice || dangerCandidate.isTrial || dangerCandidate.hasCost)) {
-      const severe = dangerCandidate.minHealth <= -18 || dangerCandidate.hasSacrifice || dangerCandidate.isTrial;
+      if (item.hasSacrifice) {
+        return '☠️ 需要献祭重要资源，稍有不慎便会受创。';
+      }
+      if (item.minHealth <= -12) {
+        return '☠️ 失败会造成严重伤势，请确保底蕴充足。';
+      }
+      if (item.abilityLow) {
+        return `⚠️ ${statLabel}偏低，成功率不高，需谨慎抉择。`;
+      }
+      if (item.minHealth < -4) {
+        return '⚠️ 可能会受伤，行动前务必衡量体魄。';
+      }
+      if (item.hasCost) {
+        return '⚠️ 需要额外投入资源，未必能换回收益。';
+      }
+      return '⚠️ 机缘伴随风险，切勿掉以轻心。';
+    };
+    const buildRewardText = (item) => {
+      const loot = item.meta?.loot || {};
+      const lootName = item.meta?.loot_name || loot?.name;
+      if (lootName) {
+        return `✨ 顺利完成可望得到${lootName}。`;
+      }
+      if (item.meta?.gain_coins) {
+        return `✨ 成功将获得约${this.fmtInt(item.meta.gain_coins)}枚铜钱。`;
+      }
+      if (item.rewardScore > 0) {
+        return chooseText(fortuneTexts, item.idx + 7) || '✨ 若成功，修行将迈进一步。';
+      }
+      return '✨ 若成功，修行将迈进一步。';
+    };
+    const hints = {};
+    const riskSorted = decorated.slice().sort((a, b) => (b.riskScore || 0) - (a.riskScore || 0));
+    const dangerCandidate = riskSorted[0] || null;
+    if (dangerCandidate) {
+      const severe = dangerCandidate.minHealth <= -12 || dangerCandidate.hasSacrifice || dangerCandidate.isTrial;
       hints[dangerCandidate.idx] = {
         tone: severe ? 'danger' : 'warning',
-        text: chooseText(severe ? perilTexts : cautionTexts, dangerCandidate.idx + 3),
+        text: buildCautionText(dangerCandidate),
       };
     }
     const rewardSorted = decorated
@@ -601,14 +644,14 @@ const CultivationPage = {
         rewardScore: item.rewardScore + (item.hasCost ? -10 : 0),
       }))
       .sort((a, b) => (b.rewardScore || 0) - (a.rewardScore || 0));
-    let rewardCandidate = rewardSorted.find(item => (item.rewardScore > 0 || item.hasLoot));
+    let rewardCandidate = rewardSorted.find(item => item.rewardScore > 0 || item.hasLoot || item.meta?.gain_coins);
     if (rewardCandidate && hints[rewardCandidate.idx]) {
-      rewardCandidate = rewardSorted.find(item => !hints[item.idx] && (item.rewardScore > 0 || item.hasLoot));
+      rewardCandidate = rewardSorted.find(item => !hints[item.idx] && (item.rewardScore > 0 || item.hasLoot || item.meta?.gain_coins));
     }
     if (rewardCandidate) {
       hints[rewardCandidate.idx] = {
         tone: 'boon',
-        text: chooseText(fortuneTexts, rewardCandidate.idx + 7),
+        text: buildRewardText(rewardCandidate),
       };
     }
     return hints;
