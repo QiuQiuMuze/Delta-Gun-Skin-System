@@ -2,12 +2,13 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# 1) 安装依赖
-python3 -m venv .venv
+if [ ! -d .venv ]; then
+  python3 -m venv .venv
+fi
 source .venv/bin/activate
 pip install -U pip
 pip install -r backend/requirements.txt
 
-# 2) 运行网站（同域提供 API + 前端）
+echo "Backend ready. Launching FastAPI on http://0.0.0.0:8000"
 cd backend
-uvicorn server_web:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
