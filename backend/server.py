@@ -4090,6 +4090,64 @@ CULTIVATION_EVENT_BLUEPRINTS = {
                     ],
                 },
             },
+            {
+                "id": "scout",
+                "focus": "mind",
+                "type": "insight",
+                "progress": (50, 82),
+                "health": (-8, 2),
+                "score": (52, 80),
+                "label": {
+                    "templates": [
+                        "察觉地势布局",
+                        "布下探查灵纹",
+                        "细查{terrain}伏脉",
+                    ],
+                },
+                "detail": {
+                    "templates": [
+                        "展开{focus_label}推演地势，将{threat}的源头逐一标记。",
+                        "绘制灵纹图录，寻找能助{mainline_goal}的隐秘通道。",
+                        "借心神勘察周围，推演下一步行动的最佳路线。",
+                    ],
+                },
+                "flavor": {
+                    "templates": [
+                        "目光如炬，灵识铺陈",
+                        "阵纹蔓延，信息入海",
+                        "思绪疾转，洞见杀机",
+                    ],
+                },
+            },
+            {
+                "id": "ward",
+                "focus": "spirit",
+                "type": "escape",
+                "progress": (44, 70),
+                "health": (-6, 4),
+                "score": (46, 72),
+                "label": {
+                    "templates": [
+                        "布设灵阵稳局",
+                        "立下护行结界",
+                        "借{focus_label}镇压煞气",
+                    ],
+                },
+                "detail": {
+                    "templates": [
+                        "围绕{terrain}布设结界，减弱{threat}带来的冲击，为后续行动铺路。",
+                        "以{focus_label}镇压四周，留出与{mainline_goal}相关的安全通道。",
+                        "把灵力化作护盾，确保同伴能顺利穿越险地。",
+                    ],
+                },
+                "flavor": {
+                    "templates": [
+                        "灵光交织，护罩成形",
+                        "阵纹闪烁，煞气退散",
+                        "心灯守护，风暴渐平",
+                    ],
+                },
+            },
         ],
     },
     "opportunity": {
@@ -5485,48 +5543,282 @@ CULTIVATION_OUTCOME_PREFIXES = [
     "{age} 岁的你在{stage}境界中",
     "{stage}的你此刻",
     "年仅{age} 岁却已修至{stage}，你",
+    "历经万难的你立于{stage}之境，",
+    "此刻你稳居{stage}阶位，",
 ]
 
 CULTIVATION_OUTCOME_BACKDROPS = {
-    "meditation": ["静室灵雾缭绕，", "心湖澄澈如镜，", "丹炉温热如春，"],
-    "adventure": ["山野杀机四伏，", "荒域尘砂飞舞，", "古阵符光闪烁，"],
-    "opportunity": ["命星灿然回响，", "机缘氤氲环绕，", "天机轻声低语，"],
-    "training": ["宗门同门屏息，", "长老目光炯炯，", "讲台道音回荡，"],
-    "tribulation": ["雷海咆哮不止，", "劫云压顶欲坠，", "天威滚滚如潮，"],
-    "general": ["灵气翻涌之间，", "天地默然关注，", "周遭玄光升腾，"],
+    "meditation": [
+        "静室灵雾缭绕，",
+        "心湖澄澈如镜，",
+        "丹炉温热如春，",
+        "木鱼轻鸣回荡，",
+    ],
+    "adventure": [
+        "山野杀机四伏，",
+        "荒域尘砂飞舞，",
+        "古阵符光闪烁，",
+        "密林妖风尖啸，",
+    ],
+    "opportunity": [
+        "命星灿然回响，",
+        "机缘氤氲环绕，",
+        "天机轻声低语，",
+        "造化自虚空垂落，",
+    ],
+    "training": [
+        "宗门同门屏息，",
+        "长老目光炯炯，",
+        "讲台道音回荡，",
+        "擂台战鼓震耳，",
+    ],
+    "tribulation": [
+        "雷海咆哮不止，",
+        "劫云压顶欲坠，",
+        "天威滚滚如潮，",
+        "火光吞没四极，",
+    ],
+    "general": [
+        "灵气翻涌之间，",
+        "天地默然关注，",
+        "周遭玄光升腾，",
+        "风雷交鸣映照身影，",
+    ],
 }
 
 CULTIVATION_FOCUS_ACTIONS = {
-    "mind": ["以{focus_label}推演星河，", "让{focus_label}贯穿神识，", "聚拢{focus_label}洞悉玄妙，"],
-    "body": ["借{focus_label}轰碎阻碍，", "让{focus_label}化作雷霆，", "以{focus_label}硬撼险境，"],
-    "spirit": ["收敛心神守护本心，", "让{focus_label}包裹神魂，", "以{focus_label}抚平波澜，"],
-    "luck": ["凭{focus_label}牵引天机，", "顺着{focus_label}寻找转机，", "让{focus_label}拨动命星，"],
-    "default": ["催动{focus_label}迎上前去，", "调度{focus_label}应对变数，"],
+    "mind": [
+        "以{focus_label}推演星河，",
+        "让{focus_label}贯穿神识，",
+        "聚拢{focus_label}洞悉玄妙，",
+        "借{focus_label}串联万千符理，",
+    ],
+    "body": [
+        "借{focus_label}轰碎阻碍，",
+        "让{focus_label}化作雷霆，",
+        "以{focus_label}硬撼险境，",
+        "激发{focus_label}镇压血潮，",
+    ],
+    "spirit": [
+        "收敛心神守护本心，",
+        "让{focus_label}包裹神魂，",
+        "以{focus_label}抚平波澜，",
+        "借{focus_label}映照前路，",
+    ],
+    "luck": [
+        "凭{focus_label}牵引天机，",
+        "顺着{focus_label}寻找转机，",
+        "让{focus_label}拨动命星，",
+        "借{focus_label}感知潜伏变数，",
+    ],
+    "default": [
+        "催动{focus_label}迎上前去，",
+        "调度{focus_label}应对变数，",
+        "驾驭{focus_label}消弭冲击，",
+    ],
 }
 
 CULTIVATION_OUTCOME_ACTION_WRAPPERS = [
     "你选择了{action}，",
     "你尝试{action}，",
     "你以{action}应对，",
+    "你顺势施展{action}，",
+    "你沉吟片刻后执行{action}，",
 ]
 
-CULTIVATION_OUTCOME_RESULTS = {
-    "success": [
-        "终将局势掌控，修为稳步攀升。",
-        "灵机顺势归一，道基愈发牢固。",
-        "沉淀为实，一切努力化作进境。",
-    ],
+CULTIVATION_OUTCOME_QUALITY_WORDS = {
+    "brilliant": "大获全胜",
+    "success": "顺利有成",
+    "failure": "功败垂成",
+    "neutral": "波澜不惊",
+}
+
+CULTIVATION_OUTCOME_REACTIONS = {
+    "general": {
+        "brilliant": [
+            "{quality_word}，体内法海奔腾，几欲再攀一个层次。",
+            "{quality_word}，周身灵光凝成星河，引得天地轰鸣。",
+            "{quality_word}，你感到大道纹路在指尖跃动。",
+        ],
+        "success": [
+            "{quality_word}，气机回环间根基越发牢靠。",
+            "{quality_word}，细微顿悟缓缓沉入道基。",
+            "{quality_word}，你的呼吸与天地节奏逐渐契合。",
+        ],
+        "failure": [
+            "{quality_word}，你只得按捺躁动，默默疗伤。",
+            "{quality_word}，不得不暂退一步，以免伤势扩大。",
+            "{quality_word}，你勉力稳住心神，为下一次再战蓄势。",
+        ],
+        "neutral": [
+            "{quality_word}，你收拾心绪，继续踏上征程。",
+            "{quality_word}，此段插曲终究化作旅途一声叹息。",
+            "{quality_word}，你将心神收回，不让情绪掀起波澜。",
+        ],
+    },
+    "meditation": {
+        "brilliant": [
+            "{quality_word}，心湖之上升起万千道纹，顿悟呼之欲出。",
+            "{quality_word}，你看见本命真灵在丹田开枝散叶。",
+        ],
+        "success": [
+            "{quality_word}，一缕灵机稳稳落入识海。",
+            "{quality_word}，呼吸绵长，玄关愈发通达。",
+        ],
+        "failure": [
+            "{quality_word}，杂念突起令灵机受阻，只得暂缓修行。",
+            "{quality_word}，丹田翻涌，你急忙稳住气息。",
+        ],
+    },
+    "training": {
+        "brilliant": [
+            "{quality_word}，你的演武令台下惊叹不已。",
+            "{quality_word}，师长点头，赐下新的传承指点。",
+        ],
+        "success": [
+            "{quality_word}，招式愈发圆融，筋骨在磨砺中鸣响。",
+            "{quality_word}，你在实战中捕捉到新的破绽。",
+        ],
+        "failure": [
+            "{quality_word}，一时疏忽被对手反制，只得认栽。",
+            "{quality_word}，你被迫退出擂台，暗自记下破绽。",
+        ],
+    },
+    "adventure": {
+        "brilliant": [
+            "{quality_word}，险地反成历练之所，天地赐下厚礼。",
+            "{quality_word}，你将危机转为机缘，满载而归。",
+        ],
+        "success": [
+            "{quality_word}，你巧妙避开杀机，稳稳脱身。",
+            "{quality_word}，荒野之行虽险终究有所斩获。",
+        ],
+        "failure": [
+            "{quality_word}，妖风骤起迫使你狼狈撤离。",
+            "{quality_word}，机关齐鸣，你带伤突围。",
+        ],
+    },
+    "opportunity": {
+        "brilliant": [
+            "{quality_word}，命星照耀，造化滚滚而来。",
+            "{quality_word}，你抓住天机，福泽连连。",
+        ],
+        "success": [
+            "{quality_word}，一缕玄光落入体内，化作长远机缘。",
+            "{quality_word}，你稳稳接下机缘，积累悄然加深。",
+        ],
+        "failure": [
+            "{quality_word}，稍纵即逝的天机被你错过，只留遗憾。",
+            "{quality_word}，造化散去，你唯有暗记此次教训。",
+        ],
+    },
+    "ambush": {
+        "brilliant": [
+            "{quality_word}，你反守为攻，敌影尽数化作飞灰。",
+            "{quality_word}，杀招迭出，伏击者魂飞魄散。",
+        ],
+        "success": [
+            "{quality_word}，你以雷霆手段击退伏击之敌。",
+            "{quality_word}，刀光划破夜幕，敌踪仓皇遁逃。",
+        ],
+        "failure": [
+            "{quality_word}，敌人攻势凌厉，你被迫以命换命。",
+            "{quality_word}，伤痕累累的你暂避锋芒。",
+        ],
+    },
+    "trial": {
+        "brilliant": [
+            "{quality_word}，你以无上悟性穿越层层考验。",
+            "{quality_word}，古阵轰鸣臣服，你手持传承昂然而立。",
+        ],
+        "success": [
+            "{quality_word}，阵纹顺从你的脚步一一熄灭。",
+            "{quality_word}，你稳稳守住心神，踏过试炼尽头。",
+        ],
+        "failure": [
+            "{quality_word}，幻境反噬，你被迫退出试炼。",
+            "{quality_word}，考验残酷，你只得暂时止步。",
+        ],
+    },
+    "tribulation": {
+        "brilliant": [
+            "{quality_word}，劫雷倒灌成甘霖，你的身躯熔铸成新的法体。",
+            "{quality_word}，天威俯首，你自雷海中昂然而立。",
+        ],
+        "success": [
+            "{quality_word}，你稳稳撑过每一道雷霆，法力更为澄净。",
+            "{quality_word}，劫光渐散，你感到生机焕然。",
+        ],
+        "failure": [
+            "{quality_word}，劫力反噬，你忙不迭以灵药固住根基。",
+            "{quality_word}，雷霆轰鸣逼得你仓促落败。",
+        ],
+    },
+    "merchant": {
+        "neutral": [
+            "{quality_word}，你与行脚商贩客气作别。",
+            "{quality_word}，你收拢心念未让波澜起伏。",
+        ],
+    },
+    "sacrifice": {
+        "brilliant": [
+            "{quality_word}，祭坛回馈的力量让你浑身轻松。",
+            "{quality_word}，血祭化作纯净灵泉灌入经脉。",
+        ],
+        "success": [
+            "{quality_word}，代价换来可靠回报。",
+            "{quality_word}，祭坛光芒渐敛，你稳稳接住馈赠。",
+        ],
+        "failure": [
+            "{quality_word}，献祭反噬，你忙不迭稳住气血。",
+            "{quality_word}，神坛怒啸，抽走你一缕精气。",
+        ],
+    },
+}
+
+CULTIVATION_OUTCOME_TRAP_TAILS = {
     "brilliant": [
-        "灵光炸裂，境界猛进，天地为之惊叹！",
-        "大道回响，修为扶摇而上，几近破壁。",
-        "顿悟如泉涌现，你的气势直冲九霄。",
+        "可暗流忽起，潜藏陷阱仍让你付出鲜血代价。",
+        "只是杀机未散，你亦难免受了几分创伤。",
+    ],
+    "success": [
+        "然而埋伏的陷阱突然引爆，让你险些失足。",
+        "可谁料机关乍现，你被擦伤数处。",
     ],
     "failure": [
-        "却遭反噬，只能暂避锋芒。",
-        "局势失控，你被迫后撤自保。",
-        "意外横生，修为受挫气血翻滚。",
+        "更糟的是，暗藏机关雪上加霜，让伤势愈发沉重。",
+        "偏又触动陷阱，令你踉跄倒退。",
+    ],
+    "neutral": [
+        "可暗角的陷阱仍让空气一紧，你只能暗中戒备。",
     ],
 }
+
+
+def _cultivation_loot_summary(loot: Optional[Dict[str, Any]], quality: str) -> Optional[str]:
+    if not loot or not isinstance(loot, dict):
+        return None
+    name = str(loot.get("name") or "").strip()
+    loot_type = str(loot.get("type") or "").strip()
+    if not name or not loot_type:
+        return None
+    desc = str(loot.get("desc") or "").strip()
+    if loot_type == "companion":
+        body = f"道友「{name}」愿与你并肩"
+    elif loot_type == "technique":
+        body = f"传承「{name}」归入你的经卷"
+    else:
+        body = f"法宝「{name}」被你收入袖中"
+    if desc:
+        body = f"{body}，{desc}"
+    prefix_map = {
+        "brilliant": "更让人振奋的是，",
+        "success": "此外，",
+        "failure": "虽有波折，但",
+        "neutral": "临别前，",
+    }
+    prefix = prefix_map.get(quality, "此外，")
+    return f"{prefix}{body}。"
 
 CULTIVATION_STAT_KEYS = [
     ("body", "体魄"),
@@ -5896,6 +6188,9 @@ def _cultivation_outcome_text(
     quality: str,
     rng: random.Random,
     run: Dict[str, Any],
+    *,
+    trap_triggered: bool = False,
+    loot_summary: Optional[str] = None,
 ) -> str:
     stage = CULTIVATION_STAGE_NAMES[
         min(int(run.get("stage_index", 0)), len(CULTIVATION_STAGE_NAMES) - 1)
@@ -5911,16 +6206,34 @@ def _cultivation_outcome_text(
         "focus_label": focus_label,
         "action": action,
     }
+    quality_word = CULTIVATION_OUTCOME_QUALITY_WORDS.get(quality, "")
+    if quality_word:
+        context["quality_word"] = quality_word
     prefix = rng.choice(CULTIVATION_OUTCOME_PREFIXES)
     backdrop_pool = CULTIVATION_OUTCOME_BACKDROPS.get(event_type) or CULTIVATION_OUTCOME_BACKDROPS["general"]
     backdrop = rng.choice(backdrop_pool)
     focus_pool = CULTIVATION_FOCUS_ACTIONS.get(focus) or CULTIVATION_FOCUS_ACTIONS["default"]
     focus_line = rng.choice(focus_pool)
     wrapper = rng.choice(CULTIVATION_OUTCOME_ACTION_WRAPPERS)
-    result_pool = CULTIVATION_OUTCOME_RESULTS.get(quality) or CULTIVATION_OUTCOME_RESULTS["success"]
-    result = rng.choice(result_pool)
-    pieces = [prefix, backdrop, focus_line, wrapper, result]
-    return "".join(piece.format_map(_SafeFormatDict(context)) for piece in pieces)
+    reaction_map = CULTIVATION_OUTCOME_REACTIONS.get(event_type, {})
+    tail_options = reaction_map.get(quality)
+    if not tail_options:
+        tail_options = CULTIVATION_OUTCOME_REACTIONS["general"].get(quality)
+    if not tail_options:
+        tail_options = CULTIVATION_OUTCOME_REACTIONS["general"].get("success", [""])
+    tail = rng.choice(tail_options)
+    pieces = [prefix, backdrop, focus_line, wrapper, tail]
+    narrative = "".join(piece.format_map(_SafeFormatDict(context)) for piece in pieces)
+    extras: List[str] = []
+    if trap_triggered:
+        trap_pool = CULTIVATION_OUTCOME_TRAP_TAILS.get(quality) or CULTIVATION_OUTCOME_TRAP_TAILS.get("success", [])
+        if trap_pool:
+            extras.append(rng.choice(trap_pool).format_map(_SafeFormatDict(context)))
+    if loot_summary:
+        extras.append(str(loot_summary))
+    if extras:
+        narrative = f"{narrative}{''.join(extras)}"
+    return narrative
 
 
 
@@ -6697,15 +7010,16 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
                 f"消耗{cost}铜钱换取珍稀法宝。",
                 "mind",
                 "merchant_buy",
-                (18, 28),
-                (-2, 2),
-                (24, 36),
+                (0, 0),
+                (0, 0),
+                (0, 0),
                 "与行脚商贩讨价还价。",
                 meta={
                     "cost": cost,
                     "loot": artifact,
                     "note": "法宝交易",
                     "skip_judgement": True,
+                    "neutral": True,
                 },
             )
         )
@@ -6723,15 +7037,16 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
                 f"支出{cost}铜钱获得一套玄妙功法。",
                 "spirit",
                 "merchant_buy",
-                (16, 26),
-                (-1, 3),
-                (20, 32),
+                (0, 0),
+                (0, 0),
+                (0, 0),
                 "用铜钱换取功法残卷。",
                 meta={
                     "cost": cost,
                     "loot": technique,
                     "note": "功法交易",
                     "skip_judgement": True,
+                    "neutral": True,
                 },
             )
         )
@@ -6743,9 +7058,9 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
                 "今日商贩未携带珍品，只能作罢。",
                 "luck",
                 "merchant_leave",
-                (12, 20),
-                (-1, 2),
-                (14, 22),
+                (0, 0),
+                (0, 0),
+                (0, 0),
                 "拱手作别行脚商贩。",
                 meta={"note": "空手而归", "skip_judgement": True, "neutral": True},
             )
@@ -6757,9 +7072,9 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
             "保留资源，继续赶路。",
             "luck",
             "merchant_leave",
-            (14, 22),
-            (-1, 3),
-            (16, 24),
+            (0, 0),
+            (0, 0),
+            (0, 0),
             "谢绝商贩的热情邀约。",
             meta={"note": "离开", "skip_judgement": True, "neutral": True},
         )
@@ -7144,8 +7459,11 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
         if not meta.get("loot"):
             _cultivation_log(run, f"【献祭】祭坛吐出{gain_coins}枚铜钱。", "highlight")
     loot_meta = meta.get("loot")
+    loot_payload: Optional[Dict[str, Any]] = None
+    loot_acquired = False
     if loot_meta:
-        _cultivation_record_gain(run, dict(loot_meta))
+        loot_payload = dict(loot_meta)
+        loot_acquired = _cultivation_record_gain(run, loot_payload)
     stat_value = int(stats.get(focus, 0))
     prev_progress = float(run.get("progress", 0.0))
     prev_score = float(run.get("score", 0.0))
@@ -7285,9 +7603,21 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
     net_health = run["health"] - prev_health
 
     event_type = event.get("event_type") or "general"
+    loot_summary = None
+    if loot_acquired and loot_payload:
+        loot_summary = _cultivation_loot_summary(loot_payload, quality)
     tone_map = {"brilliant": "highlight", "success": "success", "failure": "danger", "neutral": "info"}
     prefix_map = {"brilliant": "【绝佳】", "success": "【顺利】", "failure": "【失利】", "neutral": "【稳妥】"}
-    narrative = _cultivation_outcome_text(event_type, option.get("label"), focus, quality, rng, run)
+    narrative = _cultivation_outcome_text(
+        event_type,
+        option.get("label"),
+        focus,
+        quality,
+        rng,
+        run,
+        trap_triggered=trap_triggered,
+        loot_summary=loot_summary,
+    )
     if neutral_choice:
         log_text = f"{prefix_map[quality]}{narrative}"
     else:
@@ -7400,6 +7730,8 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
     }
     if neutral_choice:
         outcome["neutral"] = True
+    if loot_summary:
+        outcome["loot_summary"] = loot_summary
     if trap_triggered:
         outcome["trap_triggered"] = True
         outcome["trap_penalty"] = round(trap_penalty, 1)
