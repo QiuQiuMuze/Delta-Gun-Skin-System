@@ -7,6 +7,7 @@
     _music: new Map(),
     _musicBuffers: new Map(),
     _sfxBuffers: new Map(),
+    _activeSfx: new Set(),
     _currentRoute: null,
     _muted: false,
     _masterVolume: 0.75,
@@ -960,6 +961,7 @@
       const key = this._resolveSfxKey(name, opts);
       const buffer = this._getSfxBuffer(key, name, opts);
       if (!buffer) return;
+      let entry = null;
       try {
         const source = this.ctx.createBufferSource();
         source.buffer = buffer;
@@ -970,8 +972,35 @@
         const volume = typeof opts.volume === 'number' ? opts.volume : 1;
         gain.gain.value = volume;
         source.connect(gain).connect(this.sfxGain);
+        entry = { source, gain };
+        source.onended = () => {
+          this._releaseSfx(entry, false);
+        };
+        this._activeSfx.add(entry);
         source.start();
-      } catch (_) {}
+      } catch (_) {
+        if (entry) {
+          this._releaseSfx(entry, true);
+        }
+      }
+    },
+    _releaseSfx(entry, stopSource = false) {
+      if (!entry || entry._released) return;
+      entry._released = true;
+      try { entry.source.onended = null; } catch (_) {}
+      if (stopSource) {
+        try { entry.source.stop(); } catch (_) {}
+      }
+      try { entry.source.disconnect(); } catch (_) {}
+      try { entry.gain.disconnect(); } catch (_) {}
+      this._activeSfx.delete(entry);
+    },
+    stopAllSfx() {
+      if (!this.ctx) return;
+      Array.from(this._activeSfx).forEach(entry => {
+        this._releaseSfx(entry, true);
+      });
+      this._activeSfx.clear();
     },
     _resolveSfxKey(name, opts) {
       switch (name) {

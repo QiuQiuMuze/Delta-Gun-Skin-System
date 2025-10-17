@@ -234,6 +234,9 @@ const Pages = {
   }
 };
 
+let _currentRouteKey = null;
+let _currentPageObj = null;
+
 function renderNav() {
   const navNode = $nav();
   if (!navNode) return;
@@ -244,6 +247,19 @@ function renderNav() {
 
 async function renderRoute() {
   const r = (location.hash.replace(/^#\//,"") || "home");
+  const nextPage = Pages[r] || Pages.home;
+  const prevRoute = _currentRouteKey;
+  const prevPage = _currentPageObj;
+
+  if (prevPage && prevRoute && prevRoute !== r) {
+    try { prevPage.teardown?.(); } catch (_) {}
+  }
+  if (prevRoute && prevRoute !== r) {
+    window.AudioEngine?.stopAllSfx?.();
+  }
+
+  _currentRouteKey = r;
+  _currentPageObj = nextPage;
 
   if (API.token) {
     try { await API.me(); } catch(e) { /* 忽略 */ }
@@ -258,7 +274,7 @@ async function renderRoute() {
 
   renderNav();
   window.AudioEngine?.setRoute?.(r);
-  const p = Pages[r] || Pages.home;
+  const p = nextPage;
   PresenceTracker.setPage(r, p);
   const html = await (p.render?.() ?? "");
   $page().innerHTML = html;
