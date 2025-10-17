@@ -212,6 +212,7 @@ class CookieFactoryProfile(Base):
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     total_cookies = Column(Float, default=0.0)
     cookies_this_week = Column(Float, default=0.0)
+    prestige_cycle_cookies = Column(Float, default=0.0)
     manual_clicks = Column(Integer, default=0)
     golden_cookies = Column(Integer, default=0)
     prestige = Column(Integer, default=0)
@@ -440,6 +441,13 @@ def _ensure_cookie_profile_columns():
     if "claimed_bricks_this_week" not in cols:
         cur.execute(
             "ALTER TABLE cookie_factory_profiles ADD COLUMN claimed_bricks_this_week INTEGER NOT NULL DEFAULT 0"
+        )
+    if "prestige_cycle_cookies" not in cols:
+        cur.execute(
+            "ALTER TABLE cookie_factory_profiles ADD COLUMN prestige_cycle_cookies FLOAT NOT NULL DEFAULT 0"
+        )
+        cur.execute(
+            "UPDATE cookie_factory_profiles SET prestige_cycle_cookies = total_cookies"
         )
     con.commit()
     con.close()
@@ -6376,6 +6384,7 @@ def cookie_add(profile: CookieFactoryProfile, amount: float) -> float:
     profile.total_cookies += amount
     profile.cookies_this_week += amount
     profile.banked_cookies += amount
+    profile.prestige_cycle_cookies += amount
     return amount
 
 
@@ -6385,6 +6394,12 @@ def cookie_spend(profile: CookieFactoryProfile, amount: float) -> None:
     if profile.banked_cookies < amount:
         raise HTTPException(400, "饼干数量不足")
     profile.banked_cookies -= amount
+
+
+def cookie_prestige_requirement(profile: CookieFactoryProfile) -> float:
+    base = 10_000_000.0
+    count = max(0, int(profile.prestige or 0))
+    return base * (1 + count)
 
 
 def cookie_add_active_points(profile: CookieFactoryProfile, now: int, points: int) -> None:
@@ -6739,6 +6754,7 @@ def cookie_status_payload(
     sugar_ready_in = max(0, (int(profile.last_sugar_ts or 0) + COOKIE_SUGAR_COOLDOWN) - now)
     golden_ready_in = max(0, int(profile.golden_ready_ts or 0) - now)
     today_challenge = int(challenge_map.get(today, 0) or 0)
+    requirement = cookie_prestige_requirement(profile)
     return {
         "enabled": bool(feature_enabled),
         "now": now,
@@ -6746,6 +6762,7 @@ def cookie_status_payload(
             "cookies": round(float(profile.banked_cookies or 0.0), 2),
             "cookies_this_week": round(float(profile.cookies_this_week or 0.0), 2),
             "total_cookies": round(float(profile.total_cookies or 0.0), 2),
+            "prestige_cycle_cookies": round(float(profile.prestige_cycle_cookies or 0.0), 2),
             "manual_clicks": int(profile.manual_clicks or 0),
             "golden_cookies": int(profile.golden_cookies or 0),
             "prestige": int(profile.prestige or 0),
@@ -6757,6 +6774,7 @@ def cookie_status_payload(
             "penalty_multiplier": round(float(profile.penalty_multiplier or 1.0), 3),
             "next_bonus_multiplier": round(float(profile.pending_bonus_multiplier or 1.0), 3),
             "next_penalty_multiplier": round(float(profile.pending_penalty_multiplier or 1.0), 3),
+            "next_prestige_requirement": round(float(requirement), 2),
         },
         "buildings": buildings_payload,
         "mini_games": mini_payload,
@@ -7638,14 +7656,16 @@ def cookie_factory_act(inp: CookieActIn, user: User = Depends(user_from_token), 
             "inventory_total": int(user.unopened_bricks or 0),
         }
     elif action == "prestige":
-        requirement = 1_000_000
-        if float(profile.total_cookies or 0.0) < requirement:
-            raise HTTPException(400, "需要至少 100 万枚饼干方可升天")
+        requirement = cookie_prestige_requirement(profile)
+        if float(profile.prestige_cycle_cookies or 0.0) < requirement:
+            need_wan = int(requirement // 10_000)
+            raise HTTPException(400, f"需要至少 {need_wan} 万枚饼干方可升天")
         points = max(1, int((float(profile.total_cookies or 0.0) / 1_000_000_000) ** 0.5))
         profile.prestige = int(profile.prestige or 0) + 1
         profile.prestige_points = int(profile.prestige_points or 0) + points
         profile.banked_cookies = 0.0
         profile.cookies_this_week = 0.0
+        profile.prestige_cycle_cookies = 0.0
         profile.manual_clicks = 0
         profile.golden_cookies = 0
         profile.golden_ready_ts = now + 180
