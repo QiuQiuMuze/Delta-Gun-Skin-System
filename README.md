@@ -1,63 +1,88 @@
-# 三角洲抽砖模拟器
+# Delta Gun Skin System
 
-这是一个完整的 Web 版“三角洲抽砖”体验，涵盖抽卡、市场、钱包、管理员工具等系统。最新版本已经加入“饼干工厂 × 三角洲抽砖”联动小游戏，让玩家通过经营饼干来换取砖。
+使用 **React + Next.js + TypeScript + Tailwind CSS + React Query** 打造的前端界面，并搭配 **FastAPI + MongoDB** 的后端服务，为“三角洲抽砖”提供现代化的全栈体验。项目同时提供抽卡模拟、皮肤管理、玩家仓库等核心功能示例，方便二次开发扩展。
 
-## 主要功能
-- **抽卡系统**：支持单抽、十连，包含保底与多彩模板通知。
-- **砖市场**：玩家可以以 ≥40 三角币的价格挂单出售或委托收购砖，并自动处理撮合、手续费和返还逻辑。
-- **交易邮箱**：个人信息页新增“邮箱”标签，按砖/皮肤、买入/卖出分类显示最近的成交记录及净收益。
-- **管理员工具**：管理员可搜索用户、发放/扣除资产、审批充值、切换短信模式，并独家查看玩家的砖买卖列表。
-- **饼干工厂小游戏**：玩家点击大饼干、购买建筑、参与小游戏、升天、签到等行为会累积饼干与活跃度，每周结算最多 100 块砖。
+## 技术栈
 
-## 饼干工厂联动说明
-- **开启方式**：管理员在“管理员”界面中勾选“对玩家开放饼干工厂”即可开放，关闭后普通玩家将无法看到入口。
-- **玩法亮点**：
-  - 点击大饼干与黄金饼干获取即时奖励，并获得活跃积分。
-  - 购入光标、奶奶、工厂、矿井、时空传送门、时光机等建筑以提高 CPS。
-  - 经营花园、神殿、证券市场等小游戏获得额外加成和声望点数。
-  - 升天重置可获取声望点，提高下一轮效率。
-  - 每日签到获得 2 块“登录砖”，连续 7 天额外送出约 14 块奖励。
-- **砖结算**：
-  - 每 1 亿饼干≈1 块基础砖，产量越高比率越低。
-  - 每 10 活跃积分可兑换 1 块砖，每日封顶约 10 块。
-  - 每周上限 100 块砖，系统会在周一自动结算。
-  - 若连续两天未登录，下周效率下降约 30%。
-  - 在“三角洲”中消费或出售砖，会为下周饼干工厂提供约 5% 的产量加成，上限 25%。
+- 前端：Next.js 14、React 18、Tailwind CSS、@tanstack/react-query、Axios
+- 后端：FastAPI、Motor（MongoDB 驱动）、Pydantic v2、JWT 认证
+- 数据库：MongoDB（默认连接 `mongodb://localhost:27017/delta_gun`）
 
-## 本地运行
+## 功能概览
+
+- 🔐 用户注册、登录、获取个人信息，支持 JWT 鉴权。
+- 🎮 抽卡模拟：根据稀有度权重在 MongoDB 中的皮肤池抽取，并同步更新玩家仓库与钥匙数量。
+- 📦 仓库浏览：玩家可查看自己的抽卡记录，管理员可查看任意玩家仓库。
+- 🧰 皮肤管理：管理员可通过 API 新增、更新、删除皮肤。
+
+## 快速开始
+
+### 1. 启动后端（FastAPI）
+
 ```bash
 bash run.sh
 ```
-> 注意：首次运行会拉取依赖，可能需要联网环境。
 
-"""# 1️⃣ 查看当前提交历史（本地）
-git log --oneline
+> 脚本会创建虚拟环境并安装 `backend/requirements.txt` 中的依赖，然后以开发模式启动 `uvicorn app.main:app`，默认监听 `http://localhost:8000`。
 
-# 2️⃣ 获取远程最新版本（不合并）
-git fetch origin
+### 2. 启动前端（Next.js）
 
-# 3️⃣ 强制用远程 main 分支覆盖本地
-git reset --hard main
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-# 4️⃣ （可选）回档到指定历史提交（把 <commit_id> 换成 git log 里的一行）
-git reset --hard <commit_id>
+前端开发服务器默认运行在 `http://localhost:3000`，并通过 `NEXT_PUBLIC_API_BASE_URL` 环境变量访问后端 API（默认为 `http://localhost:8000/api`）。
 
-# 5️⃣ 强制推送到远程，覆盖 GitHub 上的内容
-git push origin main --force
+## 环境变量
 
-# 1) 抓取远端所有更新并清理已删除的远端分支引用
-git fetch --all --prune
+后端配置均可通过环境变量覆盖（详见 `backend/app/config.py`）：
 
-# 2) 看看本地分支与远端的对应关系（带上游、落后/领先情况）
-git branch -vv
+- `DELTA_MONGO_URL`：MongoDB 连接字符串，默认为 `mongodb://localhost:27017`
+- `DELTA_MONGO_DB`：数据库名称，默认为 `delta_gun`
+- `DELTA_JWT_SECRET`：JWT 密钥
+- `DELTA_JWT_ALGORITHM`：JWT 加密算法，默认为 `HS256`
+- `DELTA_JWT_EXPIRE_MINUTES`：令牌有效时间，默认 1440 分钟（24 小时）
 
-# 3) 对比本地与远端（会看到 origin/Chinese-language 指向 e48ab11 之类的新提交）
-git log --oneline --decorate --graph -n 20 --all
+前端可通过 `.env.local` 设置：
 
-# 确保在 Chinese-language 分支
-git switch main
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api
+```
 
-# 注意：这会丢弃本地未提交改动，请先 commit 或 stash
-git reset --hard origin/main
+## 常用 API
 
-"""
+| 方法 | 路径 | 说明 |
+| ---- | ---- | ---- |
+| `POST` | `/api/users` | 注册新玩家 |
+| `POST` | `/api/auth/token` | 账号登录，返回 JWT |
+| `GET` | `/api/auth/me` | 获取当前用户信息 |
+| `GET` | `/api/skins` | 列出全部皮肤 |
+| `POST` | `/api/skins` | 新增皮肤（需管理员）|
+| `POST` | `/api/gacha/draw` | 抽卡，消耗钥匙并返回结果 |
+
+详细数据模型可参考 `backend/app/schemas.py`。
+
+## 目录结构
+
+```
+backend/
+  app/
+    main.py            # FastAPI 入口
+    config.py          # 环境配置
+    db.py              # Mongo 连接管理
+    routes/            # API 路由（auth、users、skins、gacha）
+    schemas.py         # Pydantic 模型
+    services/          # 业务逻辑（抽卡权重）
+frontend/
+  app/                 # Next.js App Router 页面
+  components/          # UI 组件
+  lib/                 # React Query Provider 与 API 封装
+```
+
+## 开发建议
+
+- 首次运行前请确保已安装 MongoDB，并且服务运行在 `DELTA_MONGO_URL` 指定的地址。
+- 抽卡依赖皮肤池数据，可通过管理员身份调用 `/api/skins` 相关接口进行维护。
+- 若需部署生产环境，请为 JWT 设置强随机密钥，并在前后端设置正确的跨域与 HTTPS 配置。
