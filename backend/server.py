@@ -6701,7 +6701,12 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
                 (-2, 2),
                 (24, 36),
                 "与行脚商贩讨价还价。",
-                meta={"cost": cost, "loot": artifact, "note": "法宝交易"},
+                meta={
+                    "cost": cost,
+                    "loot": artifact,
+                    "note": "法宝交易",
+                    "skip_judgement": True,
+                },
             )
         )
     technique_rng = random.Random(event_seed ^ 0x2020)
@@ -6722,7 +6727,12 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
                 (-1, 3),
                 (20, 32),
                 "用铜钱换取功法残卷。",
-                meta={"cost": cost, "loot": technique, "note": "功法交易"},
+                meta={
+                    "cost": cost,
+                    "loot": technique,
+                    "note": "功法交易",
+                    "skip_judgement": True,
+                },
             )
         )
     if not options:
@@ -6737,6 +6747,7 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
                 (-1, 2),
                 (14, 22),
                 "拱手作别行脚商贩。",
+                meta={"note": "空手而归", "skip_judgement": True, "neutral": True},
             )
         )
     options.append(
@@ -6750,7 +6761,7 @@ def _cultivation_build_merchant_event(run: Dict[str, Any], base_seed: int) -> Di
             (-1, 3),
             (16, 24),
             "谢绝商贩的热情邀约。",
-            meta={"note": "离开"},
+            meta={"note": "离开", "skip_judgement": True, "neutral": True},
         )
     )
     description = "一位行脚商贩摆开摊位，低声兜售珍贵法器与功法。"
@@ -7093,6 +7104,12 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
     stats = run.get("stats", {})
     meta = option.get("meta") or {}
     opt_type = option.get("type") or ""
+    event_type = event.get("event_type") or "general"
+    neutral_choice = bool(meta.get("neutral"))
+    skip_resolution = bool(meta.get("skip_judgement"))
+    if event_type == "merchant":
+        neutral_choice = True
+        skip_resolution = True
     if opt_type == "trial":
         return _cultivation_resolve_trial(run, event, option, rng)
     sacrifices = meta.get("sacrifice") or []
@@ -7136,7 +7153,6 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
     progress_low, progress_high = option.get("progress", (40.0, 60.0))
     score_low, score_high = option.get("score", (40.0, 60.0))
     health_low, health_high = option.get("health", (-4.0, 2.0))
-    skip_resolution = bool(meta.get("skip_judgement"))
     if skip_resolution:
         progress_gain = 0.0
         score_gain = 0.0
@@ -7193,7 +7209,6 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
     if health_delta < 0 and flags.get("setback_reduce"):
         health_delta = min(0.0, health_delta + float(flags.get("setback_reduce")))
 
-    neutral_choice = bool(meta.get("neutral"))
     if neutral_choice:
         progress_gain = 0.0
         score_gain = 0.0
