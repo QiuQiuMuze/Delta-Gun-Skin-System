@@ -4090,6 +4090,64 @@ CULTIVATION_EVENT_BLUEPRINTS = {
                     ],
                 },
             },
+            {
+                "id": "scout",
+                "focus": "mind",
+                "type": "insight",
+                "progress": (50, 82),
+                "health": (-8, 2),
+                "score": (52, 80),
+                "label": {
+                    "templates": [
+                        "察觉地势布局",
+                        "布下探查灵纹",
+                        "细查{terrain}伏脉",
+                    ],
+                },
+                "detail": {
+                    "templates": [
+                        "展开{focus_label}推演地势，将{threat}的源头逐一标记。",
+                        "绘制灵纹图录，寻找能助{mainline_goal}的隐秘通道。",
+                        "借心神勘察周围，推演下一步行动的最佳路线。",
+                    ],
+                },
+                "flavor": {
+                    "templates": [
+                        "目光如炬，灵识铺陈",
+                        "阵纹蔓延，信息入海",
+                        "思绪疾转，洞见杀机",
+                    ],
+                },
+            },
+            {
+                "id": "ward",
+                "focus": "spirit",
+                "type": "escape",
+                "progress": (44, 70),
+                "health": (-6, 4),
+                "score": (46, 72),
+                "label": {
+                    "templates": [
+                        "布设灵阵稳局",
+                        "立下护行结界",
+                        "借{focus_label}镇压煞气",
+                    ],
+                },
+                "detail": {
+                    "templates": [
+                        "围绕{terrain}布设结界，减弱{threat}带来的冲击，为后续行动铺路。",
+                        "以{focus_label}镇压四周，留出与{mainline_goal}相关的安全通道。",
+                        "把灵力化作护盾，确保同伴能顺利穿越险地。",
+                    ],
+                },
+                "flavor": {
+                    "templates": [
+                        "灵光交织，护罩成形",
+                        "阵纹闪烁，煞气退散",
+                        "心灯守护，风暴渐平",
+                    ],
+                },
+            },
         ],
     },
     "opportunity": {
