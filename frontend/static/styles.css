@@ -773,6 +773,19 @@ h3 + .muted.small { margin-top:-6px; }
 .cultivation-option-risk.risk-warning { color:#fde68a; }
 .cultivation-option-risk.risk-danger { color:#fecaca; }
 .cultivation-option-risk.risk-boon { color:#bbf7d0; }
+.cultivation-option-fortune { margin-top:6px; font-size:12px; line-height:1.4; color:#dbeafe; display:flex; flex-direction:column; gap:2px; }
+.cultivation-option-fortune .label { font-size:11px; letter-spacing:0.08em; font-weight:600; text-transform:uppercase; opacity:0.95; }
+.cultivation-option-fortune .desc { font-size:11px; opacity:0.85; }
+.cultivation-option-fortune.tone-danger { color:#fecaca; }
+.cultivation-option-fortune.tone-warning { color:#fde68a; }
+.cultivation-option-fortune.tone-success { color:#bbf7d0; }
+.cultivation-option-fortune.tone-highlight { color:#fef08a; }
+.cultivation-option-debug { margin-top:6px; padding:6px 8px; border-radius:8px; background:rgba(22,30,52,0.75); border:1px dashed rgba(148,163,184,0.45); font-size:11px; line-height:1.5; color:#e2e8f0; display:flex; flex-direction:column; gap:4px; }
+.cultivation-option-debug .row { display:flex; justify-content:space-between; gap:12px; }
+.cultivation-option-debug .row span { color:#94a3b8; font-weight:500; }
+.cultivation-option-debug .row strong { color:#f8fafc; font-weight:600; text-align:right; }
+.cultivation-option-debug .row.trap strong { color:#fecaca; }
+.cultivation-option-debug .row.trap.safe strong { color:#cbd5f5; }
 .cultivation-log { margin-top:12px; }
 .cultivation-log__title { font-size:14px; color:#94a3b8; margin-bottom:6px; }
 .cultivation-log ul { max-height:200px; overflow:auto; background:rgba(148,163,184,0.06); border-radius:8px; padding:8px 12px; list-style:none; margin:0; }
