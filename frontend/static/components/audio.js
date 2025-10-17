@@ -12,9 +12,53 @@
     _masterVolume: 0.75,
     _toggleButton: null,
     _musicPresets: {
-      cultivation: { key: 'cultivation', seed: 4101, tempo: 68, scale: 'pentatonic', root: 196, bars: 12, pad: true, sparkle: true, warmth: 0.55, volume: 0.6 },
-      gacha: { key: 'gacha', seed: 9012, tempo: 102, scale: 'lydian', root: 220, bars: 8, pad: false, sparkle: true, swing: true, warmth: 0.65, volume: 0.62 },
-      cookie: { key: 'cookie', seed: 20241, tempo: 118, scale: 'major', root: 247, bars: 10, pad: true, sparkle: false, swing: true, warmth: 0.58, volume: 0.6 }
+      cultivation: {
+        key: 'cultivation-v2',
+        seed: 4101,
+        tempo: 56,
+        scale: 'pentatonic',
+        root: 174,
+        bars: 16,
+        pad: true,
+        sparkle: true,
+        warmth: 0.42,
+        volume: 0.64,
+        beatNoise: { density: 0.55, amp: 0.08, length: 0.38, color: 'pink', spread: 0.18, randomness: 0.25 },
+        pulse: { intervalBeats: 4, width: 1.2, amp: 0.38, freq: 48, shape: 'heartbeat', noise: 0.12, spread: 0.35 },
+        atmosphere: { type: 'wind', amp: 0.18, motion: 0.35, swayFreq: 0.03 }
+      },
+      gacha: {
+        key: 'gacha-v2',
+        seed: 9012,
+        tempo: 128,
+        scale: 'mystic',
+        root: 196,
+        bars: 8,
+        pad: false,
+        sparkle: true,
+        swing: false,
+        warmth: 0.5,
+        volume: 0.66,
+        beatNoise: { density: 3.4, amp: 0.26, length: 0.22, attack: 0.18, decay: 1.9, spread: 0.28, color: 'digital', click: 0.55 },
+        pulse: { intervalBeats: 0.5, width: 0.65, amp: 0.28, freq: 94, shape: 'gate', curve: 1.8, spread: 0.45 },
+        bass: { subdivision: 2, length: 0.9, amp: 0.42, notes: [-12, -12, -10, -17], glide: 0.25, decay: 2.1, spread: 0.3 },
+        riser: { lengthBeats: 4, amp: 0.34, freqStart: 180, freqEnd: 1760, shimmer: 0.22, curve: 1.18, spread: 0.55 }
+      },
+      cookie: {
+        key: 'cookie-v2',
+        seed: 20241,
+        tempo: 122,
+        scale: 'major',
+        root: 262,
+        bars: 12,
+        pad: true,
+        sparkle: true,
+        swing: true,
+        warmth: 0.54,
+        volume: 0.63,
+        beatNoise: { density: 2.6, amp: 0.22, length: 0.26, attack: 0.32, decay: 2.2, spread: 0.32, color: 'bright', click: 0.38 },
+        pulse: { intervalBeats: 1, width: 0.55, amp: 0.24, freq: 182, shape: 'pluck', noise: 0.06, spread: 0.4 }
+      }
     },
     ensure() {
       if (this.ctx || this._disabled) return;
@@ -249,23 +293,201 @@
         });
       }
 
-      const beatNoise = Math.max(totalBeats, 16);
-      for (let i = 0; i < beatNoise; i++) {
-        const offsetBeat = swing && i % 2 === 1 ? 1.08 : 1;
-        const beatTime = i * secondsPerBeat * offsetBeat;
-        const start = Math.floor(beatTime * sampleRate);
-        const len = Math.floor(secondsPerBeat * sampleRate * 0.2);
-        const pan = (rng() * 2 - 1) * 0.2;
-        for (let j = 0; j < len; j++) {
-          const idx = start + j;
-          if (idx >= length) break;
-          const progress = len <= 1 ? 0 : j / len;
-          const envelope = Math.pow(1 - progress, 2.5) * Math.pow(progress, 0.5);
-          const value = (rng() * 2 - 1) * envelope * 0.18;
-          const panLeft = pan <= 0 ? 1 : 1 - pan * 0.7;
-          const panRight = pan >= 0 ? 1 : 1 + pan * 0.7;
-          left[idx] += value * panLeft;
-          right[idx] += value * panRight;
+      const writeStereo = (idx, value, pan = 0, spread = 0.6) => {
+        const panLeft = pan <= 0 ? 1 : 1 - pan * spread;
+        const panRight = pan >= 0 ? 1 : 1 + pan * spread;
+        left[idx] += value * panLeft;
+        right[idx] += value * panRight;
+      };
+
+      const beatNoiseCfg = Object.assign({
+        density: 1,
+        amp: 0.18,
+        length: 0.2,
+        attack: 0.5,
+        decay: 2.5,
+        spread: 0.2,
+        color: 'white',
+        randomness: 0.35,
+        click: 0
+      }, preset.beatNoise || {});
+
+      if (beatNoiseCfg.amp > 0) {
+        const beatStep = beatNoiseCfg.density > 0 ? 1 / beatNoiseCfg.density : totalBeats;
+        const totalSteps = Math.max(Math.ceil(totalBeats / Math.max(beatStep, 0.01)), 1);
+        for (let i = 0; i < totalSteps; i++) {
+          const beatPos = i * beatStep;
+          if (beatPos >= totalBeats) break;
+          const offsetBeat = swing && i % 2 === 1 ? 1.08 : 1;
+          const beatTime = beatPos * secondsPerBeat * offsetBeat;
+          const start = Math.floor(beatTime * sampleRate);
+          const len = Math.max(1, Math.floor(secondsPerBeat * sampleRate * beatNoiseCfg.length));
+          const pan = (rng() * 2 - 1) * beatNoiseCfg.spread;
+          const ampJitter = Math.max(0.15, 1 + (rng() * 2 - 1) * beatNoiseCfg.randomness);
+          for (let j = 0; j < len; j++) {
+            const idx = start + j;
+            if (idx >= length) break;
+            const progress = len <= 1 ? 0 : j / len;
+            let envelope = Math.pow(1 - progress, beatNoiseCfg.decay || 2.5) * Math.pow(progress, beatNoiseCfg.attack || 0.5);
+            if (beatNoiseCfg.shape === 'ping') {
+              envelope = Math.pow(1 - progress, 3.5);
+            }
+            let value = (rng() * 2 - 1);
+            if (beatNoiseCfg.color === 'pink') {
+              value *= 1 - progress * 0.5;
+            } else if (beatNoiseCfg.color === 'bright') {
+              value = Math.sin(2 * Math.PI * (680 + rng() * 240) * (j / sampleRate)) * 0.6 + value * 0.4;
+            } else if (beatNoiseCfg.color === 'digital') {
+              value = (value > 0 ? 0.8 : -0.8) + value * 0.2;
+            }
+            if (beatNoiseCfg.click) {
+              const clickFreq = 580 + rng() * 920;
+              value = value * (1 - beatNoiseCfg.click) + Math.sin(2 * Math.PI * clickFreq * (j / sampleRate)) * beatNoiseCfg.click;
+            }
+            writeStereo(idx, value * envelope * beatNoiseCfg.amp * ampJitter, pan, 0.7);
+          }
+        }
+      }
+
+      const pulseCfg = preset.pulse || null;
+      if (pulseCfg && pulseCfg.amp > 0) {
+        const interval = Math.max(pulseCfg.intervalBeats || 4, 0.25);
+        const width = Math.max(pulseCfg.width || 0.8, 0.1);
+        const baseFreq = pulseCfg.freq || 60;
+        const pan = Math.max(-1, Math.min(1, typeof pulseCfg.pan === 'number' ? pulseCfg.pan : 0));
+        const spread = pulseCfg.spread || 0.5;
+        for (let beatPos = 0; beatPos < totalBeats + interval; beatPos += interval) {
+          const start = Math.floor(beatPos * secondsPerBeat * sampleRate);
+          const len = Math.max(1, Math.floor(secondsPerBeat * sampleRate * width));
+          const phaseOffset = pulseCfg.randomPhase ? rng() * Math.PI * 2 : 0;
+          for (let j = 0; j < len; j++) {
+            const idx = start + j;
+            if (idx >= length) break;
+            const progress = len <= 1 ? 0 : j / len;
+            let envelope;
+            switch (pulseCfg.shape) {
+              case 'heartbeat': {
+                const tightness = pulseCfg.beatTightness || 11;
+                const primary = Math.exp(-Math.pow((progress - 0.22) * tightness, 2));
+                const secondary = 0.6 * Math.exp(-Math.pow((progress - 0.55) * tightness * 1.25, 2));
+                envelope = (primary + secondary) * (1 - progress * 0.45);
+                break;
+              }
+              case 'pluck':
+                envelope = Math.pow(1 - progress, pulseCfg.decay || 4.2) * Math.pow(progress, pulseCfg.attack || 0.35);
+                break;
+              case 'gate':
+                envelope = Math.pow(Math.max(0, 1 - Math.abs(progress - 0.5) * 2), pulseCfg.curve || 1.5);
+                break;
+              default:
+                envelope = Math.pow(1 - progress, pulseCfg.decay || 3.2) * Math.pow(progress, pulseCfg.attack || 0.8);
+            }
+            const freqMod = baseFreq * (pulseCfg.glide ? (1 + pulseCfg.glide * progress) : 1);
+            const t = j / sampleRate;
+            let osc = Math.sin(phaseOffset + 2 * Math.PI * freqMod * t);
+            if (pulseCfg.wave === 'triangle') {
+              osc = 2 / Math.PI * Math.asin(Math.sin(phaseOffset + 2 * Math.PI * freqMod * t));
+            } else if (pulseCfg.wave === 'square') {
+              osc = Math.sign(Math.sin(phaseOffset + 2 * Math.PI * freqMod * t));
+            }
+            if (pulseCfg.noise) {
+              osc += (rng() * 2 - 1) * pulseCfg.noise * envelope;
+            }
+            writeStereo(idx, osc * envelope * pulseCfg.amp, pan, spread);
+          }
+        }
+      }
+
+      const bassCfg = preset.bass || null;
+      if (bassCfg && bassCfg.amp > 0) {
+        const subdivision = Math.max(1, Math.floor(bassCfg.subdivision || 1));
+        const width = Math.max(0.1, Math.min(2, bassCfg.length || 1));
+        const notes = Array.isArray(bassCfg.notes) && bassCfg.notes.length ? bassCfg.notes : [0];
+        const pattern = Array.isArray(bassCfg.pattern) && bassCfg.pattern.length ? bassCfg.pattern : null;
+        const pan = Math.max(-1, Math.min(1, bassCfg.pan || 0));
+        const spread = bassCfg.spread || 0.4;
+        let step = 0;
+        for (let beatPos = 0; beatPos < totalBeats; beatPos += 1 / subdivision) {
+          if (pattern && !pattern[step % pattern.length]) {
+            step++;
+            continue;
+          }
+          const start = Math.floor(beatPos * secondsPerBeat * sampleRate);
+          const len = Math.max(1, Math.floor(secondsPerBeat * sampleRate * width));
+          const note = notes[step % notes.length] || 0;
+          const baseFreq = bassCfg.baseFreq || root;
+          const freq = baseFreq * Math.pow(2, note / 12);
+          let phase = 0;
+          for (let j = 0; j < len; j++) {
+            const idx = start + j;
+            if (idx >= length) break;
+            const progress = len <= 1 ? 0 : j / len;
+            const attack = typeof bassCfg.attack === 'number' ? bassCfg.attack : 0.25;
+            const decay = typeof bassCfg.decay === 'number' ? bassCfg.decay : 2.4;
+            const envelope = Math.pow(1 - progress, decay) * Math.pow(progress, attack);
+            const glide = bassCfg.glide || 0;
+            const currentFreq = freq * (1 + glide * progress);
+            phase += currentFreq / sampleRate;
+            let osc = Math.sin(phase * 2 * Math.PI);
+            if (bassCfg.wave === 'saw') {
+              const cycle = phase % 1;
+              osc = 2 * (cycle - 0.5);
+            }
+            writeStereo(idx, osc * envelope * bassCfg.amp, pan, spread);
+          }
+          step++;
+        }
+      }
+
+      const riserCfg = preset.riser || null;
+      if (riserCfg && riserCfg.amp > 0) {
+        const lengthBeats = Math.max(riserCfg.lengthBeats || bars, 1);
+        const riserDuration = lengthBeats * secondsPerBeat;
+        const startTime = Math.max(0, duration - riserDuration);
+        const start = Math.floor(startTime * sampleRate);
+        const len = length - start;
+        if (len > 0) {
+          let phase = 0;
+          const spread = riserCfg.spread || 0.6;
+          for (let j = 0; j < len; j++) {
+            const idx = start + j;
+            if (idx >= length) break;
+            const progress = len <= 1 ? 0 : j / len;
+            const freqStart = riserCfg.freqStart || root;
+            const freqEnd = riserCfg.freqEnd || freqStart * 4;
+            const curve = riserCfg.curve || 1;
+            const freq = freqStart * Math.pow(freqEnd / freqStart, Math.pow(progress, curve));
+            phase += freq / sampleRate;
+            let osc = Math.sin(phase * 2 * Math.PI);
+            if (riserCfg.shimmer) {
+              osc += Math.sin(phase * 4 * Math.PI) * riserCfg.shimmer;
+            }
+            const envelope = Math.pow(progress, riserCfg.attack || 1.2);
+            writeStereo(idx, osc * envelope * riserCfg.amp, riserCfg.pan || 0, spread);
+          }
+        }
+      }
+
+      const atmosphereCfg = preset.atmosphere || null;
+      if (atmosphereCfg && atmosphereCfg.amp > 0) {
+        const spread = atmosphereCfg.spread || 0.5;
+        const motion = atmosphereCfg.motion || 0;
+        const swayFreq = atmosphereCfg.swayFreq || 0.05;
+        const basePan = Math.max(-1, Math.min(1, atmosphereCfg.pan || 0));
+        let smooth = 0;
+        for (let i = 0; i < length; i++) {
+          const t = i / sampleRate;
+          let value = (rng() * 2 - 1);
+          if (atmosphereCfg.type === 'wind') {
+            smooth = smooth * 0.92 + value * 0.08;
+            value = smooth;
+          } else if (atmosphereCfg.type === 'water') {
+            value = Math.sin(2 * Math.PI * 0.4 * t) * 0.6 + Math.sin(2 * Math.PI * 0.55 * t + 1.1) * 0.4;
+          } else if (atmosphereCfg.type === 'glimmer') {
+            value = Math.sin(2 * Math.PI * (atmosphereCfg.freq || 7) * t) * 0.7 + (rng() * 2 - 1) * 0.2;
+          }
+          const pan = basePan + Math.sin(2 * Math.PI * swayFreq * t) * motion;
+          writeStereo(i, value * atmosphereCfg.amp, pan, spread);
         }
       }
 
