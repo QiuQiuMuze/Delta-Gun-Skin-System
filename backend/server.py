@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Depends, HTTPException, Header, Query, Path
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from typing import Optional, Literal, List, Dict, Any, Tuple
+from typing import Optional, Literal, List, Dict, Any, Tuple, Set
 from datetime import datetime, timedelta
 import time, os, secrets, jwt, re, json, random, math, hashlib
 
@@ -2080,7 +2080,7 @@ CULTIVATION_TALENTS = [
 
 CULTIVATION_TALENT_ROLLS = 4
 CULTIVATION_BASE_POINTS = 10
-CULTIVATION_MAX_TALENTS = 3
+CULTIVATION_MAX_TALENTS = 2
 CULTIVATION_REFRESH_COUNT = 5
 CULTIVATION_STAGE_NAMES = ["凡人", "炼气", "筑基", "金丹", "元婴", "化神", "飞升"]
 CULTIVATION_STAGE_THRESHOLDS = [320, 780, 1380, 2100, 2980, 4100]
@@ -4728,31 +4728,35 @@ def _cultivation_pick_talents(rng: random.Random) -> List[Dict[str, Any]]:
         talents_by_rarity.setdefault(rarity, []).append(talent)
     picks: List[Dict[str, Any]] = []
     roll_cap = min(CULTIVATION_TALENT_ROLLS, len(CULTIVATION_TALENTS))
-    guaranteed_order = ["gold", "purple", "blue"]
-    for rarity in guaranteed_order:
-        if len(picks) >= roll_cap:
-            break
-        pool = talents_by_rarity.get(rarity) or []
-        if pool:
-            picks.append(rng.choice(pool))
-    selected_ids = {talent.get("id") for talent in picks if talent.get("id")}
-    pool = [(talent, weight) for talent, weight in weighted_pool if talent.get("id") not in selected_ids]
+    pool = list(weighted_pool)
+    used_ids: Set[Optional[str]] = set()
     while len(picks) < roll_cap and pool:
-        total = sum(weight for _, weight in pool)
+        filtered: List[Tuple[int, Dict[str, Any], float]] = []
+        for idx, (talent, weight) in enumerate(pool):
+            talent_id = talent.get("id")
+            if talent_id and talent_id in used_ids:
+                continue
+            filtered.append((idx, talent, weight))
+        if not filtered:
+            break
+        total = sum(weight for _, _, weight in filtered)
         if total <= 0:
             break
         roll = rng.uniform(0, total)
         acc = 0.0
         choice_index = None
-        for idx, (talent, weight) in enumerate(pool):
+        chosen_pool_index = None
+        for original_idx, talent, weight in filtered:
             acc += weight
             if roll <= acc:
                 picks.append(talent)
-                choice_index = idx
+                choice_index = original_idx
+                used_ids.add(talent.get("id"))
                 break
         if choice_index is None:
             break
-        pool.pop(choice_index)
+        chosen_pool_index = choice_index
+        pool.pop(chosen_pool_index)
     return [_cultivation_render_talent(talent) for talent in picks[:roll_cap]]
 
 
