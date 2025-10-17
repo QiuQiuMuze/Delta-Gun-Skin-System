@@ -25,7 +25,7 @@ DELTA_MONGODB_DB_NAME=delta_gun_skin
 DELTA_ALLOWED_ORIGINS=["http://localhost:3000"]
 ```
 
-依赖中已锁定 `motor==3.3.1` 与 `pymongo==4.3.3`，避免了 `_QUERY_OPTIONS` 导入错误。
+依赖中已锁定 `motor==3.3.1` 与 `pymongo==4.6.3`，避免了 `_QUERY_OPTIONS` 导入错误。
 
 ### 前端
 
