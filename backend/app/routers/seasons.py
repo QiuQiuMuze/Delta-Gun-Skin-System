@@ -1,18 +1,31 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from ..db import get_database_for_request
+from ..db import get_database_optional
 from ..models.season import SeasonCreate, SeasonResponse, SeasonUpdate
-from ..repositories.season_repository import SeasonRepository
+from ..repositories import InMemorySeasonRepository, SeasonRepository
 
 router = APIRouter(prefix="/seasons", tags=["seasons"])
 
+RepositoryType = SeasonRepository | InMemorySeasonRepository
+_in_memory_repository = InMemorySeasonRepository()
 
-def get_repository(db=Depends(get_database_for_request)) -> SeasonRepository:
+
+def get_repository(db=Depends(get_database_optional)) -> RepositoryType:
+    if db is None:
+        return _in_memory_repository
     return SeasonRepository(db)
 
 
+def ensure_writable(repository: RepositoryType) -> None:
+    if not repository.supports_writes:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MongoDB connection is not available for write operations",
+        )
+
+
 @router.get("/", response_model=list[SeasonResponse])
-async def list_seasons(repository: SeasonRepository = Depends(get_repository)) -> list[SeasonResponse]:
+async def list_seasons(repository: RepositoryType = Depends(get_repository)) -> list[SeasonResponse]:
     """Return all available seasons."""
 
     return await repository.list_seasons()
@@ -21,7 +34,7 @@ async def list_seasons(repository: SeasonRepository = Depends(get_repository)) -
 @router.get("/{season_id}", response_model=SeasonResponse)
 async def get_season(
     season_id: str,
-    repository: SeasonRepository = Depends(get_repository),
+    repository: RepositoryType = Depends(get_repository),
 ) -> SeasonResponse:
     """Return details for a single season."""
 
@@ -37,10 +50,11 @@ async def get_season(
 @router.post("/", response_model=SeasonResponse, status_code=status.HTTP_201_CREATED)
 async def create_season(
     payload: SeasonCreate,
-    repository: SeasonRepository = Depends(get_repository),
+    repository: RepositoryType = Depends(get_repository),
 ) -> SeasonResponse:
     """Create a new season document."""
 
+    ensure_writable(repository)
     existing = await repository.get_season(payload.id)
     if existing is not None:
         raise HTTPException(
@@ -54,10 +68,11 @@ async def create_season(
 async def update_season(
     season_id: str,
     payload: SeasonUpdate,
-    repository: SeasonRepository = Depends(get_repository),
+    repository: RepositoryType = Depends(get_repository),
 ) -> SeasonResponse:
     """Update an existing season."""
 
+    ensure_writable(repository)
     updated = await repository.update_season(season_id, payload)
     if updated is None:
         raise HTTPException(
@@ -70,10 +85,11 @@ async def update_season(
 @router.delete("/{season_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_season(
     season_id: str,
-    repository: SeasonRepository = Depends(get_repository),
+    repository: RepositoryType = Depends(get_repository),
 ) -> None:
     """Delete a season document."""
 
+    ensure_writable(repository)
     deleted = await repository.delete_season(season_id)
     if not deleted:
         raise HTTPException(

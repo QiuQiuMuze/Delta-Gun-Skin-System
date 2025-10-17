@@ -24,7 +24,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to prepare MongoDB collections")
     else:
-        logger.warning("MongoDB connection is not available; API will return 503 responses")
+        logger.warning(
+            "MongoDB connection is not available; serving bundled data in read-only mode"
+        )
 
     yield
 

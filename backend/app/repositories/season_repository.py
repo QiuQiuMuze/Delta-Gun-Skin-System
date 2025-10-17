@@ -15,6 +15,12 @@ class SeasonRepository:
     def __init__(self, database: AsyncIOMotorDatabase) -> None:
         self._collection = database[settings.season_collection]
 
+    @property
+    def supports_writes(self) -> bool:
+        """MongoDB-backed repository fully supports write operations."""
+
+        return True
+
     async def ensure_indexes(self) -> None:
         """Create indexes required by the collection."""
 

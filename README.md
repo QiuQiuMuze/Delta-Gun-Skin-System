@@ -17,7 +17,7 @@
 ./run.sh
 ```
 
-脚本会创建虚拟环境并安装依赖，随后以 `uvicorn app.main:app --reload` 方式启动服务，默认端口为 `8000`。如需修改 MongoDB 地址，可在根目录创建 `.env` 文件并设置：
+脚本会创建虚拟环境并安装依赖，随后以 `uvicorn app.main:app --reload` 方式启动服务，默认端口为 `8000`。如果未启动 MongoDB，后端会自动退回到内置赛季数据的只读模式，写操作会返回 `503`。如需修改 MongoDB 地址，可在根目录创建 `.env` 文件并设置：
 
 ```
 DELTA_MONGODB_URI=mongodb://localhost:27017

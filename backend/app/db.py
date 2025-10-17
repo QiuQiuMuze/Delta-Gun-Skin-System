@@ -32,7 +32,7 @@ async def connect_to_mongo() -> bool:
         logger.info("Connected to MongoDB database '%s'", settings.mongodb_db_name)
         return True
     except (ServerSelectionTimeoutError, PyMongoError) as exc:
-        logger.exception("MongoDB connection failed: %s", exc)
+        logger.warning("MongoDB connection failed: %s", exc)
         _client = None
         _database = None
         return False
@@ -67,6 +67,18 @@ async def get_database_dependency() -> AsyncGenerator[AsyncIOMotorDatabase, None
             detail="Database connection is not ready",
         )
     yield _database
+
+
+def get_database_optional() -> AsyncIOMotorDatabase | None:
+    """Return the active database if available, otherwise ``None``."""
+
+    return _database
+
+
+def is_database_ready() -> bool:
+    """Return ``True`` when a MongoDB connection has been established."""
+
+    return _database is not None
 
 
 async def get_database_for_request(

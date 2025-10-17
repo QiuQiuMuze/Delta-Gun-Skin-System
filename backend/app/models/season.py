@@ -15,6 +15,8 @@ class SeasonSkin(BaseModel):
     model_key: str
     meta: Dict[str, Any] = Field(default_factory=dict)
 
+    model_config = ConfigDict(protected_namespaces=())
+
 
 class SeasonBase(BaseModel):
     """Shared attributes for season payloads."""
