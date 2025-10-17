@@ -2104,6 +2104,434 @@ CULTIVATION_SUCCESS_STAT_WEIGHT = 0.018
 CULTIVATION_SUCCESS_LUCK_WEIGHT = 0.006
 CULTIVATION_TRIAL_DELAY_MS = 5000
 
+CULTIVATION_MAINLINE_GOALS = [
+    "重铸星渊剑",
+    "守护苍岚城",
+    "寻回失散师尊",
+    "镇封玄渊魔印",
+    "逆转焚天诅咒",
+    "重筑九霄灵阵",
+]
+
+CULTIVATION_STAGE_ARCS = [
+    {
+        "chapter": "序章·凡尘初醒",
+        "chapter_desc": "你立誓为{goal}搜集第一枚线索。",
+        "motifs": ["凡尘喧闹", "暗流潜伏", "旧怨新仇"],
+        "ambush": ["山匪流寇", "潜伏妖修", "暗巷刺客"],
+        "traps": ["松土暗渠", "断崖陷阱", "迷魂烟"],
+    },
+    {
+        "chapter": "第一章·灵潮初涌",
+        "chapter_desc": "你循着{goal}的蛛丝马迹摸索灵脉。",
+        "motifs": ["灵泉初涌", "符阵交织", "门规森严"],
+        "ambush": ["异族斥候", "剑修试探", "山野妖兽"],
+        "traps": ["灵纹误导", "瘴气沼泽", "虚影迷阵"],
+    },
+    {
+        "chapter": "第二章·道基成峙",
+        "chapter_desc": "你的{goal}线索指向一处古老遗迹。",
+        "motifs": ["灵磁涌动", "古碑林立", "道基稳固"],
+        "ambush": ["遗迹守灵", "雇佣修士", "鬼修伏击"],
+        "traps": ["灵能反噬", "机关铁索", "残阵余威"],
+    },
+    {
+        "chapter": "第三章·金丹风雷",
+        "chapter_desc": "为{goal}所需，你必须镇压一股异象。",
+        "motifs": ["风雷轰鸣", "丹光炽盛", "山河震荡"],
+        "ambush": ["异教祭司", "魔修游骑", "妖王爪牙"],
+        "traps": ["雷火禁制", "裂缝风刃", "吞灵雾海"],
+    },
+    {
+        "chapter": "第四章·婴识化界",
+        "chapter_desc": "主线{goal}牵扯上古秘辛，你深入危城。",
+        "motifs": ["古阵残辉", "元气潮汐", "域外窥伺"],
+        "ambush": ["域外猎手", "堕仙残影", "血祭傀儡"],
+        "traps": ["灵压深渊", "魂噬锁链", "幻梦渊谷"],
+    },
+    {
+        "chapter": "第五章·神魂归一",
+        "chapter_desc": "只差最后几枚线索，{goal}近在咫尺。",
+        "motifs": ["星河共鸣", "神识如海", "虚空风暴"],
+        "ambush": ["星空掠夺者", "古族封灵", "神魂裂影"],
+        "traps": ["虚空裂缝", "幻灭星雨", "时空逆潮"],
+    },
+    {
+        "chapter": "终章·证道万界",
+        "chapter_desc": "成败在此一举，{goal}的真相即将揭晓。",
+        "motifs": ["天威浩荡", "大道回响", "仙灵环绕"],
+        "ambush": ["天劫化身", "神秘行者", "万灵审判"],
+        "traps": ["劫火坠落", "仙雷潮汐", "大道余震"],
+    },
+]
+
+CULTIVATION_STAGE_BASE_REQUIREMENT = [4, 7, 10, 14, 18, 22, 26]
+CULTIVATION_TRAP_FALLBACK = ["枯枝暗箭", "流沙陷坑", "冷电锁链", "迷魂幻阵"]
+
+CULTIVATION_FALLBACK_OPTION_PROFILES = {
+    "mind": {
+        "labels": ["推演主线", "悟道梳理", "参详古卷"],
+        "details": [
+            "盘点与{mainline_goal}相关的线索，寻找突破口。",
+            "静心研读，将新得线索编织成推演图。",
+            "以心神推衍，试图补全主线缺失环节。",
+        ],
+        "type": "insight",
+        "progress": (48, 74),
+        "health": (-6, 1),
+        "score": (52, 78),
+        "flavor": "灵光萦绕，思绪翻涌",
+    },
+    "body": {
+        "labels": ["巡游历练", "砥砺战躯", "试刀破敌"],
+        "details": [
+            "沿着{chapter}的线索巡游，炼体亦探敌。",
+            "以血肉撞击险境，换取行动先机。",
+            "在险峰演练战技，为主线清除阻碍。",
+        ],
+        "type": "combat",
+        "progress": (44, 66),
+        "health": (-10, 6),
+        "score": (46, 70),
+        "flavor": "气血如潮，战意如炬",
+    },
+    "spirit": {
+        "labels": ["稳固心灯", "洞察真意", "静观生死"],
+        "details": [
+            "镇定心神，揣摩主线伏笔间的危机。",
+            "守住本心，让{mainline_goal}的重任更稳固。",
+            "以心灯照见潜伏危机，提早布局。",
+        ],
+        "type": "insight",
+        "progress": (42, 64),
+        "health": (-4, 4),
+        "score": (44, 68),
+        "flavor": "心如明镜，光照长夜",
+    },
+    "luck": {
+        "labels": ["探寻机缘", "行走红尘", "占卜前路"],
+        "details": [
+            "沿街问路，或许可得与{mainline_goal}相关的意外线索。",
+            "投身红尘百态，以气运换得机遇。",
+            "掷签观象，窥探主线暗流。",
+        ],
+        "type": "chance",
+        "progress": (36, 58),
+        "health": (-3, 5),
+        "score": (38, 62),
+        "flavor": "风云变幻，机缘或至",
+    },
+}
+
+CULTIVATION_STAGE_EVENT_VARIANTS: Dict[str, Dict[int, List[Dict[str, Any]]]] = {
+    "meditation": {
+        1: [
+            {
+                "id": "moon_pool_attune",
+                "focus": "spirit",
+                "type": "insight",
+                "progress": (52, 82),
+                "health": (-6, 0),
+                "score": (50, 78),
+                "label": {"templates": ["以月华调息心灯"]},
+                "detail": {"templates": ["引月光入体，稳固{mainline_goal}的心愿。"]},
+                "flavor": {"templates": ["月辉荡漾，心灯渐明"]},
+            }
+        ],
+        2: [
+            {
+                "id": "earth_pulse_resonate",
+                "focus": "body",
+                "type": "combat",
+                "progress": (56, 88),
+                "health": (-12, 4),
+                "score": (58, 90),
+                "label": {"templates": ["引地心熔浆淬体"]},
+                "detail": {"templates": ["借遗迹地脉冲击筋骨，为{mainline_goal}锻铸护身之力。"]},
+                "flavor": {"templates": ["大地轰鸣，血脉如雷"]},
+            }
+        ],
+        3: [
+            {
+                "id": "thunder_core_focus",
+                "focus": "mind",
+                "type": "alchemy",
+                "progress": (62, 96),
+                "health": (-14, 2),
+                "score": (66, 104),
+                "label": {"templates": ["雷鸣凝魂炼丹"]},
+                "detail": {"templates": ["将雷火引入丹炉，冶炼可助{mainline_goal}的金丹。"]},
+                "flavor": {"templates": ["雷火交织，丹香四溢"]},
+            }
+        ],
+    },
+    "adventure": {
+        0: [
+            {
+                "id": "market_shadow",
+                "focus": "luck",
+                "type": "chance",
+                "progress": (34, 56),
+                "health": (-5, 3),
+                "score": (40, 60),
+                "label": {"templates": ["夜探集市暗影"]},
+                "detail": {"templates": ["在凡尘角落搜寻与{mainline_goal}相关的耳语。"]},
+                "flavor": {"templates": ["灯火阑珊，暗影低语"]},
+            }
+        ],
+        2: [
+            {
+                "id": "relic_burrow",
+                "focus": "mind",
+                "type": "insight",
+                "progress": (58, 90),
+                "health": (-11, 1),
+                "score": (62, 96),
+                "label": {"templates": ["潜入遗迹心室"]},
+                "detail": {"templates": ["探访遗迹心脉，或许能取得{mainline_goal}的新线索。"]},
+                "flavor": {"templates": ["古阵微鸣，玄光漫涌"]},
+            }
+        ],
+        4: [
+            {
+                "id": "phantom_ridge",
+                "focus": "spirit",
+                "type": "insight",
+                "progress": (60, 94),
+                "health": (-10, 6),
+                "score": (66, 102),
+                "label": {"templates": ["幽岚踏雾追魂"]},
+                "detail": {"templates": ["穿越幻雾深处，聆听与{mainline_goal}有关的亡灵回声。"]},
+                "flavor": {"templates": ["魂音缭绕，心识如星"]},
+            }
+        ],
+    },
+    "training": {
+        1: [
+            {
+                "id": "sect_duel",
+                "focus": "body",
+                "type": "combat",
+                "progress": (52, 84),
+                "health": (-18, 6),
+                "score": (60, 92),
+                "label": {"templates": ["内门比斗磨砺"]},
+                "detail": {"templates": ["与同门切磋，磨砺为{mainline_goal}所需的杀伐力。"]},
+                "flavor": {"templates": ["剑意纵横，气浪如潮"]},
+            }
+        ],
+        3: [
+            {
+                "id": "storm_array",
+                "focus": "mind",
+                "type": "insight",
+                "progress": (64, 100),
+                "health": (-16, 4),
+                "score": (70, 110),
+                "label": {"templates": ["逆风破阵演练"]},
+                "detail": {"templates": ["拆解宗门风雷大阵，为{mainline_goal}筹备阵道之力。"]},
+                "flavor": {"templates": ["风啸雷鸣，阵纹耀眼"]},
+            }
+        ],
+    },
+    "opportunity": {
+        2: [
+            {
+                "id": "jade_tablet_echo",
+                "focus": "mind",
+                "type": "chance",
+                "progress": (62, 102),
+                "health": (-9, 8),
+                "score": (70, 116),
+                "label": {"templates": ["玉简回声"]},
+                "detail": {"templates": ["从古玉简中听见与{mainline_goal}相关的秘语。"]},
+                "flavor": {"templates": ["符光闪烁，回声如潮"]},
+            }
+        ],
+        4: [
+            {
+                "id": "abyss_seed",
+                "focus": "spirit",
+                "type": "chance",
+                "progress": (72, 118),
+                "health": (-18, 10),
+                "score": (80, 132),
+                "label": {"templates": ["暗渊灵种"]},
+                "detail": {"templates": ["尝试净化暗渊灵种，为{mainline_goal}积蓄突破力量。"]},
+                "flavor": {"templates": ["灵种悸动，阴阳交汇"]},
+            }
+        ],
+    },
+}
+
+
+def _cultivation_stage_arc(stage_index: int) -> Dict[str, Any]:
+    if stage_index < 0:
+        stage_index = 0
+    if stage_index < len(CULTIVATION_STAGE_ARCS):
+        return CULTIVATION_STAGE_ARCS[stage_index]
+    return CULTIVATION_STAGE_ARCS[-1]
+
+
+def _cultivation_stage_requirement(stage_index: int) -> int:
+    if stage_index < 0:
+        stage_index = 0
+    if stage_index < len(CULTIVATION_STAGE_BASE_REQUIREMENT):
+        return int(CULTIVATION_STAGE_BASE_REQUIREMENT[stage_index])
+    return int(CULTIVATION_STAGE_BASE_REQUIREMENT[-1] + 3 * (stage_index - len(CULTIVATION_STAGE_BASE_REQUIREMENT) + 1))
+
+
+def _cultivation_option_reward_level(option: Dict[str, Any]) -> float:
+    prog = option.get("progress") or (40.0, 60.0)
+    score = option.get("score") or (40.0, 60.0)
+    prog_avg = (float(prog[0]) + float(prog[1])) / 2.0 if isinstance(prog, (list, tuple)) else float(prog)
+    score_avg = (float(score[0]) + float(score[1])) / 2.0 if isinstance(score, (list, tuple)) else float(score)
+    return max(0.0, (prog_avg + score_avg) / 100.0)
+
+
+def _cultivation_set_option_requirements(run: Dict[str, Any], event_type: str, options: List[Dict[str, Any]]) -> None:
+    stage_index = int(run.get("stage_index", 0))
+    base_requirement = _cultivation_stage_requirement(stage_index)
+    for option in options:
+        focus = option.get("focus") or "mind"
+        opt_type = option.get("type") or "insight"
+        reward_level = _cultivation_option_reward_level(option)
+        focus_weight = {"body": 1.4, "mind": 1.2, "spirit": 1.1, "luck": 1.0}.get(focus, 1.1)
+        type_weight = {
+            "combat": 1.6,
+            "alchemy": 1.4,
+            "chance": 1.25,
+            "insight": 1.2,
+            "escape": 0.9,
+            "trial": 1.8,
+        }.get(opt_type, 1.15)
+        event_bias = {
+            "opportunity": 2.4,
+            "tribulation": 3.0,
+            "training": 1.8,
+            "adventure": 1.6,
+            "meditation": 1.4,
+            "ambush": 2.2,
+        }.get(event_type, 1.2)
+        requirement = base_requirement + reward_level * 2.2 + (focus_weight + type_weight + event_bias)
+        option["requirement"] = {
+            "stat": focus,
+            "value": int(round(requirement)),
+            "reward_level": reward_level,
+            "event_bias": event_bias,
+        }
+
+
+def _cultivation_trap_candidates(stage_index: int) -> List[str]:
+    arc = _cultivation_stage_arc(stage_index)
+    traps = list(arc.get("traps") or [])
+    if not traps:
+        traps = list(CULTIVATION_TRAP_FALLBACK)
+    else:
+        traps.extend(CULTIVATION_TRAP_FALLBACK)
+    return traps
+
+
+def _cultivation_apply_random_traps(
+    run: Dict[str, Any], event_type: str, options: List[Dict[str, Any]], base_seed: int
+) -> None:
+    if event_type in {"trial", "merchant", "sacrifice", "ambush"}:
+        return
+    if len(options) < 3:
+        return
+    stage_index = int(run.get("stage_index", 0))
+    rng = random.Random(base_seed ^ 0xF1A7)
+    trap_indices = rng.sample(range(len(options)), min(2, len(options)))
+    trap_pool = _cultivation_trap_candidates(stage_index)
+    for idx in trap_indices:
+        trap_chance = min(0.82, 0.28 + rng.random() * 0.32 + stage_index * 0.02)
+        severity = min(1.1, 0.45 + rng.random() * 0.35 + stage_index * 0.04)
+        flavor = rng.choice(trap_pool)
+        hazard_flag = float(run.get("talent_flags", {}).get("hazard_hint", 0.0) or 0.0)
+        if hazard_flag:
+            trap_chance *= max(0.35, 1.0 - 0.18 * hazard_flag)
+            severity *= max(0.6, 1.0 - 0.12 * hazard_flag)
+        options[idx]["trap"] = {
+            "chance": round(trap_chance, 3),
+            "severity": round(severity, 3),
+            "flavor": flavor,
+        }
+
+
+def _cultivation_ensure_option_count(
+    event_type: str,
+    options: List[Dict[str, Any]],
+    base_seed: int,
+    context: Dict[str, Any],
+    target: int = 4,
+) -> None:
+    if event_type in {"ambush", "trial", "merchant", "sacrifice"}:
+        return
+    if len(options) >= target:
+        return
+    rng = random.Random(base_seed ^ 0xC17C)
+    chapter = context.get("chapter", "旅途篇章")
+    goal = context.get("mainline_goal", "主线使命")
+    while len(options) < target:
+        focus = rng.choice(list(CULTIVATION_FALLBACK_OPTION_PROFILES.keys()))
+        profile = CULTIVATION_FALLBACK_OPTION_PROFILES[focus]
+        label = rng.choice(profile.get("labels") or ["临机应变"])
+        detail = rng.choice(profile.get("details") or ["临时调整计划。"])
+        flavor = profile.get("flavor") or "气机浮动"
+        option_id = f"extra-{focus}-{rng.randint(100, 999)}"
+        options.append(
+            _cultivation_option(
+                option_id,
+                label.format(chapter=chapter, mainline_goal=goal),
+                detail.format(chapter=chapter, mainline_goal=goal),
+                focus,
+                profile.get("type") or "insight",
+                profile.get("progress") or (40, 60),
+                profile.get("health") or (-4, 2),
+                profile.get("score") or (40, 60),
+                flavor,
+            )
+        )
+
+
+def _cultivation_option_success_profile(run: Dict[str, Any], option: Dict[str, Any]) -> Dict[str, float]:
+    stats = run.get("stats", {})
+    focus = option.get("focus") or "mind"
+    stat_value = int(stats.get(focus, 0))
+    luck_value = int(stats.get("luck", 0))
+    requirement_info = option.get("requirement") or {}
+    requirement_val = int(requirement_info.get("value") or 0)
+    if requirement_val <= 0:
+        requirement_val = _cultivation_stage_requirement(int(run.get("stage_index", 0)))
+    ratio = stat_value / max(1, requirement_val)
+    ratio = max(0.0, ratio)
+    if ratio < 1.0:
+        base_success = 0.08 + ratio * 0.18
+    else:
+        base_success = 0.5 + min(0.35, (ratio - 1.0) * 0.18)
+    opt_type = option.get("type") or "insight"
+    flags = run.get("talent_flags", {})
+    if opt_type == "insight":
+        base_success += float(flags.get("insight_bonus") or 0.0) * 0.4
+    elif opt_type == "chance":
+        base_success += float(flags.get("chance_bonus") or 0.0) * 0.35
+    elif opt_type == "combat":
+        base_success += float(flags.get("combat_bonus") or 0.0) * 0.2
+    elif opt_type == "alchemy" and flags.get("alchemy_mastery"):
+        base_success += 0.2
+    base_success += min(0.08, luck_value * 0.01)
+    base_success = max(0.05, min(0.95, base_success))
+    crit_base = 0.04 + max(0.0, ratio - 0.7) * 0.11 + min(0.06, luck_value * 0.008)
+    crit_threshold = min(base_success * 0.65, crit_base)
+    return {
+        "focus": focus,
+        "stat_value": stat_value,
+        "requirement": requirement_val,
+        "ratio": ratio,
+        "success": base_success,
+        "crit": max(0.0, min(base_success - 1e-6, crit_threshold)),
+    }
+
 CULTIVATION_TRIALS = [
     {
         "id": "sect_exam",
@@ -2580,6 +3008,56 @@ def _cultivation_build_trial_event(
     return event
 
 
+def _cultivation_build_ambush_event(run: Dict[str, Any], base_seed: int) -> Dict[str, Any]:
+    stage_index = int(run.get("stage_index", 0))
+    arc = _cultivation_stage_arc(stage_index)
+    mainline_goal = (run.get("mainline") or {}).get("goal", "")
+    rng = random.Random(base_seed ^ 0x5A5A)
+    location = rng.choice(["断崖古道", "苍林幽径", "灵脉峡谷", "雾色驿站"])
+    enemy = rng.choice(list(arc.get("ambush") or ["黑衣刺客", "未知强敌"]))
+    title = f"突袭·{enemy}"
+    desc = (
+        f"行至{location}时，{enemy}突现拦路。若能击退，或许能守护{mainline_goal}的线索；若败退，恐有大伤。"
+    )
+    options: List[Dict[str, Any]] = []
+    options.append(
+        _cultivation_option(
+            "stand_firm",
+            "应战斩敌",
+            f"调动体魄正面迎击{enemy}，一鼓作气清除威胁。",
+            "body",
+            "combat",
+            (72, 112),
+            (-36, -12),
+            (78, 122),
+            "刀光剑影，杀机四伏",
+        )
+    )
+    options.append(
+        _cultivation_option(
+            "seek_gap",
+            "借势脱身",
+            f"以心神察觉破绽，趁势退去，保全实力继续追寻{mainline_goal}。",
+            "spirit",
+            "escape",
+            (26, 44),
+            (-10, 6),
+            (24, 42),
+            "风声掠影，步伐如烟",
+        )
+    )
+    _cultivation_set_option_requirements(run, "ambush", options)
+    event = {
+        "id": f"{run['session']}-{run['step']}-ambush",
+        "title": title,
+        "description": desc,
+        "options": options,
+        "seed": base_seed ^ 0xAA55,
+        "event_type": "ambush",
+    }
+    return event
+
+
 def _cultivation_trial_fortune(stats: Dict[str, Any], rng: random.Random) -> Dict[str, Any]:
     luck = int(stats.get("luck", 0))
     spirit = int(stats.get("spirit", 0))
@@ -2697,6 +3175,17 @@ def _cultivation_resolve_trial(
                 f"【突破】{run['age']} 岁突破至 {stage_name}，生命上限+{bonus_health:.1f}，回复 {recovered:+.1f}",
                 "highlight",
             )
+            if run.get("mainline"):
+                arc = _cultivation_stage_arc(run["stage_index"])
+                run["mainline"]["chapter"] = arc.get("chapter", run["mainline"].get("chapter"))
+                milestones = run["mainline"].setdefault("milestones", [])
+                milestones.append(stage_name)
+                try:
+                    chapter_desc = arc.get("chapter_desc", "").format(goal=run["mainline"].get("goal", ""))
+                except Exception:
+                    chapter_desc = arc.get("chapter_desc") or ""
+                if chapter_desc:
+                    _cultivation_log(run, f"【主线】{chapter_desc}", "info")
             if run["stage_index"] >= len(CULTIVATION_STAGE_NAMES) - 1:
                 run["finished"] = True
                 run["ending_type"] = "ascend"
@@ -2776,9 +3265,9 @@ CULTIVATION_EVENT_BLUEPRINTS = {
         },
         "description": {
             "templates": [
-                "{stage}的你闭关于{locale}，{phenomenon}，心境{mood}。",
-                "你静坐在{locale}，{phenomenon}，整个人{mood}。",
-                "在{locale}内灵机翻涌，{stage}的你呼吸绵长，念头{mood}。",
+                "{chapter}，{stage}的你闭关于{locale}，{phenomenon}，心境{mood}，心念不忘{mainline_goal}。",
+                "你静坐在{locale}，{phenomenon}，整个人{mood}，推演{mainline_goal}的下一步。",
+                "在{locale}内灵机翻涌，{stage}的你呼吸绵长，念头{mood}，隐约捕捉到主线线索的回响。",
             ],
         },
         "options": [
@@ -2902,9 +3391,9 @@ CULTIVATION_EVENT_BLUEPRINTS = {
         },
         "description": {
             "templates": [
-                "你踏入{terrain}，{threat}，空气中{atmosphere}。",
-                "行走在{terrain}之间，{threat}，让人不敢大意。",
-                "{stage}的你置身{terrain}，所过之处{atmosphere}，危机四伏。",
+                "{chapter}推动着脚步，你踏入{terrain}，{threat}，空气中{atmosphere}，或许隐藏着{mainline_goal}的线索。",
+                "行走在{terrain}之间，{threat}，让人不敢大意，你揣摩这是否与{mainline_goal}相关。",
+                "{stage}的你置身{terrain}，所过之处{atmosphere}，危机四伏，却隐约感到主线在此留痕。",
             ],
         },
         "options": [
@@ -3018,9 +3507,9 @@ CULTIVATION_EVENT_BLUEPRINTS = {
         },
         "description": {
             "templates": [
-                "旅途中{omen}，{guide}，似乎有{gift}等待有缘之人。",
-                "你恰逢{omen}，{guide}之下，前方隐约有{gift}流光闪动。",
-                "命运之轮转动，{omen}与{guide}交织，机缘近在咫尺。",
+                "旅途中{omen}，{guide}，似乎有{gift}等待有缘之人，而这机缘也许与{mainline_goal}相扣。",
+                "你恰逢{omen}，{guide}之下，前方隐约有{gift}流光闪动，像是主线新篇的钥匙。",
+                "命运之轮转动，{omen}与{guide}交织，机缘近在咫尺，或许能助你推进{mainline_goal}。",
             ],
         },
         "options": [
@@ -3254,9 +3743,9 @@ CULTIVATION_EVENT_BLUEPRINTS = {
         },
         "description": {
             "templates": [
-                "宗门下达任务，需要{task}，{mentor}，完成后可获{reward}。",
-                "你被指派去{task}，{mentor}，考验极其严格。",
-                "{stage}修为的你肩负{task}重任，{mentor}，压力不小。",
+                "宗门下达任务，需要{task}，{mentor}，若完成便能为{mainline_goal}积累助力，可获{reward}。",
+                "你被指派去{task}，{mentor}，考验极其严格，但或许有助主线推进。",
+                "{stage}修为的你肩负{task}重任，{mentor}，压力不小，却可能换来关于{mainline_goal}的新机会。",
             ],
         },
         "options": [
@@ -3361,9 +3850,9 @@ CULTIVATION_EVENT_BLUEPRINTS = {
         },
         "description": {
             "templates": [
-                "境界将破，{storm}，{sign}，连{echo}。",
-                "你身处雷海中心，{storm}，{sign}，让人几乎窒息。",
-                "天威降临，{sign}，{storm}包裹全身，周遭{echo}。",
+                "境界将破，{storm}，{sign}，连{echo}，若能挺过此劫，{mainline_goal}或现曙光。",
+                "你身处雷海中心，{storm}，{sign}，让人几乎窒息，但你想到主线使命不敢退缩。",
+                "天威降临，{sign}，{storm}包裹全身，周遭{echo}，似乎也在考验你守护{mainline_goal}的决意。",
             ],
         },
         "options": [
@@ -3471,6 +3960,7 @@ CULTIVATION_OUTCOME_BACKDROPS = {
     "opportunity": ["命星灿然回响，", "机缘氤氲环绕，", "天机轻声低语，"],
     "training": ["宗门同门屏息，", "长老目光炯炯，", "讲台道音回荡，"],
     "tribulation": ["雷海咆哮不止，", "劫云压顶欲坠，", "天威滚滚如潮，"],
+    "ambush": ["杀机骤现寒芒闪烁，", "敌影潜伏草木摇曳，", "血雨横飞战鼓震天，"],
     "general": ["灵气翻涌之间，", "天地默然关注，", "周遭玄光升腾，"],
 }
 
@@ -4999,6 +5489,10 @@ def _cultivation_start_run(
     run["artifacts"] = []
     run["companions"] = []
     run["techniques"] = []
+    goal_rng = random.Random(seed ^ 0x5EED)
+    main_goal = goal_rng.choice(CULTIVATION_MAINLINE_GOALS)
+    first_arc = _cultivation_stage_arc(0)
+    run["mainline"] = {"goal": main_goal, "chapter": first_arc.get("chapter", "序章"), "milestones": []}
 
     origin_status = int(origin.get("status") or 1)
     origin_status_label = origin.get("status_label") or CULTIVATION_STATUS_LABELS.get(origin_status, "")
@@ -5037,6 +5531,14 @@ def _cultivation_start_run(
     master_title = run["master"].get("title") or ""
     master_label = f"{master_name}（{master_title}）" if master_title else master_name
     _cultivation_log(run, f"【启程】拜入{sect_name}，师从{master_label}。", "highlight")
+    try:
+        chapter_desc = first_arc.get("chapter_desc", "").format(goal=main_goal)
+    except Exception:
+        chapter_desc = first_arc.get("chapter_desc") or ""
+    if chapter_desc:
+        _cultivation_log(run, f"【主线】{chapter_desc}", "info")
+    else:
+        _cultivation_log(run, f"【主线】师门托付你完成「{main_goal}」。", "info")
     lineage_rng = random.Random(seed ^ 0xA17F)
     if CULTIVATION_COMPANION_POOL:
         friend_template = dict(lineage_rng.choice(CULTIVATION_COMPANION_POOL))
@@ -5626,9 +6128,15 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
     if trial_spec:
         run["pending_event"] = _cultivation_build_trial_event(run, base_seed, trial_spec)
         return
+    stage_index = int(run.get("stage_index", 0))
+    ambush_rng = random.Random(base_seed ^ 0x1337)
+    ambush_chance = min(0.1 + stage_index * 0.03, 0.28)
+    if ambush_rng.random() < ambush_chance:
+        run["pending_event"] = _cultivation_build_ambush_event(run, base_seed)
+        return
     near_break = False
-    if run["stage_index"] < len(CULTIVATION_STAGE_THRESHOLDS):
-        threshold = CULTIVATION_STAGE_THRESHOLDS[run["stage_index"]]
+    if stage_index < len(CULTIVATION_STAGE_THRESHOLDS):
+        threshold = CULTIVATION_STAGE_THRESHOLDS[stage_index]
         near_break = threshold > 0 and run.get("progress", 0.0) >= threshold * 0.8
     if not near_break:
         special_rng = random.Random(base_seed ^ 0x5151)
@@ -5680,6 +6188,8 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
         dominant = max(stats.items(), key=lambda item: int(item[1]))[0]
     stage_index = int(run.get("stage_index", 0))
     stage_name = CULTIVATION_STAGE_NAMES[min(stage_index, len(CULTIVATION_STAGE_NAMES) - 1)]
+    arc = _cultivation_stage_arc(stage_index)
+    mainline_goal = (run.get("mainline") or {}).get("goal", "")
     blueprint = CULTIVATION_EVENT_BLUEPRINTS.get(event_type, {})
     default_titles = {
         "meditation": "闭关悟道",
@@ -5687,14 +6197,25 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
         "opportunity": "奇遇机缘",
         "training": "门派试炼",
         "tribulation": "境界瓶颈",
+        "ambush": "突袭伏杀",
     }
     context: Dict[str, Any] = {
         "stage": stage_name,
         "age": int(run.get("age", 0)),
         "dominant": dominant,
         "dominant_label": stat_labels.get(dominant, ""),
+        "chapter": arc.get("chapter", ""),
+        "mainline_goal": mainline_goal,
     }
+    if arc.get("chapter_desc"):
+        try:
+            context["chapter_desc"] = arc.get("chapter_desc", "").format(goal=mainline_goal)
+        except Exception:
+            context["chapter_desc"] = arc.get("chapter_desc") or ""
     context_rng = random.Random(base_seed ^ 0xBADC0DE)
+    stage_motif = _choose_fragment(context_rng, arc.get("motifs") or [], context)
+    if stage_motif:
+        context["stage_motif"] = stage_motif
     for key, source in (blueprint.get("context") or {}).items():
         context[key] = _choose_fragment(context_rng, source, context)
 
@@ -5726,6 +6247,36 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
                 meta=meta,
             )
         )
+
+    stage_variants = (CULTIVATION_STAGE_EVENT_VARIANTS.get(event_type, {}) or {}).get(stage_index) or []
+    if stage_variants:
+        variant_rng = random.Random(base_seed ^ 0xBEE5)
+        take = min(len(stage_variants), 2)
+        for spec in variant_rng.sample(stage_variants, take):
+            spec_id = spec.get("id") or secrets.token_hex(4)
+            focus_key = spec.get("focus") or "mind"
+            option_context = dict(context)
+            option_context["focus_label"] = stat_labels.get(focus_key, focus_key)
+            offset = (sum(ord(ch) for ch in spec_id) or 31) << 2
+            option_rng = random.Random(base_seed ^ offset ^ 0xACED)
+            label = _dynamic_text(spec.get("label"), option_context, option_rng) or spec_id
+            detail = _dynamic_text(spec.get("detail"), option_context, option_rng)
+            flavor = _dynamic_text(spec.get("flavor"), option_context, option_rng)
+            meta = resolve_meta(spec.get("meta"), option_context, option_rng)
+            options.append(
+                _cultivation_option(
+                    spec_id,
+                    label,
+                    detail or "",
+                    focus_key,
+                    spec.get("type") or "insight",
+                    spec.get("progress") or (48, 72),
+                    spec.get("health") or (-6, 3),
+                    spec.get("score") or (48, 74),
+                    flavor or "",
+                    meta=meta,
+                )
+            )
 
     if event_type == "opportunity":
         dominant_specs = (blueprint.get("dominant_options") or {})
@@ -5771,6 +6322,10 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
             )
         )
 
+    _cultivation_ensure_option_count(event_type, options, base_seed, context)
+    _cultivation_set_option_requirements(run, event_type, options)
+    _cultivation_apply_random_traps(run, event_type, options, base_seed)
+
     event = {
         "id": f"{run['session']}-{run['step']}",
         "title": title,
@@ -5782,14 +6337,6 @@ def _cultivation_generate_event(run: Dict[str, Any]) -> None:
     if dominant and event_type == "opportunity":
         event["theme_stat"] = dominant
         event["theme_label"] = stat_labels.get(dominant)
-    if run.get("talent_flags", {}).get("hazard_hint"):
-        worst = min(opt["health"][0] for opt in options)
-        if worst <= -14:
-            event["hint"] = "⚠️ 风险极大，稍有不慎便会重伤"
-        elif worst <= -8:
-            event["hint"] = "⚠️ 需谨慎，部分选择会造成不小损耗"
-        else:
-            event["hint"] = "✅ 风险可控，可随心抉择"
     run["pending_event"] = event
 
 def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, Any]:
@@ -5851,6 +6398,25 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
     score_gain += stat_value * CULTIVATION_SCORE_STAT_WEIGHT
     health_low, health_high = option.get("health", (-4.0, 2.0))
     health_delta = rng.uniform(health_low, health_high)
+    profile = _cultivation_option_success_profile(run, option)
+    stat_value = profile.get("stat_value", stat_value)
+    ratio = profile.get("ratio", 1.0)
+    if ratio < 1.0:
+        penalty = 0.5 + 0.5 * ratio
+        progress_gain *= penalty
+        score_gain *= penalty * (0.85 + 0.15 * ratio)
+        if health_delta < 0:
+            health_delta *= 1.1 + (1.0 - ratio) * 0.8
+        else:
+            health_delta *= max(0.2, ratio)
+    else:
+        bonus = min(0.6, (ratio - 1.0) * 0.45)
+        progress_gain *= 1.0 + bonus
+        score_gain *= 1.0 + bonus * 1.1
+        if health_delta < 0:
+            health_delta *= max(0.35, 1.0 - bonus * 0.7)
+        else:
+            health_delta += abs(health_delta) * (0.15 + bonus * 0.2)
     flags = run.get("talent_flags", {})
     if option.get("type") == "insight":
         bonus = float(flags.get("insight_bonus") or 0.0)
@@ -5864,23 +6430,21 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
         resist = float(flags.get("combat_resist") or 0.0)
         health_delta *= max(0.2, 1.0 - resist)
         score_gain *= 1.0 + float(flags.get("combat_bonus") or 0.0)
+    if option.get("type") == "escape":
+        progress_gain *= 0.65
+        score_gain *= 0.7
+        if health_delta < 0:
+            health_delta *= 0.5
+        else:
+            health_delta += rng.uniform(1.0, 3.0)
     if option.get("type") == "alchemy" and flags.get("alchemy_mastery"):
         progress_gain *= 1.3
         score_gain *= 1.25
     if health_delta < 0 and flags.get("setback_reduce"):
         health_delta = min(0.0, health_delta + float(flags.get("setback_reduce")))
 
-    luck_value = int(stats.get("luck", 0))
-    success_threshold = min(
-        0.93,
-        CULTIVATION_SUCCESS_BASE
-        + stat_value * CULTIVATION_SUCCESS_STAT_WEIGHT
-        + luck_value * CULTIVATION_SUCCESS_LUCK_WEIGHT,
-    )
-    crit_threshold = min(
-        success_threshold * 0.55,
-        0.06 + (stat_value + luck_value) * 0.008,
-    )
+    success_threshold = profile.get("success", 0.3)
+    crit_threshold = profile.get("crit", min(success_threshold * 0.5, 0.12))
     roll = rng.random()
     if roll < crit_threshold:
         quality = "brilliant"
@@ -5908,6 +6472,22 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
         health_delta += abs(health_delta) * rng.uniform(0.2, 0.35)
     else:
         health_delta += abs(health_delta) * 0.05
+
+    trap_triggered = False
+    trap_penalty = 0.0
+    trap_info = option.get("trap")
+    if isinstance(trap_info, dict) and event.get("event_type") not in {"merchant", "sacrifice", "trial"}:
+        trap_chance = float(trap_info.get("chance") or 0.0)
+        if rng.random() < trap_chance:
+            trap_triggered = True
+            severity = max(0.2, float(trap_info.get("severity") or 0.5))
+            extra_damage = rng.uniform(10, 24) * severity
+            trap_penalty = extra_damage
+            health_delta -= extra_damage
+            progress_gain *= max(0.45, 1.0 - severity * 0.4)
+            score_gain *= max(0.5, 1.0 - severity * 0.35)
+            flavor = trap_info.get("flavor") or "暗处杀机骤现"
+            _cultivation_log(run, f"【陷阱】{flavor}，体魄-{extra_damage:.1f}", "danger")
 
     new_progress = max(0.0, prev_progress + progress_gain)
     applied_progress = new_progress - prev_progress
@@ -6006,6 +6586,17 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
                 f"【突破】{run['age']} 岁突破至 {stage_name}，生命上限+{bonus_health:.1f}，回复 {recovered:+.1f}",
                 "highlight",
             )
+            if run.get("mainline"):
+                arc = _cultivation_stage_arc(run["stage_index"])
+                run["mainline"]["chapter"] = arc.get("chapter", run["mainline"].get("chapter"))
+                milestones = run["mainline"].setdefault("milestones", [])
+                milestones.append(stage_name)
+                try:
+                    chapter_desc = arc.get("chapter_desc", "").format(goal=run["mainline"].get("goal", ""))
+                except Exception:
+                    chapter_desc = arc.get("chapter_desc") or ""
+                if chapter_desc:
+                    _cultivation_log(run, f"【主线】{chapter_desc}", "info")
             if run["stage_index"] >= len(CULTIVATION_STAGE_NAMES) - 1:
                 run["finished"] = True
                 run["ending_type"] = "ascend"
@@ -6015,7 +6606,7 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
     total_score_gain = run["score"] - prev_score
     final_net_health = run["health"] - prev_health
 
-    return {
+    outcome = {
         "progress_gain": round(applied_progress, 1),
         "score_gain": round(total_score_gain, 1),
         "health_delta": round(final_net_health, 1),
@@ -6024,9 +6615,15 @@ def _cultivation_apply_choice(run: Dict[str, Any], choice_id: str) -> Dict[str, 
         "tone": tone_map[quality],
         "quality": quality,
     }
+    if trap_triggered:
+        outcome["trap_triggered"] = True
+        outcome["trap_penalty"] = round(trap_penalty, 1)
+    outcome["success_rate"] = round(success_threshold, 3)
+    outcome["crit_rate"] = round(crit_threshold, 3)
+    return outcome
 
 
-def _cultivation_run_view(run: Dict[str, Any]) -> Dict[str, Any]:
+def _cultivation_run_view(run: Dict[str, Any], debug: bool = False) -> Dict[str, Any]:
     event = run.get("pending_event") or None
     event_view: Optional[Dict[str, Any]] = None
     if event:
@@ -6074,6 +6671,26 @@ def _cultivation_run_view(run: Dict[str, Any]) -> Dict[str, Any]:
                     meta_view["note"] = str(meta.get("note"))
                 if meta_view:
                     option_view["meta"] = meta_view
+            if debug:
+                profile = _cultivation_option_success_profile(run, opt)
+                debug_view: Dict[str, Any] = {
+                    "requirement": int(profile.get("requirement", 0)),
+                    "stat": profile.get("focus"),
+                    "success_rate": round(profile.get("success", 0.0), 3),
+                    "crit_rate": round(profile.get("crit", 0.0), 3),
+                    "ratio": round(profile.get("ratio", 0.0), 2),
+                }
+                trap = opt.get("trap")
+                if isinstance(trap, dict):
+                    debug_view["trap"] = {
+                        "chance": trap.get("chance"),
+                        "severity": trap.get("severity"),
+                        "flavor": trap.get("flavor"),
+                        "is_trap": True,
+                    }
+                else:
+                    debug_view["trap"] = {"is_trap": False}
+                option_view["debug"] = debug_view
             opts_view.append(option_view)
         event_view = {
             "id": event.get("id"),
@@ -7727,7 +8344,7 @@ def cultivation_status(user: User = Depends(user_from_token), db: Session = Depe
     lobby = None
     if not run:
         lobby = _cultivation_prepare_lobby(node)
-    run_view = _cultivation_run_view(run) if run else None
+    run_view = _cultivation_run_view(run, debug=is_admin) if run else None
     history = node.get("history") if isinstance(node.get("history"), list) else []
     payload = {
         "enabled": bool(enabled),
@@ -7906,8 +8523,9 @@ def cultivation_begin(
     state[COOKIE_CULTIVATION_KEY] = node
     profile.mini_games = _json_dump(state)
     db.commit()
+    is_admin = bool(getattr(user, "is_admin", False))
     return {
-        "run": _cultivation_run_view(run),
+        "run": _cultivation_run_view(run, debug=is_admin),
         "best_score": int(node.get("best_score") or 0),
         "lobby": None,
     }
@@ -7952,7 +8570,7 @@ def cultivation_advance(
     db.commit()
     return {
         "finished": False,
-        "run": _cultivation_run_view(run),
+        "run": _cultivation_run_view(run, debug=bool(getattr(user, "is_admin", False))),
         "outcome": outcome,
     }
 
