@@ -2532,6 +2532,20 @@ def _cultivation_option_success_profile(run: Dict[str, Any], option: Dict[str, A
         "crit": max(0.0, min(base_success - 1e-6, crit_threshold)),
     }
 
+def _cultivation_profile_fortune(profile: Dict[str, float]) -> Optional[Dict[str, str]]:
+    ratio = float(profile.get("ratio") or 0.0)
+    success = float(profile.get("success") or 0.0)
+    if ratio <= 0.0 and success <= 0.0:
+        return None
+    if ratio >= 1.4 or success >= 0.78:
+        return {"label": "大吉", "tone": "highlight", "description": "底蕴碾压此敌，几乎稳操胜券。"}
+    if ratio >= 1.1 or success >= 0.6:
+        return {"label": "吉", "tone": "success", "description": "状态良好，胜面颇高。"}
+    if ratio >= 0.85 or success >= 0.45:
+        return {"label": "平", "tone": "warning", "description": "势均力敌，胜负难料。"}
+    return {"label": "凶", "tone": "danger", "description": "实力不济，贸然应战多有凶险。"}
+
+
 CULTIVATION_TRIALS = [
     {
         "id": "sect_exam",
@@ -6628,6 +6642,7 @@ def _cultivation_run_view(run: Dict[str, Any], debug: bool = False) -> Dict[str,
     event_view: Optional[Dict[str, Any]] = None
     if event:
         opts_view = []
+        event_type = event.get("event_type")
         for opt in event.get("options", []):
             option_view = {
                 "id": opt.get("id"),
@@ -6671,8 +6686,12 @@ def _cultivation_run_view(run: Dict[str, Any], debug: bool = False) -> Dict[str,
                     meta_view["note"] = str(meta.get("note"))
                 if meta_view:
                     option_view["meta"] = meta_view
+            profile = _cultivation_option_success_profile(run, opt)
+            if event_type == "ambush":
+                fortune = _cultivation_profile_fortune(profile)
+                if fortune:
+                    option_view["fortune"] = fortune
             if debug:
-                profile = _cultivation_option_success_profile(run, opt)
                 debug_view: Dict[str, Any] = {
                     "requirement": int(profile.get("requirement", 0)),
                     "stat": profile.get("focus"),
