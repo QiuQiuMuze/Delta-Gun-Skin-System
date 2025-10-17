@@ -392,9 +392,39 @@ const AdminPage = {
 
 
     // —— 渲染函数们 —— //
+    const formatLastLogin = (ts) => {
+      const value = Number(ts || 0);
+      if (!Number.isFinite(value) || value <= 0) {
+        return '—';
+      }
+      const date = new Date(value * 1000);
+      const now = Date.now();
+      const diffMs = now - date.getTime();
+      let relative = '';
+      if (diffMs >= 0) {
+        const diffMinutes = Math.floor(diffMs / 60000);
+        if (diffMinutes <= 1) {
+          relative = '刚刚';
+        } else if (diffMinutes < 60) {
+          relative = `${diffMinutes} 分钟前`;
+        } else {
+          const diffHours = Math.floor(diffMinutes / 60);
+          if (diffHours < 24) {
+            relative = `${diffHours} 小时前`;
+          } else {
+            const diffDays = Math.floor(diffHours / 24);
+            relative = `${diffDays} 天前`;
+          }
+        }
+      }
+      const absolute = date.toLocaleString('zh-CN', { hour12: false });
+      return relative ? `${absolute} · ${relative}` : absolute;
+    };
+
     const renderUsers = (items=[])=>{
       const rows = items.map(u=>{
         const encoded = encodeURIComponent(u.username || "");
+        const lastLoginText = formatLastLogin(u.last_login_ts);
         return `
         <tr>
           <td>${escapeHtml(u.username||"")}</td>
@@ -402,12 +432,19 @@ const AdminPage = {
           <td>${u.fiat}</td>
           <td>${u.coins}</td>
           <td>${u.is_admin?'是':'否'}</td>
+          <td>${escapeHtml(lastLoginText)}</td>
+          <td>
+            <div class="admin-note-box">
+              <textarea class="admin-note" data-username="${encoded}" rows="2" maxlength="500" placeholder="为该用户添加备注" style="width:100%;min-height:48px;">${escapeHtml(u.admin_note || "")}</textarea>
+              <div class="admin-note__actions"><button class="btn btn-mini" data-action="save-note" data-username="${encoded}">保存备注</button></div>
+            </div>
+          </td>
           <td><button class="btn btn-mini" data-action="view-inventory" data-username="${encoded}">查看仓库</button></td>
         </tr>`;
       }).join("");
       byId("list").innerHTML = `
         <table class="table">
-          <thead><tr><th>用户名</th><th>手机号</th><th>法币</th><th>三角币</th><th>管理员</th><th>操作</th></tr></thead>
+          <thead><tr><th>用户名</th><th>手机号</th><th>法币</th><th>三角币</th><th>管理员</th><th>最近登录</th><th>备注</th><th>操作</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>`;
     };
@@ -514,20 +551,51 @@ const AdminPage = {
     const listBox = byId("list");
     if (listBox) {
       listBox.addEventListener("click", async (evt) => {
-        const btn = evt.target.closest("button[data-action=\"view-inventory\"]");
+        const btn = evt.target.closest("button[data-action]");
         if (!btn) return;
+        const action = btn.dataset.action;
         const username = decodeURIComponent(btn.dataset.username || "").trim();
         if (!username) {
           alert("未找到用户名");
           return;
         }
-        showInventoryLoading(username);
-        try {
-          const data = await API.adminUserInventory(username);
-          renderInventory(data);
-        } catch (e) {
-          inventoryBox.innerHTML = `<div class="card admin-inventory"><div class="muted">加载失败：${escapeHtml(e.message || e)}</div></div>`;
-          inventoryBox.style.display = "block";
+        if (action === "view-inventory") {
+          showInventoryLoading(username);
+          try {
+            const data = await API.adminUserInventory(username);
+            renderInventory(data);
+          } catch (e) {
+            inventoryBox.innerHTML = `<div class="card admin-inventory"><div class="muted">加载失败：${escapeHtml(e.message || e)}</div></div>`;
+            inventoryBox.style.display = "block";
+          }
+          return;
+        }
+        if (action === "save-note") {
+          const selector = `textarea[data-username="${btn.dataset.username}"]`;
+          const textarea = listBox.querySelector(selector);
+          if (!textarea) {
+            alert("找不到备注输入框");
+            return;
+          }
+          const note = textarea.value || "";
+          btn.disabled = true;
+          const original = btn.textContent;
+          let revertNeeded = false;
+          try {
+            await API.adminSetUserNote(username, note);
+            textarea.value = note.trim();
+            btn.textContent = "已保存";
+            revertNeeded = true;
+          } catch (e) {
+            alert(e.message || e);
+          } finally {
+            btn.disabled = false;
+            if (revertNeeded) {
+              setTimeout(() => { btn.textContent = original; }, 1500);
+            } else {
+              btn.textContent = original;
+            }
+          }
         }
       });
     }
