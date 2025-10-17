@@ -13,6 +13,7 @@ const GachaPage = {
   _adminButton: null,
   _adminInput: null,
   _adminMaxBulk: 200,
+  _active: false,
 
   async render() {
     const seasonData = await API.seasonCatalog().catch(() => ({ seasons: [], latest: null }));
@@ -113,7 +114,13 @@ const GachaPage = {
   },
 
   bind() {
-    byId("skip").onclick    = () => this._doSkip();
+    this._active = true;
+    this._skip = false;
+    this._cancelTimer();
+    const skipBtn = byId("skip");
+    if (skipBtn) {
+      skipBtn.onclick = () => this._doSkip();
+    }
     this._drawButtons = Array.from(document.querySelectorAll(".draw-btn[data-count]"));
     this._drawButtons.forEach(btn => {
       btn.addEventListener("click", (ev) => {
@@ -164,6 +171,14 @@ const GachaPage = {
       this._adminButton = null;
       this._adminInput = null;
     }
+  },
+
+  teardown() {
+    this._active = false;
+    this._skip = false;
+    this._opening = false;
+    this._currentResults = null;
+    this._cancelTimer();
   },
 
   _adminMaxCount() {
@@ -406,7 +421,27 @@ const GachaPage = {
       <td>${x.serial}</td>
     `;
   },
-  _showStage(html) { byId("open-stage").innerHTML = html; },
+  _isActive() { return !!this._active; },
+
+  _cancelTimer() {
+    if (this._timer) {
+      clearTimeout(this._timer);
+      this._timer = null;
+    }
+  },
+
+  _cancelOpening() {
+    this._cancelTimer();
+    this._opening = false;
+  },
+
+  _showStage(html) {
+    if (!this._isActive()) return;
+    const node = byId("open-stage");
+    if (node) {
+      node.innerHTML = html;
+    }
+  },
 
   _setDrawDisabled(disabled) {
     (this._drawButtons || []).forEach(btn => {
@@ -593,6 +628,7 @@ const GachaPage = {
   async _open(count = 1) {
     const c = this._normalizeCount(count);
     const seasonKey = this._currentSeasonKey();
+    this._cancelTimer();
     this._skip = false;
     this._opening = true;
     this._setDrawDisabled(true);
@@ -612,9 +648,12 @@ const GachaPage = {
       if (err?.message) alert(err.message);
       return;
     }
+    if (!this._isActive()) return this._cancelOpening();
 
     // ① “开砖中...”动画
-    window.AudioEngine?.playSfx?.('gacha-start', { count: c });
+    if (this._isActive()) {
+      window.AudioEngine?.playSfx?.('gacha-start', { count: c });
+    }
     this._showStage(`<div class="glow fade-in"><span class="spinner"></span>开砖中...</div>`);
 
     // ② 调用后端
@@ -628,6 +667,7 @@ const GachaPage = {
       this._showStage("");
       return;
     }
+    if (!this._isActive()) return this._cancelOpening();
     const list = data.results || [];
     this._currentResults = list.slice();
     this._notifyDiamonds(list);
@@ -637,9 +677,12 @@ const GachaPage = {
 
     // ③ 先显示“中文光芒提示”
     await this._sleep(1200);
+    if (!this._isActive()) return this._cancelOpening();
     if (this._skip) return this._revealAll();
     this._showStage(`<div class="glow ${glowCls} fade-in">砖的颜色是...：<span class="hl-${glowCls}">${glowCN}</span></div>`);
-    window.AudioEngine?.playSfx?.('gacha-reveal', { rarity: maxR });
+    if (this._isActive()) {
+      window.AudioEngine?.playSfx?.('gacha-reveal', { rarity: maxR });
+    }
     if (skipBtn) {
       skipBtn.disabled = false;
       skipBtn.style.visibility = "visible";
@@ -647,6 +690,7 @@ const GachaPage = {
 
     // ④ 800ms 后进入“砖皮优先鉴定”或直接逐条翻牌
     await this._sleep(800);
+    if (!this._isActive()) return this._cancelOpening();
     if (this._skip) return this._revealAll();
 
     const bricks = list.filter(x=>x.rarity==="BRICK");
@@ -683,6 +727,7 @@ const GachaPage = {
 
   // —— 砖皮优先鉴定 —— //
   async _revealBricksThenOthers(bricks, others) {
+    if (!this._isActive()) return this._cancelOpening();
     // 鉴定面板
     this._showStage(`
       <div class="card fade-in">
@@ -692,14 +737,18 @@ const GachaPage = {
     `);
 
     const box = byId("brick-inspect");
+    if (!box) return this._cancelOpening();
 
     // 逐把展示：名称 → 磨损 → 极品/优品
     for (let i = 0; i < bricks.length; i++) {
+      if (!this._isActive()) return this._cancelOpening();
       if (this._skip) return this._revealAll();
 
       const b = bricks[i];
       const isDiamond = this._isDiamondTemplate(b.template) || this._isDiamondTemplate(b.hidden_template);
-      window.AudioEngine?.playSfx?.('rarity', { rarity: 'BRICK', diamond: isDiamond, exquisite: !!b.exquisite });
+      if (this._isActive()) {
+        window.AudioEngine?.playSfx?.('rarity', { rarity: 'BRICK', diamond: isDiamond, exquisite: !!b.exquisite });
+      }
       const item = document.createElement("div");
       item.className = "glow orange fade-in";
       item.style.marginBottom = "10px";
@@ -710,10 +759,14 @@ const GachaPage = {
       titleRow.innerHTML = `<span class="spinner"></span>发现砖皮 #${i+1}`;
       item.appendChild(titleRow);
 
-      await this._sleep(400); if (this._skip) return this._revealAll();
+      await this._sleep(400);
+      if (!this._isActive()) return this._cancelOpening();
+      if (this._skip) return this._revealAll();
       titleRow.innerHTML = `名称：<span class="hl-orange">${b.name}</span>`;
 
-      await this._sleep(500); if (this._skip) return this._revealAll();
+      await this._sleep(500);
+      if (!this._isActive()) return this._cancelOpening();
+      if (this._skip) return this._revealAll();
       const wearRow = document.createElement("div");
       wearRow.className = "row-reveal";
       wearRow.innerHTML = `磨损：<span class="wear-value">0.000</span>`;
@@ -721,7 +774,9 @@ const GachaPage = {
       const wearValue = wearRow.querySelector(".wear-value");
       this._animateWear(wearValue, b.wear);
 
-      await this._sleep(600); if (this._skip) return this._revealAll();
+      await this._sleep(600);
+      if (!this._isActive()) return this._cancelOpening();
+      if (this._skip) return this._revealAll();
       let suspenseNode = null;
       if (b.exquisite || b.exquisite === false) {
         const suspenseMs = isDiamond ? 8000 : (b.exquisite ? 4000 : 2500);
@@ -729,6 +784,7 @@ const GachaPage = {
         suspenseNode = this._buildSuspenseRow(message, { diamond: isDiamond });
         item.appendChild(suspenseNode);
         await this._sleep(suspenseMs);
+        if (!this._isActive()) return this._cancelOpening();
         if (this._skip) return this._revealAll();
         suspenseNode.remove();
       }
@@ -740,12 +796,14 @@ const GachaPage = {
       judgeRow.className = "row-reveal";
       judgeRow.innerHTML = `鉴定：${badge}`;
       item.appendChild(judgeRow);
-      if (b.exquisite || isDiamond) {
+      if (this._isActive() && (b.exquisite || isDiamond)) {
         window.AudioEngine?.playSfx?.('gacha-celebrate', { rarity: 'BRICK', diamond: isDiamond, exquisite: !!b.exquisite });
       }
 
       if (window.SkinVisuals) {
-        await this._sleep(300); if (this._skip) return this._revealAll();
+        await this._sleep(300);
+        if (!this._isActive()) return this._cancelOpening();
+        if (this._skip) return this._revealAll();
         const meta = this._visualMeta(b);
         const visual = b.visual || {
           body: [], attachments: [], template: b.template, hidden_template: b.hidden_template, effects: b.effects
@@ -758,6 +816,7 @@ const GachaPage = {
     }
 
     // 结束砖皮鉴定，展示汇总表：先列砖皮，再逐条翻其它
+    if (!this._isActive()) return this._cancelOpening();
     const tblHead = `
       <div class="card fade-in">
         <table class="table">
@@ -765,19 +824,25 @@ const GachaPage = {
           <tbody id="rev-body"></tbody>
         </table>
       </div>`;
-    byId("open-result").innerHTML = tblHead;
+    const resultWrap = byId("open-result");
+    if (!resultWrap) return this._cancelOpening();
+    resultWrap.innerHTML = tblHead;
 
     // 先把砖皮全部落表（已揭晓过）
     const body = byId("rev-body");
+    if (!body) return this._cancelOpening();
     for (const b of bricks) {
+      if (!this._isActive()) return this._cancelOpening();
       const tr = document.createElement("tr");
       tr.className = "row-reveal";
       tr.innerHTML = this._rowHTML(b);
       body.appendChild(tr);
       await this._sleep(120); // 轻微间隔
+      if (!this._isActive()) return this._cancelOpening();
     }
 
     // 再逐条翻其它
+    if (!this._isActive()) return this._cancelOpening();
     this._revealSequential(others, /*done*/true);
   },
 
@@ -797,6 +862,10 @@ const GachaPage = {
 
     let i = 0;
     const step = () => {
+      if (!this._isActive()) {
+        this._cancelTimer();
+        return;
+      }
       if (this._skip) return this._revealAll(); // 随时可跳过
       if (i >= list.length) {
         this._setDrawDisabled(false);
@@ -811,11 +880,13 @@ const GachaPage = {
       tr.innerHTML = this._rowHTML(x);
       body.appendChild(tr);
       const rarity = String(x?.rarity || '').toUpperCase();
-      window.AudioEngine?.playSfx?.('rarity', { rarity });
-      if (rarity === 'BRICK') {
-        const isDiamond = this._isDiamondTemplate(x.template) || this._isDiamondTemplate(x.hidden_template);
-        if (isDiamond || x.exquisite) {
-          window.AudioEngine?.playSfx?.('gacha-celebrate', { rarity, diamond: isDiamond, exquisite: !!x.exquisite });
+      if (this._isActive()) {
+        window.AudioEngine?.playSfx?.('rarity', { rarity });
+        if (rarity === 'BRICK') {
+          const isDiamond = this._isDiamondTemplate(x.template) || this._isDiamondTemplate(x.hidden_template);
+          if (isDiamond || x.exquisite) {
+            window.AudioEngine?.playSfx?.('gacha-celebrate', { rarity, diamond: isDiamond, exquisite: !!x.exquisite });
+          }
         }
       }
       this._timer = setTimeout(step, Math.min(650, 250 + i*25));
@@ -824,7 +895,12 @@ const GachaPage = {
   },
 
   _revealAll(list) {
-    if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+    this._cancelTimer();
+    if (!this._isActive()) {
+      this._opening = false;
+      this._currentResults = null;
+      return;
+    }
     const skipBtn = byId("skip");
     if (skipBtn) {
       skipBtn.disabled = true;
@@ -848,24 +924,34 @@ const GachaPage = {
       ? `<table class="table">${this._tableHead()}<tbody>${rows}</tbody></table>`
       : `<div class="muted">本次未获得物品。</div>`;
 
-    byId("open-stage").innerHTML = "";
-    byId("open-result").innerHTML = `
+    const stage = byId("open-stage");
+    if (stage) stage.innerHTML = "";
+    const resultNode = byId("open-result");
+    if (resultNode) {
+      resultNode.innerHTML = `
       <div class="card fade-in">
         ${brickNote}
         ${tableHTML}
       </div>`;
+    }
     if (bricks.length) {
       const diamondHit = bricks.find(item => this._isDiamondTemplate(item.template) || this._isDiamondTemplate(item.hidden_template));
       if (diamondHit) {
-        window.AudioEngine?.playSfx?.('gacha-celebrate', { rarity: 'BRICK', diamond: true, exquisite: !!diamondHit.exquisite });
+        if (this._isActive()) {
+          window.AudioEngine?.playSfx?.('gacha-celebrate', { rarity: 'BRICK', diamond: true, exquisite: !!diamondHit.exquisite });
+        }
       } else {
         const exquisiteHit = bricks.find(item => item.exquisite);
         if (exquisiteHit) {
-          window.AudioEngine?.playSfx?.('gacha-celebrate', { rarity: 'BRICK', diamond: false, exquisite: true });
+          if (this._isActive()) {
+            window.AudioEngine?.playSfx?.('gacha-celebrate', { rarity: 'BRICK', diamond: false, exquisite: true });
+          }
         }
       }
     }
-    window.AudioEngine?.playSfx?.('skip');
+    if (this._isActive()) {
+      window.AudioEngine?.playSfx?.('skip');
+    }
     this._setDrawDisabled(false);
     this._opening = false;
     this._refreshStats(); // 跳过路径也要刷新
@@ -887,10 +973,13 @@ const GachaPage = {
   },
 
   _notifyDiamonds(list) {
+    if (!this._isActive()) return;
     if (!Array.isArray(list) || !window.Notifier || typeof window.Notifier.pushDiamond !== "function") return;
     const diamonds = list.filter(item => this._isDiamondTemplate(item?.template) || this._isDiamondTemplate(item?.hidden_template));
     if (!diamonds.length) return;
-    window.AudioEngine?.playSfx?.('diamond');
+    if (this._isActive()) {
+      window.AudioEngine?.playSfx?.('diamond');
+    }
     const username = (API._me && API._me.username) ? API._me.username : "你";
     diamonds.forEach(item => {
       try {
