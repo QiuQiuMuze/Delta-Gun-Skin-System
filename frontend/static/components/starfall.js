@@ -452,6 +452,1520 @@ const StarfallData = (() => {
     },
   };
 
+  function buildDayEvent(day, title, body, options) {
+    return {
+      title: `Day ${day} · ${title}`,
+      body,
+      options,
+    };
+  }
+
+  const sharedLongHaulEvents = [];
+  sharedLongHaulEvents.push((state, day) => {
+    const roster = getRoster(state);
+    const care = hasCrewRole(state, "care");
+    const nav = hasCrewRole(state, "nav");
+    return buildDayEvent(
+      day,
+      "静域调整",
+      "逃生舱缓慢旋转，只有仪表的脉冲在跳动。你趁这个窗口重新布置长期旅程。",
+      [
+        {
+          key: "vent",
+          label: "校准生命维持",
+          detail: "调节气阀和温控。",
+          resolve: () => ({
+            effects: { o2: 10, mind: 6 },
+            log: "你调节了再循环阀门，舱内霜雾缓慢散开。",
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "ration",
+          label: "重新封装口粮",
+          detail: care ? "Noor 提出节律饮食方案。" : "把热量片按天数重新分装。",
+          resolve: () => ({
+            effects: { food: 6, satiety: 1, mind: care ? 12 : 8 },
+            log: care
+              ? "Noor 把营养片封装成新配方，并写下鼓励的话。"
+              : "你将口粮真空封装，贴上鲜艳的标签。",
+            flags: { rationTight: false },
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "chart",
+          label: "描绘星象",
+          detail: nav ? "与 Maru 一起修订星图。" : "靠肉眼记录星轨。",
+          resolve: () => ({
+            effects: { signal: 12, mind: 10 },
+            log: roster.length
+              ? "你们轮流在舷窗前描摹星点，方向感重新回到胸腔。"
+              : "你独自描绘星轨，笔尖颤抖却没有停下。",
+            preventMindDecay: true,
+          }),
+        },
+      ]
+    );
+  });
+
+  sharedLongHaulEvents.push((state, day) => {
+    const engineer = hasCrewRole(state, "repair");
+    return buildDayEvent(
+      day,
+      "漂流拾荒",
+      "雷达捕捉到一串散落的残骸，也许能拆出可用的燃料芯。",
+      [
+        {
+          key: "harvest",
+          label: "系缆拖回",
+          detail: engineer ? "让 Rae 操控无人机。" : "亲自驾缆。",
+          resolve: () => {
+            const gain = randomInt(6, 12);
+            return {
+              effects: { fuel: gain, mind: engineer ? 6 : -2 },
+              log: engineer
+                ? "Rae 操控无人机勾住货箱，你们拖着碎片返航。"
+                : "你亲自拖拽残骸，肩膀被安全带勒出淤痕。",
+            };
+          },
+        },
+        {
+          key: "scan",
+          label: "扫描日志",
+          detail: "读取残骸中的旧数据。",
+          resolve: () => ({
+            effects: { signal: 14, mind: 6 },
+            log: "你整理出几条仍可使用的跳跃航道。",
+            preventMindDecay: true,
+            flags: { archiveHints: true },
+          }),
+        },
+        {
+          key: "observe",
+          label: "保持距离",
+          detail: "只在远处记录。",
+          resolve: () => ({
+            effects: { mind: 12 },
+            log: "你们静静看着金属在星光里转动，借此放缓心跳。",
+            preventMindDecay: true,
+          }),
+        },
+      ]
+    );
+  });
+
+  sharedLongHaulEvents.push((state, day) => {
+    const roster = getRoster(state);
+    return buildDayEvent(
+      day,
+      "航程预测",
+      "AI 建议进行一次百日航程模拟，以评估资源是否足够。",
+      [
+        {
+          key: "optimize",
+          label: "优化航线",
+          detail: "重新推算燃料曲线。",
+          resolve: () => ({
+            effects: { fuel: 8, signal: 8, mind: 6 },
+            log: "你删去几段弯折的航线，能耗图表变得顺眼。",
+            flags: { vectorPlotted: true },
+          }),
+        },
+        {
+          key: "drill",
+          label: "应急演练",
+          detail: roster.length ? "同伴分组演练故障。" : "独自模拟突发。",
+          resolve: () => ({
+            effects: { mind: roster.length ? 14 : 8, o2: -2 },
+            log: roster.length
+              ? "你们演练火警、失压和舱外作业，肌肉记住了动作。"
+              : "你对着镜面重复操作，直到反应变成直觉。",
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "diet",
+          label: "规划进食",
+          detail: "决定下一次进食窗口。",
+          resolve: () => ({
+            effects: { food: 4, satiety: 2 },
+            log: "你安排错峰进食，留出额外的储备。",
+            preventMindDecay: true,
+          }),
+        },
+      ]
+    );
+  });
+  const surfaceLongHaulEvents = [];
+  surfaceLongHaulEvents.push((state, day) => {
+    const engineer = hasCrewRole(state, "repair");
+    return buildDayEvent(
+      day,
+      "冰原踏勘",
+      "Erevia 的冰层在极夜里发出细微的裂响。新的裂谷可能藏着晶体或液态水。",
+      [
+        {
+          key: "crystal",
+          label: "采集晶体",
+          detail: "提炼燃料补给。",
+          resolve: () => {
+            const gain = randomInt(8, 14);
+            return {
+              effects: { fuel: gain, mind: engineer ? 8 : 4 },
+              log: engineer
+                ? "Rae 设计了支撑器，晶体矿车安全返回营地。"
+                : "你小心把晶体装进保温箱，手套被寒霜磨白。",
+            };
+          },
+        },
+        {
+          key: "water",
+          label: "融化冰河",
+          detail: "补充氧气与饮水。",
+          resolve: () => ({
+            effects: { o2: 12, satiety: 1 },
+            log: "融化的冰雾在舱内形成透明水珠，你们轮流饮下。",
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "map",
+          label: "绘制地貌",
+          detail: "为基地扩张记录安全路线。",
+          resolve: () => ({
+            effects: { signal: 10, mind: 10 },
+            log: "你把地形标注在全息图上，为未来的温室找到了遮蔽点。",
+            preventMindDecay: true,
+            flags: { surfaceSurvey: true },
+          }),
+        },
+      ]
+    );
+  });
+
+  surfaceLongHaulEvents.push((state, day) => {
+    const care = hasCrewRole(state, "care");
+    return buildDayEvent(
+      day,
+      "极夜温室",
+      "临时温室里出现第一批真菌，只要投入热量就能形成稳定的食物循环。",
+      [
+        {
+          key: "expand",
+          label: "扩建温室",
+          detail: "耗费燃料维持温度。",
+          resolve: () => ({
+            effects: { fuel: -4, food: 10, mind: 8 },
+            log: "你铺设新的加热管，真菌孢子在暗红光里舒展。",
+            flags: { surfaceGreenhouse: true },
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "med",
+          label: "调配营养剂",
+          detail: care ? "Noor 调制镇静饮剂。" : "提取高热量汤剂。",
+          resolve: () => ({
+            effects: { food: 6, mind: care ? 12 : 6 },
+            log: care
+              ? "Noor 把真菌磨成药剂，分给每位船员。"
+              : "你提取的汤剂让喉咙再次感到温热。",
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "seed",
+          label: "封存孢子",
+          detail: "为未来的基地保留种子。",
+          resolve: () => ({
+            effects: { food: 3, signal: 6 },
+            log: "你把成熟孢子封进储存舱，希望有一天能在其他世界生根。",
+            flags: { surfaceColonySeed: true },
+          }),
+        },
+      ]
+    );
+  });
+
+  surfaceLongHaulEvents.push((state, day) =>
+    buildDayEvent(
+      day,
+      "极光脉冲",
+      "极夜上空出现罕见的亮度，科学官建议同步信号，借助极光把讯息投射得更远。",
+      [
+        {
+          key: "sync",
+          label: "同步极光",
+          detail: "调节晶体阵列。",
+          resolve: () => ({
+            effects: { signal: 18, mind: 12 },
+            log: "极光顺着晶体折射，灯塔的音调被无限延伸。",
+            flags: { surfaceChorus: true, surfaceAwaken: true },
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "sample",
+          label: "采集样本",
+          detail: "储存能量碎屑。",
+          resolve: () => ({
+            effects: { fuel: 10, signal: 6 },
+            log: "你收集的极光碎屑像微小的流星，提供了额外能源。",
+          }),
+        },
+        {
+          key: "meditate",
+          label: "静坐观测",
+          detail: "让意识与行星同频。",
+          resolve: () => ({
+            effects: { mind: 18 },
+            log: "你躺在冰面上，星光的低语穿过骨骼。",
+            preventMindDecay: true,
+          }),
+        },
+      ]
+    )
+  );
+  const orbitalLongHaulEvents = [];
+  orbitalLongHaulEvents.push((state, day) => {
+    const nav = hasCrewRole(state, "nav");
+    return buildDayEvent(
+      day,
+      "星港残影",
+      "雷达捕捉到早已废弃的星港。结构尚存，或许还能拆下能源模块。",
+      [
+        {
+          key: "dock",
+          label: "靠近拆解",
+          detail: "冒险获取燃料。",
+          resolve: () => {
+            const success = Math.random() < (nav ? 0.8 : 0.6);
+            return {
+              effects: { fuel: success ? 14 : 5, mind: success ? 10 : -4 },
+              log: success
+                ? "你稳稳贴近残骸，成功拆下完整的燃料芯。"
+                : "残骸碎裂，金属擦过舱壁，你在惊喘中脱离。",
+              mindShock: !success,
+            };
+          },
+        },
+        {
+          key: "relay",
+          label: "申请协助",
+          detail: "呼叫经过的商队。",
+          resolve: () => ({
+            effects: { signal: 12, food: 6 },
+            log: "一支流浪舰队回应，丢下一箱干燥蔬菜。",
+            flags: { caravanAlliance: true },
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "record",
+          label: "记录结构",
+          detail: "将星港数据上传档案。",
+          resolve: () => ({
+            effects: { signal: 10, mind: 8 },
+            log: "你整理星港构造，准备将来重建时使用。",
+            preventMindDecay: true,
+            flags: { archiveLinked: true },
+          }),
+        },
+      ]
+    );
+  });
+
+  orbitalLongHaulEvents.push((state, day) =>
+    buildDayEvent(
+      day,
+      "彗尾补给",
+      "一颗缓慢的彗星擦过。尾部冻结气体足以补充氧气和饮水。",
+      [
+        {
+          key: "collect",
+          label: "部署捕捉帆",
+          detail: "收集彗尾。",
+          resolve: () => ({
+            effects: { o2: 16, satiety: 1 },
+            log: "捕捉帆布满霜花，你们吸入久违的清新空气。",
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "distill",
+          label: "蒸馏水源",
+          detail: "把冰晶化为饮水。",
+          resolve: () => ({
+            effects: { food: 4, mind: 6 },
+            log: "蒸馏器发出轻鸣，透明水珠滴入储罐。",
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "log",
+          label: "记录轨迹",
+          detail: "上传彗星数据。",
+          resolve: () => ({
+            effects: { signal: 12 },
+            log: "你把彗星轨迹标注在信标网里，提醒后来者。",
+          }),
+        },
+      ]
+    )
+  );
+
+  orbitalLongHaulEvents.push((state, day) => {
+    const signaler = hasCrewRole(state, "signal");
+    return buildDayEvent(
+      day,
+      "深空集市",
+      "一支临时拼装的集市船队向你广播问候，只要交换故事，他们愿意分享资源。",
+      [
+        {
+          key: "stories",
+          label: "交换经历",
+          detail: "讲述逃离的经过。",
+          resolve: () => ({
+            effects: { food: 8, mind: 10 },
+            log: "你讲述了 Ecliptica 的爆炸，换来一批新鲜的营养果冻。",
+            preventMindDecay: true,
+            flags: { caravanAlliance: true },
+          }),
+        },
+        {
+          key: "harmonic",
+          label: "建立中继",
+          detail: signaler ? "Ilya 调整频率。" : "请求他们放大信号。",
+          resolve: () => ({
+            effects: { signal: 20, mind: signaler ? 12 : 6 },
+            log: signaler
+              ? "Ilya 与他们同步谐波，信号板亮成一片。"
+              : "他们分享中继器，你的求救声传得更远。",
+            preventMindDecay: true,
+            flags: { rescuePulse: true },
+          }),
+        },
+        {
+          key: "trade",
+          label: "燃料换补给",
+          detail: "付出少量燃料换稀缺物资。",
+          resolve: () => ({
+            effects: { fuel: -4, food: 6, o2: 6 },
+            log: "你把老化燃料换成急救箱与干燥蔬菜。",
+          }),
+        },
+      ]
+    );
+  });
+  const longHaulMilestones = {};
+  longHaulMilestones[19] = (state, day) => {
+    const surface = state.flags.landedErevia && !state.flags.surfaceAscended;
+    return buildDayEvent(
+      day,
+      surface ? "极夜盘点" : "深空盘点",
+      surface
+        ? "基地第十九日，风暴暂歇。你终于可以清点资源，把短期营地改造成长期家园。"
+        : "长航第十九日，仪表稳定。是时候整理仓储，制定余下旅程的节奏。",
+      [
+        {
+          key: "inventory",
+          label: "全面清点",
+          detail: "核对燃料与备用件。",
+          resolve: () => ({
+            effects: { fuel: 6, food: 4, mind: 8 },
+            log: "你重新编号储物柜，写下新的消耗表。",
+            flags: { longhaulPrepared: true },
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "delegate",
+          label: "分派职责",
+          detail: "让同伴承担固定任务。",
+          resolve: () => ({
+            effects: { mind: 12, signal: 6 },
+            log: "你为每位船员安排巡检表，士气提升了一些。",
+            flags: { crewSynergy: true },
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "rest",
+          label: "轮流休整",
+          detail: "关掉非必要系统睡上一整昼夜。",
+          resolve: () => ({
+            effects: { mind: 20, satiety: 1 },
+            log: "你们轮流睡在最暖的角落，梦境暂时恢复了秩序。",
+            preventMindDecay: true,
+          }),
+        },
+      ]
+    );
+  };
+
+  longHaulMilestones[23] = (state, day) => {
+    const roster = getRoster(state);
+    return buildDayEvent(
+      day,
+      "专长演练",
+      roster.length
+        ? "为了撑过漫长旅程，你决定让每位同伴主导一次演练。"
+        : "没有伙伴，你只能对着镜面重复所有步骤。",
+      [
+        {
+          key: "repair",
+          label: "推进器检修",
+          detail: roster.length ? "Rae 拆开引擎。" : "独自检查喷嘴。",
+          resolve: () => ({
+            effects: { fuel: 5, mind: roster.length ? 10 : 6 },
+            log: roster.length
+              ? "Rae 换掉老化的点火针，喷嘴声音顺畅。"
+              : "你替换喷嘴，指尖因寒冷而僵硬。",
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "med",
+          label: "医疗应急",
+          detail: roster.length ? "Noor 示范如何处理冻伤。" : "复习医疗资料。",
+          resolve: () => ({
+            effects: { mind: 12, satiety: 1 },
+            log: roster.length
+              ? "Noor 把急救包重新分类，任何人都能快速找到工具。"
+              : "你仔细背诵止血与保温流程。",
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "nav",
+          label: "航线推演",
+          detail: roster.length ? "Maru 分享隐藏重力井。" : "与 AI 模拟飞行。",
+          resolve: () => ({
+            effects: { signal: 12, mind: 8 },
+            log: roster.length
+              ? "Maru 指出几个隐蔽的重力井，为你节省了燃料。"
+              : "你和 AI 重复模拟跳跃，直到它给出满意评分。",
+            preventMindDecay: true,
+          }),
+        },
+      ]
+    );
+  };
+
+  longHaulMilestones[28] = (state, day) => {
+    const surface = state.flags.landedErevia && !state.flags.surfaceAscended;
+    return buildDayEvent(
+      day,
+      surface ? "冰洞补给" : "碎片补给",
+      surface
+        ? "风暴撕开新的冰洞，露出蓝色晶体和冻结植物。"
+        : "你的传感器发现一艘刚被撕裂的货舱，里面或许还剩余粮和空气。",
+      [
+        {
+          key: "gather",
+          label: surface ? "采集冰蘑" : "搜刮口粮",
+          detail: "补充食物储备。",
+          resolve: () => ({
+            effects: { food: 10, mind: 6 },
+            log: surface
+              ? "冰蘑的菌伞在手心颤动，你把它们安置到温室。"
+              : "你在货柜中找到几箱保质期完好的干粮。",
+            preventMindDecay: true,
+          }),
+        },
+        {
+          key: "fuel",
+          label: surface ? "提炼晶体" : "拆解推进芯",
+          detail: "将素材转化为燃料。",
+          resolve: () => ({
+            effects: { fuel: 12 },
+            log: surface
+              ? "晶体裂开，淡蓝色能量雾散入储罐。"
+              : "你拆下半损的推进芯，把零件焊在逃生舱外。",
+          }),
+        },
+        {
+          key: "chart",
+          label: surface ? "绘制冰层地图" : "标记废船坐标",
+          detail: "让其他幸存者也受益。",
+          resolve: () => ({
+            effects: { signal: 14, mind: 10 },
+            log: "你把坐标上传到共享信标，希望未来有人能找到这里。",
+            preventMindDecay: true,
+            flags: { archivePlan: true },
+          }),
+        },
+      ]
+    );
+  };
+
+  longHaulMilestones[33] = (state, day) => {
+    const surface = state.flags.landedErevia && !state.flags.surfaceAscended;
+    const options = surface
+      ? [
+          {
+            key: "colony",
+            label: "建设基地",
+            detail: "将营地升级为长期栖居。",
+            resolve: () => ({
+              effects: { fuel: -4, mind: 12 },
+              log: "你决定把 Erevia 当作新的家园，开始扩展骨架。",
+              flags: { longGoal: "colony", goalStage: 1, surfaceColonyPlan: true },
+              preventMindDecay: true,
+            }),
+          },
+          {
+            key: "beacon",
+            label: "建造灯塔",
+            detail: "集中资源呼唤救援。",
+            resolve: () => ({
+              effects: { signal: 16, fuel: -3 },
+              log: "你为求救塔挖下地基，准备让极光替你发声。",
+              flags: { longGoal: "beacon", goalStage: 1, surfaceBeaconPlan: true },
+              preventMindDecay: true,
+            }),
+          },
+          {
+            key: "chorus",
+            label: "追随极光",
+            detail: "把意识与行星同步。",
+            resolve: () => ({
+              effects: { mind: 20, signal: 10 },
+              log: "你计划在冰原竖起晶体阵列，倾听星海的合唱。",
+              flags: { longGoal: "chorus", goalStage: 1, surfaceChorusPlan: true },
+              preventMindDecay: true,
+            }),
+          },
+          {
+            key: "ascent",
+            label: "准备二次起飞",
+            detail: "整备推进器返回星海。",
+            resolve: () => ({
+              effects: { fuel: 8, signal: 8 },
+              log: "你重新计算起飞窗口，清点每一枚螺栓。",
+              flags: { longGoal: "ascent", goalStage: 1, ascentPlan: true },
+              preventMindDecay: true,
+            }),
+          },
+        ]
+      : [
+          {
+            key: "rescue",
+            label: "强化求救",
+            detail: "让信号覆盖更大范围。",
+            resolve: () => ({
+              effects: { signal: 18, mind: 8 },
+              log: "你设计新的谐波序列，把求救脉冲送往外缘。",
+              flags: { longGoal: "rescue", goalStage: 1, rescuePlan: true },
+              preventMindDecay: true,
+            }),
+          },
+          {
+            key: "caravan",
+            label: "寻找商队",
+            detail: "与流浪舰队结盟。",
+            resolve: () => ({
+              effects: { signal: 12, food: 6 },
+              log: "你把自己的航迹上传到商队频道，换来互助的承诺。",
+              flags: { longGoal: "caravan", goalStage: 1, caravanPlan: true },
+              preventMindDecay: true,
+            }),
+          },
+          {
+            key: "archive",
+            label: "接入档案",
+            detail: "寻找星海档案库。",
+            resolve: () => ({
+              effects: { signal: 14, mind: 10 },
+              log: "你与远端节点建立初始握手，记忆即将上传。",
+              flags: { longGoal: "archive", goalStage: 1, archivePlan: true },
+              preventMindDecay: true,
+            }),
+          },
+          {
+            key: "wayfinder",
+            label: "绘制新航线",
+            detail: "抛弃原航图，另辟蹊径。",
+            resolve: () => ({
+              effects: { fuel: 6, mind: 12 },
+              log: "你决意成为新的引路人，把未知航道写进日志。",
+              flags: { longGoal: "wayfinder", goalStage: 1, vectorPlotted: true },
+              preventMindDecay: true,
+            }),
+          },
+        ];
+    return buildDayEvent(
+      day,
+      surface ? "抉择长夜" : "制定愿景",
+      surface
+        ? "极夜久驻，基地需要一个明确方向。你必须选择未来的道路。"
+        : "漂流太久，信念必须凝成目标。你决定未来几十日的航向。",
+      options
+    );
+  };
+
+  longHaulMilestones[38] = (state, day) => {
+    const goal = state.flags.longGoal;
+    const stage = state.flags.goalStage || 1;
+    const options = [
+      {
+        key: "fortify",
+        label: "补强基础",
+        detail: "投入时间检修舱体。",
+        resolve: () => ({
+          effects: { fuel: 4, mind: 8, o2: 4 },
+          log: "你把缆索、密封圈和电容全部检查一遍，长途航程的根基更稳固。",
+          preventMindDecay: true,
+        }),
+      },
+      {
+        key: "bond",
+        label: "集体会议",
+        detail: "让每个人提出自己的担忧。",
+        resolve: () => ({
+          effects: { mind: 14 },
+          log: "你们围成一圈讨论未来的危险，彼此的眼神变得坚定。",
+          preventMindDecay: true,
+        }),
+      },
+    ];
+    if (goal) {
+      const newStage = Math.max(stage, 2);
+      const result = { effects: {}, log: "", flags: { goalStage: newStage }, preventMindDecay: true };
+      switch (goal) {
+        case "colony":
+          result.effects = { food: 8, mind: 10, satiety: 1 };
+          result.log = "你加固居住舱的保温层，为未来的居所打下基础。";
+          result.flags.surfaceGreenhouse = true;
+          break;
+        case "beacon":
+          result.effects = { signal: 18, fuel: -2, mind: 8 };
+          result.log = "你竖起新的天线塔，极光灯阵开始向外脉动。";
+          result.flags.surfaceBeacon = true;
+          break;
+        case "chorus":
+          result.effects = { mind: 18, signal: 8 };
+          result.log = "你布置晶体阵列，让极光的音调与自己的心跳重叠。";
+          result.flags.surfaceChorus = true;
+          result.flags.surfaceAwaken = true;
+          break;
+        case "ascent":
+          result.effects = { fuel: 12, signal: 6 };
+          result.log = "你把熔化的晶体注入推进器，起飞系统再次发出熟悉的嗡鸣。";
+          result.flags.surfaceForge = true;
+          break;
+        case "rescue":
+          result.effects = { signal: 20, mind: 8 };
+          result.log = "你与回收网络同步频率，求救脉冲持续不间断。";
+          result.flags.rescuePulse = true;
+          break;
+        case "caravan":
+          result.effects = { food: 6, signal: 10, mind: 8 };
+          result.log = "你向商队发送定时报告，换来一批充满香料味的干粮。";
+          result.flags.caravanAlliance = true;
+          break;
+        case "archive":
+          result.effects = { signal: 12, mind: 12 };
+          result.log = "你上传更多记忆片段，星海档案库回传暖色的确认灯。";
+          result.flags.archiveLinked = true;
+          break;
+        case "wayfinder":
+          result.effects = { fuel: 6, mind: 14 };
+          result.log = "你绘制一条穿越暗带的捷径，准备带领后来者走这条路。";
+          result.flags.vectorPlotted = true;
+          break;
+        default:
+          break;
+      }
+      options.push({
+        key: "advance",
+        label: "推进目标",
+        detail: "把计划具体化。",
+        resolve: () => result,
+      });
+    } else {
+      options.push({
+        key: "plan",
+        label: "重新立项",
+        detail: "制定长期目标。",
+        resolve: () => ({
+          effects: { mind: 12, signal: 8 },
+          log: "你把愿望再次写在白板上，提醒自己为何仍要活着。",
+          preventMindDecay: true,
+        }),
+      });
+    }
+    return buildDayEvent(
+      day,
+      "阶段推进",
+      goal
+        ? "计划进入关键阶段，你需要亲自推动它。"
+        : "缺乏目标的日子会磨掉意志，是时候重新聚焦了。",
+      options
+    );
+  };
+
+  longHaulMilestones[43] = (state, day) => {
+    const goal = state.flags.longGoal;
+    const stage = state.flags.goalStage || 2;
+    const progress = (state.flags.goalProgress || 0) + 1;
+    const options = [
+      {
+        key: "conserve",
+        label: "精细配给",
+        detail: "重新安排吃喝节奏。",
+        resolve: () => ({
+          effects: { food: 5, satiety: 2, mind: 6 },
+          log: "你制定新的进食表，让饥饿只在必要时刻来临。",
+          preventMindDecay: true,
+          flags: { rationTight: true },
+        }),
+      },
+      {
+        key: "survey",
+        label: "广域勘测",
+        detail: "扩大雷达的探测范围。",
+        resolve: () => ({
+          effects: { signal: 12, mind: 8 },
+          log: "你扩展雷达基准，捕捉到远方零散的应答。",
+          preventMindDecay: true,
+        }),
+      },
+    ];
+    if (goal) {
+      const flags = { goalStage: Math.max(stage, 2), goalProgress: progress };
+      let effects = { mind: 10 };
+      let detail = "推进计划";
+      let log = "";
+      switch (goal) {
+        case "colony":
+          effects = { food: 8, mind: 12 };
+          detail = "扩展居住舱";
+          log = "你铺设新的支撑梁，营地开始像真正的聚落。";
+          flags.surfaceColony = true;
+          break;
+        case "beacon":
+          effects = { signal: 20, mind: 8 };
+          detail = "校准灯塔";
+          log = "你调整灯塔的共振频率，求救脉冲覆盖整个极夜。";
+          flags.surfaceBeacon = true;
+          break;
+        case "chorus":
+          effects = { mind: 18, signal: 12 };
+          detail = "构筑祭坛";
+          log = "你在冰原上摆放晶体圆环，极光的声纹与你的呼吸同步。";
+          flags.surfaceChorus = true;
+          break;
+        case "ascent":
+          effects = { fuel: 14, mind: 8 };
+          detail = "完成推进检修";
+          log = "推进器的热量重新充满舱体，你能想象再次升空的轨迹。";
+          flags.surfaceAscendPrep = true;
+          break;
+        case "rescue":
+          effects = { signal: 22, mind: 10 };
+          detail = "拓展中继";
+          log = "你与远端信标建立稳定链路，求救信号变成连绵的吟唱。";
+          flags.rescuePulse = true;
+          break;
+        case "caravan":
+          effects = { food: 7, signal: 12, mind: 10 };
+          detail = "整合商队资源";
+          log = "你与商队制定互助协议，他们承诺在百日内送来补给。";
+          flags.caravanAlliance = true;
+          break;
+        case "archive":
+          effects = { signal: 16, mind: 14 };
+          detail = "同步档案库";
+          log = "档案库的节点向你敞开，你的旅程化作一段清晰的数据。";
+          flags.archiveLinked = true;
+          break;
+        case "wayfinder":
+          effects = { fuel: 8, mind: 14, signal: 8 };
+          detail = "布设航路标记";
+          log = "你在暗带布置浮标，未来的旅人将跟随你的灯光。";
+          flags.vectorPlotted = true;
+          break;
+        default:
+          break;
+      }
+      options.push({
+        key: "progress",
+        label: detail,
+        detail: "推动既定蓝图。",
+        resolve: () => ({ effects, log, flags, preventMindDecay: true }),
+      });
+    }
+    return buildDayEvent(
+      day,
+      "长期整备",
+      goal
+        ? "距离终点还有一段距离，你必须巩固计划的每一个环节。"
+        : "没有目标的生活像漂浮的尘埃。至少补充物资，让灵魂暂时安稳。",
+      options
+    );
+  };
+
+  longHaulMilestones[47] = (state, day) => {
+    const goal = state.flags.longGoal;
+    const options = [
+      {
+        key: "audit",
+        label: "终检系统",
+        detail: "逐一检测所有仪表。",
+        resolve: () => ({
+          effects: { fuel: 4, o2: 4, mind: 6 },
+          log: "你把每一个仪表都重新标定，任何故障都会提前预警。",
+          preventMindDecay: true,
+        }),
+      },
+      {
+        key: "story",
+        label: "记录口述史",
+        detail: "把这段旅程讲给日志听。",
+        resolve: () => ({
+          effects: { mind: 12, signal: 6 },
+          log: "你把每个人的声音都录进日志，提醒自己为何坚持。",
+          preventMindDecay: true,
+        }),
+      },
+    ];
+    if (goal) {
+      const stage = Math.max(3, state.flags.goalStage || 0);
+      const progress = (state.flags.goalProgress || 0) + 1;
+      const flags = { goalStage: stage, goalProgress: progress, goalPrepared: true };
+      let effects = { mind: 12 };
+      let log = "";
+      let label = "执行预案";
+      switch (goal) {
+        case "colony":
+          effects = { food: 8, mind: 18, signal: 6 };
+          log = "霜辉基地的结构被完全封闭，暖光在雪原上投下长影。";
+          flags.surfaceColony = true;
+          flags.surfaceColonyReady = true;
+          break;
+        case "beacon":
+          effects = { signal: 24, mind: 10 };
+          log = "灯塔的脉冲贯穿冰层，极夜像海潮般回应。";
+          flags.surfaceBeacon = true;
+          flags.beaconReady = true;
+          break;
+        case "chorus":
+          effects = { mind: 22, signal: 14 };
+          log = "极光祭坛亮起，意识与行星的边界开始模糊。";
+          flags.surfaceChorus = true;
+          flags.surfaceAwaken = true;
+          flags.chorusReady = true;
+          break;
+        case "ascent":
+          effects = { fuel: 16, mind: 8, signal: 6 };
+          log = "推进器的蓝焰在夜空划出弧线，只待下个窗口起飞。";
+          flags.surfaceAscendPrep = true;
+          flags.ascentReady = true;
+          break;
+        case "rescue":
+          effects = { signal: 24, mind: 12 };
+          log = "你的求救声通过中继网汇聚成耀眼的浪潮。";
+          flags.rescuePulse = true;
+          flags.rescueReady = true;
+          break;
+        case "caravan":
+          effects = { food: 8, signal: 12, mind: 12 };
+          log = "商队派出先行艇与你会合，互相共享燃料表与歌谣。";
+          flags.caravanAlliance = true;
+          flags.caravanReady = true;
+          break;
+        case "archive":
+          effects = { mind: 16, signal: 18 };
+          log = "远端档案库打开核心通道，你的记忆与他们的记录交织。";
+          flags.archiveLinked = true;
+          flags.archiveReady = true;
+          break;
+        case "wayfinder":
+          effects = { fuel: 10, mind: 16, signal: 8 };
+          log = "你在星图上标注最后的节点，新的航道已经成形。";
+          flags.vectorPlotted = true;
+          flags.wayfinderReady = true;
+          break;
+        default:
+          break;
+      }
+      options.push({
+        key: "finalize",
+        label,
+        detail: "把长期蓝图变成现实。",
+        resolve: () => ({ effects, log, flags, preventMindDecay: true }),
+      });
+    }
+    return buildDayEvent(
+      day,
+      "终程检验",
+      goal
+        ? "计划即将收束，任何遗留的环节都会影响未来的结局。"
+        : "你静静地打磨舱体，等待一个属于自己的答案。",
+      options
+    );
+  };
+
+  longHaulMilestones[50] = (state, day) => {
+    const goal = state.flags.longGoal;
+    const goalReady = state.flags.goalPrepared;
+    const options = [
+      {
+        key: "review",
+        label: "复盘日志",
+        detail: "把前五十日的选择重新过一遍。",
+        resolve: () => ({
+          effects: { mind: 14, signal: 6 },
+          log: "你重读每一条记录，明白自己走过的路径。",
+          preventMindDecay: true,
+        }),
+      },
+      {
+        key: "reserve",
+        label: "储备物资",
+        detail: "花一日时间修补储藏。",
+        resolve: () => ({
+          effects: { food: 6, o2: 6, fuel: 6 },
+          log: "你把空的储罐重新填满，下一阶段的消耗不会让你措手不及。",
+          preventMindDecay: true,
+        }),
+      },
+    ];
+    if (goal && goalReady) {
+      const progress = (state.flags.goalProgress || 0) + 1;
+      const flags = { goalProgress: progress, goalReady: true, goalComplete: true };
+      let effects = { mind: 16 };
+      let log = "";
+      switch (goal) {
+        case "colony":
+          effects = { mind: 20, food: 10, signal: 10 };
+          log = "霜辉基地点亮长明灯，你宣布这里将接纳所有漂泊者。";
+          flags.surfaceColony = true;
+          break;
+        case "beacon":
+          effects = { signal: 28, mind: 12 };
+          log = "灯塔发出连绵不绝的谐波，求救信号跨越星系。";
+          flags.surfaceBeacon = true;
+          flags.rescuePulse = true;
+          break;
+        case "chorus":
+          effects = { mind: 26, signal: 16 };
+          log = "你沉入极夜的歌声，意识与星海合奏成新的语言。";
+          flags.surfaceChorus = true;
+          flags.surfaceAwaken = true;
+          break;
+        case "ascent":
+          effects = { fuel: 20, mind: 12, signal: 10 };
+          log = "起飞程序确认无误，只要按下开关，逃生舱就能升空。";
+          flags.surfaceAscendPrep = true;
+          flags.ascentReady = true;
+          break;
+        case "rescue":
+          effects = { signal: 28, mind: 14 };
+          log = "中继网确认收到你的讯号，回收船开始向你靠近。";
+          flags.rescuePulse = true;
+          flags.rescueReady = true;
+          break;
+        case "caravan":
+          effects = { food: 10, mind: 16, signal: 12 };
+          log = "商队发来航行计划，邀请你在下一次会合加入舰队。";
+          flags.caravanAlliance = true;
+          flags.caravanReady = true;
+          break;
+        case "archive":
+          effects = { mind: 20, signal: 20 };
+          log = "星海档案库把你的意识列入守护清单，你的故事再不会遗失。";
+          flags.archiveLinked = true;
+          flags.archiveReady = true;
+          break;
+        case "wayfinder":
+          effects = { fuel: 12, mind: 18, signal: 12 };
+          log = "你发布新的航路图，数个漂流舱在远端点亮回应。";
+          flags.vectorPlotted = true;
+          flags.wayfinderReady = true;
+          break;
+        default:
+          break;
+      }
+      options.push({
+        key: "commit",
+        label: "执行计划",
+        detail: "接受这条道路的结局。",
+        resolve: () => ({ effects, log, flags, preventMindDecay: true }),
+      });
+      options.push({
+        key: "delay",
+        label: "暂缓执行",
+        detail: "继续观察更多日子。",
+        resolve: () => ({
+          effects: { mind: 8, signal: 4 },
+          log: "你决定再观察更久的星光，也许未来还有新的选择。",
+          flags: { goalReady: false, goalDeferred: true },
+          preventMindDecay: true,
+        }),
+      });
+    } else if (goal) {
+      options.push({
+        key: "focus",
+        label: "补完准备",
+        detail: "把剩余的步骤全部补齐。",
+        resolve: () => ({
+          effects: { mind: 14, signal: 8 },
+          log: "你整理清单，把所有未完成的细节逐条划掉。",
+          flags: { goalPrepared: true, goalStage: Math.max(3, state.flags.goalStage || 0) },
+          preventMindDecay: true,
+        }),
+      });
+    } else {
+      options.push({
+        key: "search",
+        label: "寻找意义",
+        detail: "在星海里寻找下一个目标。",
+        resolve: () => ({
+          effects: { mind: 18, signal: 10 },
+          log: "你盯着窗外的星芒，重新勾勒心中的方向。",
+          preventMindDecay: true,
+        }),
+      });
+    }
+    return buildDayEvent(
+      day,
+      "抉择日",
+      goal
+        ? "五十日的坚持来到拐点。你可以执行既定计划，也可以选择继续观望。"
+        : "漫长的旅程提醒你：没有目标就无法得到结局。",
+      options
+    );
+  };
+
+  longHaulMilestones[60] = (state, day) => {
+    const goal = state.flags.longGoal;
+    const options = [
+      {
+        key: "restock",
+        label: "巡检仓库",
+        detail: "补齐老化的滤芯与密封环。",
+        resolve: () => ({
+          effects: { fuel: 6, o2: 8, mind: 8 },
+          log: "你把磨损的滤芯全部换新，长途旅程又多了一份保障。",
+          preventMindDecay: true,
+        }),
+      },
+      {
+        key: "share",
+        label: "广播播报",
+        detail: "向其他幸存者广播生存经验。",
+        resolve: () => ({
+          effects: { signal: 14, mind: 10 },
+          log: "你的频道被反复转发，陌生的声音向你致谢。",
+          preventMindDecay: true,
+        }),
+      },
+    ];
+    if (goal) {
+      const legend = Math.max(state.flags.legendStage || 0, 1);
+      const flags = { legendStage: legend };
+      let effects = { mind: 12 };
+      let label = "深化计划";
+      let log = "";
+      switch (goal) {
+        case "colony":
+          effects = { food: 12, mind: 18, signal: 8 };
+          label = "扩建霜辉城";
+          log = "你为基地增建新的穹顶居所，霜辉城的轮廓愈发清晰。";
+          flags.surfaceCitadel = true;
+          break;
+        case "beacon":
+          effects = { signal: 26, mind: 12 };
+          label = "搭建灯塔网络";
+          log = "你在冰原上布置多个信标，灯塔的歌声开始相互呼应。";
+          flags.beaconNetwork = true;
+          break;
+        case "chorus":
+          effects = { mind: 24, signal: 16 };
+          label = "沉入合唱";
+          log = "你让意识在极光间穿行，星海的旋律延伸到更远的星域。";
+          flags.chorusMantle = true;
+          flags.surfaceAwaken = true;
+          break;
+        case "ascent":
+          effects = { fuel: 18, mind: 10, signal: 10 };
+          label = "打造远航船壳";
+          log = "你为逃生舱加装扩展舱段，它已准备好飞往未知航道。";
+          flags.deepVoyage = true;
+          break;
+        case "rescue":
+          effects = { signal: 28, mind: 14 };
+          label = "组织救援舰";
+          log = "你与回收舰队建立常驻联系，他们开始清理附近的残骸带。";
+          flags.rescueArmada = true;
+          break;
+        case "caravan":
+          effects = { food: 12, signal: 14, mind: 14 };
+          label = "汇聚商队";
+          log = "多支流浪舰队在你的协调下组建成新的商道。";
+          flags.caravanFleet = true;
+          break;
+        case "archive":
+          effects = { mind: 20, signal: 22 };
+          label = "拓展档案节点";
+          log = "你负责的档案节点连通更多星球，记忆从此不会断层。";
+          flags.archiveContinuum = true;
+          break;
+        case "wayfinder":
+          effects = { fuel: 14, mind: 18, signal: 12 };
+          label = "标定暗带航线";
+          log = "你把暗带航线刻在量子浮标上，引路灯穿透了迷雾。";
+          flags.wayfinderBeyond = true;
+          break;
+        default:
+          break;
+      }
+      options.push({
+        key: "legend",
+        label,
+        detail: "让计划跨越百日。",
+        resolve: () => ({ effects, log, flags, preventMindDecay: true }),
+      });
+    }
+    return buildDayEvent(
+      day,
+      "延长航程",
+      goal
+        ? "计划迈入更宏大的阶段。只有大胆扩张，才能支撑百日之后的未来。"
+        : "你决定继续漂流，保持系统与希望的稳定。",
+      options
+    );
+  };
+
+  longHaulMilestones[75] = (state, day) => {
+    const goal = state.flags.longGoal;
+    const options = [
+      {
+        key: "resilience",
+        label: "体能循环",
+        detail: "花一日训练肌肉和呼吸。",
+        resolve: () => ({
+          effects: { mind: 12, satiety: 1 },
+          log: "你们在狭窄的舱内做缓慢的力量训练，骨骼再次感到扎实。",
+          preventMindDecay: true,
+        }),
+      },
+      {
+        key: "commune",
+        label: "星际问候",
+        detail: "向所有已知频道发送慰问。",
+        resolve: () => ({
+          effects: { signal: 16, mind: 12 },
+          log: "数十个弱小的灯光回应你，证明这片宇宙并不空荡。",
+          preventMindDecay: true,
+        }),
+      },
+    ];
+    if (goal) {
+      const legend = Math.max(state.flags.legendStage || 0, 2);
+      const flags = { legendStage: legend };
+      let effects = { mind: 14 };
+      let label = "巩固遗产";
+      let log = "";
+      switch (goal) {
+        case "colony":
+          effects = { food: 14, mind: 20, signal: 10 };
+          label = "成立霜辉议会";
+          log = "霜辉城的居民开始制定自治章程，你们真正成为一个聚落。";
+          flags.legendColony = true;
+          break;
+        case "beacon":
+          effects = { signal: 30, mind: 14 };
+          label = "点亮星座";
+          log = "多座灯塔按特定节奏闪烁，形成横跨天际的求救星座。";
+          flags.legendBeacon = true;
+          break;
+        case "chorus":
+          effects = { mind: 26, signal: 18 };
+          label = "与极光同唱";
+          log = "你分裂出意识碎片，让它们在极光中持续吟唱。";
+          flags.legendChorus = true;
+          break;
+        case "ascent":
+          effects = { fuel: 20, mind: 12, signal: 12 };
+          label = "编队远航";
+          log = "多艘漂流舱在你的指挥下编队，它们将跟随你前往未知的航道。";
+          flags.legendVoyage = true;
+          break;
+        case "rescue":
+          effects = { signal: 32, mind: 16 };
+          label = "救援舰队";
+          log = "你组织的救援舰队开始主动寻找其他求救信号。";
+          flags.legendRescue = true;
+          break;
+        case "caravan":
+          effects = { food: 14, signal: 16, mind: 18 };
+          label = "星际集会";
+          log = "商队在你的旗帜下举办集会，互换物资与故事。";
+          flags.legendCaravan = true;
+          break;
+        case "archive":
+          effects = { mind: 22, signal: 24 };
+          label = "记忆中枢";
+          log = "你建立一个漂浮档案站，任何漂泊者都能在此上传记忆。";
+          flags.legendArchive = true;
+          break;
+        case "wayfinder":
+          effects = { fuel: 16, mind: 20, signal: 14 };
+          label = "灯火罗盘";
+          log = "你布设的浮标组成罗盘，带领旅人穿过最危险的暗带。";
+          flags.legendWayfinder = true;
+          break;
+        default:
+          break;
+      }
+      options.push({
+        key: "legacy",
+        label,
+        detail: "让你的计划留下长久的印记。",
+        resolve: () => ({ effects, log, flags, preventMindDecay: true }),
+      });
+    }
+    return buildDayEvent(
+      day,
+      "遗产奠基",
+      goal
+        ? "七十五日后的你不再只是求生者，而是某条道路的开创者。"
+        : "你提醒自己，即使孤身一人，也能留下痕迹。",
+      options
+    );
+  };
+
+  longHaulMilestones[90] = (state, day) => {
+    const goal = state.flags.longGoal;
+    const options = [
+      {
+        key: "storm",
+        label: "穿越离子风暴",
+        detail: "冒险换取额外能源。",
+        resolve: () => {
+          const gain = randomInt(8, 16);
+          return {
+            effects: { fuel: gain, mind: -4 },
+            log: "你顶着离子风暴穿越暗带，船体被闪电抚过后仍然完整。",
+          };
+        },
+      },
+      {
+        key: "still",
+        label: "进入静默",
+        detail: "关闭大部分系统，感受宇宙脉动。",
+        resolve: () => ({
+          effects: { mind: 22, signal: 10 },
+          log: "你将系统调到最低，意识在静默中延伸。",
+          preventMindDecay: true,
+        }),
+      },
+    ];
+    if (goal) {
+      const legend = Math.max(state.flags.legendStage || 0, 3);
+      const flags = { legendStage: legend };
+      let effects = { mind: 18 };
+      let label = "跨越极限";
+      let log = "";
+      switch (goal) {
+        case "colony":
+          effects = { food: 16, mind: 24, signal: 12 };
+          label = "开启霜辉学院";
+          log = "霜辉城建立第一所学院，未来的拓荒者将在此受训。";
+          flags.legendColony = true;
+          flags.citadelLegacy = true;
+          break;
+        case "beacon":
+          effects = { signal: 34, mind: 18 };
+          label = "组建灯塔舰队";
+          log = "灯塔不再固定于地面，它们开始在星海中移动，为求救者领航。";
+          flags.legendBeacon = true;
+          flags.beaconConstellation = true;
+          break;
+        case "chorus":
+          effects = { mind: 30, signal: 20 };
+          label = "化身极光";
+          log = "你的意识融入极光，成为星海中永恒的一抹乐章。";
+          flags.legendChorus = true;
+          flags.chorusAscend = true;
+          break;
+        case "ascent":
+          effects = { fuel: 24, mind: 14, signal: 14 };
+          label = "开启远征";
+          log = "你为长距跃迁准备最后的导航补丁，将带领编队离开暗带。";
+          flags.legendVoyage = true;
+          flags.voyageArmada = true;
+          break;
+        case "rescue":
+          effects = { signal: 36, mind: 20 };
+          label = "构建救援网络";
+          log = "你的救援舰队在各个星域建立前哨站，任何求救都会被捕捉。";
+          flags.legendRescue = true;
+          flags.rescueWeb = true;
+          break;
+        case "caravan":
+          effects = { food: 16, signal: 18, mind: 20 };
+          label = "形成流浪邦联";
+          log = "商队联盟签订共同航图，你们成为星海中的移动城邦。";
+          flags.legendCaravan = true;
+          flags.caravanConstellation = true;
+          break;
+        case "archive":
+          effects = { mind: 26, signal: 26 };
+          label = "刻录永恒";
+          log = "档案中枢将你的意识备份于多个星系，再无人会忘记你。";
+          flags.legendArchive = true;
+          flags.archiveEternal = true;
+          break;
+        case "wayfinder":
+          effects = { fuel: 18, mind: 24, signal: 16 };
+          label = "拓荒终点";
+          log = "你把暗带尽头的安全港标注出来，旅人终于有了休憩的地方。";
+          flags.legendWayfinder = true;
+          flags.wayfinderHarbor = true;
+          break;
+        default:
+          break;
+      }
+      options.push({
+        key: "ascend",
+        label,
+        detail: "让你的事业跨越极限。",
+        resolve: () => ({ effects, log, flags, preventMindDecay: true }),
+      });
+    }
+    return buildDayEvent(
+      day,
+      "星海考验",
+      goal
+        ? "第九十日的宇宙向你发出考验。跨过去，便能触及超越生存的意义。"
+        : "你在风暴中握紧方向盘，告诉自己一切值得。",
+      options
+    );
+  };
+
+  longHaulMilestones[100] = (state, day) => {
+    const goal = state.flags.longGoal;
+    const options = [
+      {
+        key: "sustain",
+        label: "继续漂流",
+        detail: "保持现状，接受更多未知。",
+        resolve: () => ({
+          effects: { mind: 14, signal: 6 },
+          log: "你决定让旅程继续延伸，未来的终点仍待寻找。",
+          preventMindDecay: true,
+        }),
+      },
+      {
+        key: "rest",
+        label: "百日庆典",
+        detail: "与同伴分享这段旅途。",
+        resolve: () => ({
+          effects: { mind: 20, food: -2 },
+          log: "你们把仅存的甜品分给彼此，百日旅程终于有了庆祝的理由。",
+          preventMindDecay: true,
+        }),
+      },
+    ];
+    if (goal) {
+      let effects = { mind: 28 };
+      let log = "";
+      const flags = { goalComplete: true, legendFinal: goal };
+      switch (goal) {
+        case "colony":
+          effects = { mind: 26, signal: 16, food: 12 };
+          log = "霜辉城成为新的文明火种，你宣誓守护这里的每一盏灯。";
+          flags.surfaceCitadel = true;
+          flags.legendColony = true;
+          break;
+        case "beacon":
+          effects = { signal: 38, mind: 18 };
+          log = "灯塔群构成永不熄灭的求救星河，远方的舰队将其作为导航。";
+          flags.beaconNetwork = true;
+          flags.legendBeacon = true;
+          break;
+        case "chorus":
+          effects = { mind: 34, signal: 22 };
+          log = "你把身体交给冰原，只留下在极光里回荡的意识。";
+          flags.legendChorus = true;
+          flags.surfaceAwaken = true;
+          break;
+        case "ascent":
+          effects = { fuel: 26, mind: 18, signal: 16 };
+          log = "你率领整支编队升空，驶向没有标记的星海。";
+          flags.legendVoyage = true;
+          flags.ascentReady = true;
+          break;
+        case "rescue":
+          effects = { signal: 40, mind: 20 };
+          log = "你把指挥权移交给救援网络，百日航程化作他人的求生指南。";
+          flags.legendRescue = true;
+          flags.rescuePulse = true;
+          break;
+        case "caravan":
+          effects = { food: 18, mind: 22, signal: 18 };
+          log = "星际商队围绕你的旗舰旋转，移动城邦正式启航。";
+          flags.legendCaravan = true;
+          flags.caravanAlliance = true;
+          break;
+        case "archive":
+          effects = { mind: 28, signal: 28 };
+          log = "你的灵魂被刻写进星海档案，每一次呼吸都化作未来的故事。";
+          flags.legendArchive = true;
+          flags.archiveLinked = true;
+          break;
+        case "wayfinder":
+          effects = { fuel: 20, mind: 24, signal: 18 };
+          log = "你在暗带终点竖起罗盘，告诉后来者这里可以安全停靠。";
+          flags.legendWayfinder = true;
+          flags.vectorPlotted = true;
+          break;
+        default:
+          break;
+      }
+      options.push({
+        key: "final",
+        label: "成就百日",
+        detail: "让这段旅程进入传说。",
+        resolve: () => ({ effects, log, flags, preventMindDecay: true }),
+      });
+    }
+    return buildDayEvent(
+      day,
+      "百日终章",
+      goal
+        ? "你已守住一百天。无论选择继续或停驻，这段历史都将留下名字。"
+        : "孤身百日，你仍然记得自己的心跳。是否该寻找新的方向？",
+      options
+    );
+  };
+
+  function fromPool(pool, day, seed = 0) {
+    if (!pool.length) return null;
+    const index = Math.abs(Math.floor(day + seed)) % pool.length;
+    return pool[index];
+  }
+
+  function getExtendedEvent(state, day) {
+    if (!state) return null;
+    const milestone = longHaulMilestones[day];
+    if (typeof milestone === "function") {
+      return milestone(state, day);
+    }
+    const surface = state.flags.landedErevia && !state.flags.surfaceAscended;
+    const pool = surface ? surfaceLongHaulEvents : orbitalLongHaulEvents;
+    const shared = fromPool(sharedLongHaulEvents, day, surface ? 2 : 5);
+    const pick = fromPool(pool, day, state.flags.goalStage || 0);
+    const generator = pick || shared;
+    if (!generator) return shared ? shared(state, day) : null;
+    return generator(state, day);
+  }
+
   function getRoster(state) {
     if (!state?.flags) return [];
     if (!Array.isArray(state.flags.crewRoster)) {
@@ -513,6 +2027,7 @@ const StarfallData = (() => {
     pickCrewForLoss,
     crewListLabel,
     chooseCrew,
+    getExtendedEvent,
   };
 })();
 
@@ -524,6 +2039,7 @@ const {
   pickCrewForLoss,
   crewListLabel,
   chooseCrew,
+  getExtendedEvent,
 } = StarfallData;
 
 const StarfallPage = {
@@ -561,12 +2077,14 @@ const StarfallPage = {
           </aside>
         </div>
         <div class=\"starfall-actions\">
+          <button class=\"btn ghost\" id=\"starfall-audio\">🔇 音景关闭</button>
           <button class=\"btn ghost\" id=\"starfall-restart\">重置旅程</button>
         </div>
       </div>
     `;
   },
   bind() {
+    this._audio = { enabled: false, userMuted: false };
     this._els = {
       stats: document.getElementById("starfall-stats"),
       story: document.getElementById("starfall-story"),
@@ -574,6 +2092,7 @@ const StarfallPage = {
       log: document.getElementById("starfall-log"),
       codex: document.getElementById("starfall-codex"),
       restart: document.getElementById("starfall-restart"),
+      audioToggle: document.getElementById("starfall-audio"),
     };
     this._handlers = {
       onChoice: (e) => {
@@ -587,9 +2106,15 @@ const StarfallPage = {
         this.initState();
         this.renderState();
       },
+      onToggleAudio: () => {
+        this.toggleAudio();
+      },
     };
     this._els.choices.addEventListener("click", this._handlers.onChoice);
     this._els.restart.addEventListener("click", this._handlers.onRestart);
+    if (this._els.audioToggle) {
+      this._els.audioToggle.addEventListener("click", this._handlers.onToggleAudio);
+    }
     this.initState();
     this.renderState();
   },
@@ -600,6 +2125,10 @@ const StarfallPage = {
     if (this._els?.restart && this._handlers?.onRestart) {
       this._els.restart.removeEventListener("click", this._handlers.onRestart);
     }
+    if (this._els?.audioToggle && this._handlers?.onToggleAudio) {
+      this._els.audioToggle.removeEventListener("click", this._handlers.onToggleAudio);
+    }
+    this.disableAudio(false, true);
     this._state = null;
     this._els = null;
     this._handlers = null;
@@ -2347,7 +3876,7 @@ const StarfallPage = {
           ],
         };
       default:
-        return null;
+        return getExtendedEvent(state, day);
     }
   },
   handleChoice(key) {
@@ -2358,6 +3887,11 @@ const StarfallPage = {
     }
     if (this._state.phase === "ending") {
       return;
+    }
+    if (this._audio && !this._audio.enabled && !this._audio.userMuted) {
+      this.enableAudio(true);
+    } else if (this._audio?.enabled) {
+      this.playSfx("select");
     }
     const story = this._state.pendingStory;
     if (!story) return;
@@ -2480,14 +4014,17 @@ const StarfallPage = {
 
     const engineerBonus = hasCrewRole(state, "repair") ? 0.4 : 0;
     const navigatorBonus = hasCrewRole(state, "nav") ? 0.6 : 0;
-    let fuelDrain = 2.5 + Math.max(0, crewCount - 1) * 0.3 - engineerBonus - navigatorBonus;
+    const day = res.day || 1;
+    const ramp = Math.max(0, (day - 12) * 0.04);
+    const deepRamp = Math.max(0, (day - 60) * 0.05);
+    let fuelDrain = 2.5 + Math.max(0, crewCount - 1) * 0.3 - engineerBonus - navigatorBonus + ramp + deepRamp * 0.5;
     fuelDrain = Math.max(1.6, Math.round(fuelDrain * 10) / 10);
     res.fuel -= fuelDrain;
     summary.push(`燃料 -${fuelDrain}`);
 
     const careBonus = hasCrewRole(state, "care") ? 0.5 : 0;
     const signalBonus = hasCrewRole(state, "signal") ? 0.3 : 0;
-    let o2Drain = 4 + crewCount * 0.8 - careBonus - signalBonus;
+    let o2Drain = 4 + crewCount * 0.8 - careBonus - signalBonus + ramp * 0.6 + deepRamp * 0.4;
     o2Drain = Math.max(3, Math.round(o2Drain * 10) / 10);
     res.o2 -= o2Drain;
     summary.push(`O₂ -${o2Drain}`);
@@ -2495,8 +4032,9 @@ const StarfallPage = {
     if (typeof res.satiety !== "number") {
       res.satiety = 2;
     }
-    res.satiety -= 1;
-    summary.push("饱腹 -1");
+    const hungerDrain = 1 + (day >= 70 ? 1 : 0);
+    res.satiety -= hungerDrain;
+    summary.push(`饱腹 -${hungerDrain}`);
 
     let foodNote = "食物 0 (节约)";
     if (res.satiety <= 0) {
@@ -2528,7 +4066,8 @@ const StarfallPage = {
     } else {
       const minLoss = outcome.mindShock ? 12 : 6;
       const maxLoss = outcome.mindShock ? 22 : 15;
-      const loss = StarfallData.randomInt(minLoss, maxLoss);
+      const dayPenalty = Math.min(22, Math.floor(day / 4));
+      const loss = StarfallData.randomInt(minLoss + dayPenalty, maxLoss + dayPenalty);
       res.mind -= loss;
       summary.push(`心智 -${loss}`);
     }
@@ -2538,8 +4077,10 @@ const StarfallPage = {
       return;
     }
     res.day += 1;
-    if (res.day > 18) {
-      this.checkEnding();
+    if (res.day > 160) {
+      res.day = 160;
+    }
+    if (this.checkEnding()) {
       return;
     }
     this.showDayEvent();
@@ -2576,111 +4117,313 @@ const StarfallPage = {
           codexSummary: "心智坠入虚空，没有人听见。",
         };
       }
-    } else if (r.day > 18) {
-      if (flags.surfaceAscended) {
-        ending = {
-          id: "erevia-ascent",
-          title: "霜壳升空",
-          body: "逃生舱冲出 Erevia 的冰层，极光在舷窗外拉出金色尾焰。你重新拾起星际航道。",
-          codexTone: "hope",
-          codexSummary: "从冰封行星起飞，带着晶体燃料返回星海。",
+    } else {
+      const day = r.day || 1;
+      if (day < 50) {
+        return false;
+      }
+      const finalGoal = flags.legendFinal;
+      if (day >= 100 && finalGoal) {
+        const finalMap = {
+          colony: {
+            id: "frost-citadel",
+            title: "霜辉城邦",
+            body: "霜辉城在冰壳下铺展。长明灯照亮雪原，你的名字被刻在第一面旗帜上。",
+            codexTone: "hope",
+            codexSummary: "百日后守住霜辉城，把冰原变成新的文明。",
+          },
+          beacon: {
+            id: "luminous-net",
+            title: "灯塔星海",
+            body: "灯塔网络在宇宙中构成星河，每一次脉冲都引导迷途者靠岸。",
+            codexTone: "hope",
+            codexSummary: "灯塔遍布星海，任何求救都能被引导归航。",
+          },
+          chorus: {
+            id: "aurora-eternity",
+            title: "极光永恒",
+            body: "你的意识化作极光，随星海震荡而歌。肉体沉入冰原，灵魂遍布宇宙。",
+            codexTone: "mystic",
+            codexSummary: "在百日尽头融入极光，与星海同鸣。",
+          },
+          ascent: {
+            id: "voyage-armada",
+            title: "远航舰队",
+            body: "你率领编队升空，携带霜辉的坐标驶向未知的恒星。",
+            codexTone: "hope",
+            codexSummary: "百日备战后，远航舰队冲出暗带。",
+          },
+          rescue: {
+            id: "salvation-network",
+            title: "救援网络",
+            body: "你的中继站遍布星海。求救信号不再孤单，舰队以你的标准执行救援。",
+            codexTone: "hope",
+            codexSummary: "建立覆盖星域的救援网络，永远回应求救。",
+          },
+          caravan: {
+            id: "caravan-commonwealth",
+            title: "游牧联邦",
+            body: "商队结成联邦，以你的舰为旗。每一座流动的集市都传唱你的航线。",
+            codexTone: "hope",
+            codexSummary: "百日后组建游牧联邦，带着故事往来星际。",
+          },
+          archive: {
+            id: "memory-continuum",
+            title: "记忆长河",
+            body: "你的灵魂被刻进星海档案，亿万段旅程与之共鸣。",
+            codexTone: "mystic",
+            codexSummary: "把记忆永久写入星海，让故事永不消失。",
+          },
+          wayfinder: {
+            id: "harbor-of-light",
+            title: "光之港口",
+            body: "暗带尽头出现新的港口，灯火由你点燃，旅人终于有处可停。",
+            codexTone: "hope",
+            codexSummary: "百日探索后建立光之港口，庇护所有漂泊者。",
+          },
         };
-      } else if (flags.surfaceColony) {
-        ending = {
-          id: "frosthaven",
-          title: "霜辉基地",
-          body: "你们把营地扩展成第一座极夜基地。灯塔在冰原上恒久燃烧，等待下一批漂泊者。",
-          codexTone: "hope",
-          codexSummary: "选择留在 Erevia，建立霜辉基地守护过路的幸存者。",
-        };
-      } else if (flags.surfaceBeacon && r.signal >= 60) {
-        ending = {
-          id: "ice-beacon",
-          title: "极地灯塔",
-          body: "晶体网络闪耀。几小时后，回收船的灯光穿透雪雾，你在冰原上举起求救信号。",
-          codexTone: "hope",
-          codexSummary: "在行星表面点亮信标，引来救援。",
-        };
-      } else if (flags.surfaceChorus && r.signal >= 80) {
-        ending = {
-          id: "aurora-chorus",
-          title: "极光合唱",
-          body: "冰原上的晶体与极光同步歌唱。你的信号化作一曲合唱，被整个星域记住。",
-          codexTone: "mystic",
-          codexSummary: "让 Erevia 的极光成为宇宙的共鸣，广播出新的坐标。",
-        };
-      } else if (flags.surfaceAwaken) {
-        ending = {
-          id: "ice-awakening",
-          title: "冰原归一",
-          body: "你在极夜中静坐，意识沿着冰晶传播。星海的低语与你同频。",
-          codexTone: "mystic",
-          codexSummary: "留在 Erevia，让意识成为冰原的一部分。",
-        };
-      } else if (flags.caravanAlliance) {
-        ending = {
-          id: "star-caravan",
-          title: "星际商队",
-          body: "商队的船帆在星光下展开。你把日志交给新的同伴，与他们一起驶向聚落的灯火。",
-          codexTone: "hope",
-          codexSummary: "加入星际商队，带着故事继续旅行。",
-        };
-      } else if (flags.archiveLinked && r.signal >= 50) {
-        ending = {
-          id: "stellar-archive",
-          title: "星海档案",
-          body: "远端档案库接入你的意识。你的记忆化作坐标，永远记录在星海中。",
-          codexTone: "mystic",
-          codexSummary: "把旅程上传到星际档案，与无数记忆并肩。",
-        };
-      } else if (r.signal >= 75 || (flags.rescuePulse && r.signal >= 65)) {
-        ending = {
-          id: "human-voice",
-          title: "人类之声",
-          body: "远处的蓝光靠近，一艘回收船在雾霭里伸出机械臂。你终于放下日志。",
-          codexTone: "hope",
-          codexSummary: "信号被捕捉，你被舰队成功回收。",
-        };
-      } else if (flags.vectorPlotted) {
-        ending = {
-          id: "unknown-vector",
-          title: "未知航线",
-          body: "你调整舱体角度，滑入微弱重力的缝隙。未知航道在黑暗中张开。",
-          codexTone: "neutral",
-          codexSummary: "拒绝等待救援，独自驶向未知的航线。",
-        };
-      } else if (flags.engineFrozen) {
-        ending = {
-          id: "frozen-orbit",
-          title: "轨道囚徒",
-          body: "推进器被冰霜锁死，你在寒冷的行星阴影里做永恒的卫星。",
-          codexTone: "dark",
-          codexSummary: "引擎冻结，你永远绕着死寂行星旋转。",
-        };
-      } else if (flags.loner) {
-        ending = {
-          id: "solitary-drift",
-          title: "孤航",
-          body: "你保持沉默，穿越无人回应的航道。只有自己的呼吸陪伴你。",
-          codexTone: "neutral",
-          codexSummary: "拒绝同伴的旅人，在星海中独自漂流。",
-        };
-      } else if (flags.landedErevia) {
-        ending = {
-          id: "ice-warden",
-          title: "冰壳守望",
-          body: "救生舱留在 Erevia 表面。你点燃小小的炉火，守望下一艘漂泊者的到来。",
-          codexTone: "neutral",
-          codexSummary: "没有离开行星，而是在冰原建立孤独的基地。",
-        };
-      } else {
-        ending = {
-          id: "adrift",
-          title: "漂流",
-          body: "求救信标最终熄灭。你继续漂向未知的暗带，等待下一次醒来。",
-          codexTone: "dark",
-          codexSummary: "没有救援，也没有目的地，只剩漫长漂流。",
-        };
+        ending = finalMap[finalGoal] || null;
+      }
+      if (!ending && day >= 90) {
+        if (flags.chorusAscend) {
+          ending = {
+            id: "aurora-ascension",
+            title: "极光升阶",
+            body: "极夜的乐章与你的意识融合，冰原再无寂静。",
+            codexTone: "mystic",
+            codexSummary: "极光祭坛成形，意识在星海里长鸣。",
+          };
+        } else if (flags.beaconConstellation) {
+          ending = {
+            id: "constellation-lighthouse",
+            title: "星座灯塔",
+            body: "灯塔舰队在轨道间穿梭，求救讯号编织成灿烂星座。",
+            codexTone: "hope",
+            codexSummary: "灯塔不再孤单，它们组成星座守护航道。",
+          };
+        } else if (flags.voyageArmada) {
+          ending = {
+            id: "armada-prospect",
+            title: "远征序曲",
+            body: "你的舰队完成合练，跃迁引擎在胸腔里震动。",
+            codexTone: "hope",
+            codexSummary: "百日训练成就远征舰队，准备探索未知。",
+          };
+        } else if (flags.rescueWeb) {
+          ending = {
+            id: "rescue-web",
+            title: "救援之网",
+            body: "你的中继站遍布各星域，每个求救都会被迅速响应。",
+            codexTone: "hope",
+            codexSummary: "建立遍及星域的救援之网。",
+          };
+        } else if (flags.caravanConstellation) {
+          ending = {
+            id: "starlit-bazaar",
+            title: "星光市集",
+            body: "游牧舰队按你的轨迹巡游，星光与歌声成为新货币。",
+            codexTone: "hope",
+            codexSummary: "将商队联盟发展成漂浮市集。",
+          };
+        } else if (flags.archiveEternal) {
+          ending = {
+            id: "eternal-archive",
+            title: "永恒档案",
+            body: "你的记忆在多个星系同步，任何人都能在档案中听见你的声音。",
+            codexTone: "mystic",
+            codexSummary: "档案网络跨越星系，记忆永不遗失。",
+          };
+        } else if (flags.wayfinderHarbor) {
+          ending = {
+            id: "wayfinder-refuge",
+            title: "领航庇护",
+            body: "浮标组成安全廊道，迷路的舱体顺着你的指引找到庇护站。",
+            codexTone: "hope",
+            codexSummary: "在暗带中布置避难廊道，引导迷航者。",
+          };
+        } else if (flags.citadelLegacy) {
+          ending = {
+            id: "frost-academy",
+            title: "霜辉学府",
+            body: "霜辉城建立学院，下一代拓荒者在极夜里学习你的故事。",
+            codexTone: "hope",
+            codexSummary: "把霜辉基地发展为教育中心，孕育拓荒者。",
+          };
+        }
+      }
+      if (!ending && day >= 75) {
+        if (flags.legendChorus) {
+          ending = {
+            id: "chorus-mantle",
+            title: "极光披风",
+            body: "极光呼唤你的名字，你的心智披上星海的披风。",
+            codexTone: "mystic",
+            codexSummary: "持续与极光对话，成为它的代言人。",
+          };
+        } else if (flags.legendBeacon) {
+          ending = {
+            id: "lighthouse-chain",
+            title: "灯塔链路",
+            body: "你的灯塔沿冰原延伸，旅人不再迷失方向。",
+            codexTone: "hope",
+            codexSummary: "灯塔联动形成安全航路。",
+          };
+        } else if (flags.legendVoyage) {
+          ending = {
+            id: "voyage-prelude",
+            title: "远航前夜",
+            body: "舰船整装待发，跨越暗带的队形已经排好。",
+            codexTone: "hope",
+            codexSummary: "远航舰队集结，等待最终指令。",
+          };
+        } else if (flags.legendRescue) {
+          ending = {
+            id: "rescue-pact",
+            title: "救援盟约",
+            body: "救援舰与漂流舱缔结盟约，你的频道成为彼此的灯塔。",
+            codexTone: "hope",
+            codexSummary: "救援力量形成联盟。",
+          };
+        } else if (flags.legendCaravan) {
+          ending = {
+            id: "caravan-convoy",
+            title: "商队护航",
+            body: "商队穿梭于星域间，每艘船都在你的导航表里签到。",
+            codexTone: "hope",
+            codexSummary: "商队组成稳定航线，互相护航。",
+          };
+        } else if (flags.legendArchive) {
+          ending = {
+            id: "archive-spire",
+            title: "档案尖塔",
+            body: "记忆尖塔高悬，成为星海旅人的心灵驿站。",
+            codexTone: "mystic",
+            codexSummary: "档案节点成为旅人的精神灯塔。",
+          };
+        } else if (flags.legendWayfinder) {
+          ending = {
+            id: "wayfinder-beacon",
+            title: "领航灯塔",
+            body: "你把领航灯撒在暗带，让未知的航道第一次拥有座标。",
+            codexTone: "hope",
+            codexSummary: "领航者在暗带布置灯塔，开拓新路。",
+          };
+        } else if (flags.legendColony) {
+          ending = {
+            id: "frosthaven-council",
+            title: "霜辉议会",
+            body: "霜辉基地召开第一次议会，你们决定把这里开放给所有旅人。",
+            codexTone: "hope",
+            codexSummary: "霜辉基地建立自治议会，成为避难中心。",
+          };
+        }
+      }
+      if (!ending) {
+        if (flags.surfaceAscended) {
+          ending = {
+            id: "erevia-ascent",
+            title: "霜壳升空",
+            body: "逃生舱冲出 Erevia 的冰层，极光在舷窗外拉出金色尾焰。你重新拾起星际航道。",
+            codexTone: "hope",
+            codexSummary: "从冰封行星起飞，带着晶体燃料返回星海。",
+          };
+        } else if (flags.surfaceColony) {
+          ending = {
+            id: "frosthaven",
+            title: "霜辉基地",
+            body: "你们把营地扩展成第一座极夜基地。灯塔在冰原上恒久燃烧，等待下一批漂泊者。",
+            codexTone: "hope",
+            codexSummary: "选择留在 Erevia，建立霜辉基地守护过路的幸存者。",
+          };
+        } else if (flags.surfaceBeacon && r.signal >= 60) {
+          ending = {
+            id: "ice-beacon",
+            title: "极地灯塔",
+            body: "晶体网络闪耀。几小时后，回收船的灯光穿透雪雾，你在冰原上举起求救信号。",
+            codexTone: "hope",
+            codexSummary: "在行星表面点亮信标，引来救援。",
+          };
+        } else if (flags.surfaceChorus && r.signal >= 80) {
+          ending = {
+            id: "aurora-chorus",
+            title: "极光合唱",
+            body: "冰原上的晶体与极光同步歌唱。你的信号化作一曲合唱，被整个星域记住。",
+            codexTone: "mystic",
+            codexSummary: "让 Erevia 的极光成为宇宙的共鸣，广播出新的坐标。",
+          };
+        } else if (flags.surfaceAwaken) {
+          ending = {
+            id: "ice-awakening",
+            title: "冰原归一",
+            body: "你在极夜中静坐，意识沿着冰晶传播。星海的低语与你同频。",
+            codexTone: "mystic",
+            codexSummary: "留在 Erevia，让意识成为冰原的一部分。",
+          };
+        } else if (flags.caravanAlliance) {
+          ending = {
+            id: "star-caravan",
+            title: "星际商队",
+            body: "商队的船帆在星光下展开。你把日志交给新的同伴，与他们一起驶向聚落的灯火。",
+            codexTone: "hope",
+            codexSummary: "加入星际商队，带着故事继续旅行。",
+          };
+        } else if (flags.archiveLinked && r.signal >= 50) {
+          ending = {
+            id: "stellar-archive",
+            title: "星海档案",
+            body: "远端档案库接入你的意识。你的记忆化作坐标，永远记录在星海中。",
+            codexTone: "mystic",
+            codexSummary: "把旅程上传到星际档案，与无数记忆并肩。",
+          };
+        } else if (r.signal >= 75 || (flags.rescuePulse && r.signal >= 65)) {
+          ending = {
+            id: "human-voice",
+            title: "人类之声",
+            body: "远处的蓝光靠近，一艘回收船在雾霭里伸出机械臂。你终于放下日志。",
+            codexTone: "hope",
+            codexSummary: "信号被捕捉，你被舰队成功回收。",
+          };
+        } else if (flags.vectorPlotted) {
+          ending = {
+            id: "unknown-vector",
+            title: "未知航线",
+            body: "你调整舱体角度，滑入微弱重力的缝隙。未知航道在黑暗中张开。",
+            codexTone: "neutral",
+            codexSummary: "拒绝等待救援，独自驶向未知的航线。",
+          };
+        } else if (flags.engineFrozen) {
+          ending = {
+            id: "frozen-orbit",
+            title: "轨道囚徒",
+            body: "推进器被冰霜锁死，你在寒冷的行星阴影里做永恒的卫星。",
+            codexTone: "dark",
+            codexSummary: "引擎冻结，你永远绕着死寂行星旋转。",
+          };
+        } else if (flags.loner) {
+          ending = {
+            id: "solitary-drift",
+            title: "孤航",
+            body: "你保持沉默，穿越无人回应的航道。只有自己的呼吸陪伴你。",
+            codexTone: "neutral",
+            codexSummary: "拒绝同伴的旅人，在星海中独自漂流。",
+          };
+        } else if (flags.landedErevia) {
+          ending = {
+            id: "ice-warden",
+            title: "冰壳守望",
+            body: "救生舱留在 Erevia 表面。你点燃小小的炉火，守望下一艘漂泊者的到来。",
+            codexTone: "neutral",
+            codexSummary: "没有离开行星，而是在冰原建立孤独的基地。",
+          };
+        } else {
+          ending = {
+            id: "adrift",
+            title: "漂流",
+            body: "求救信标最终熄灭。你继续漂向未知的暗带，等待下一次醒来。",
+            codexTone: "dark",
+            codexSummary: "没有救援，也没有目的地，只剩漫长漂流。",
+          };
+        }
       }
     }
     if (!ending) {
@@ -2711,6 +4454,157 @@ const StarfallPage = {
     this.renderChoices();
     this.renderLog();
     this.renderCodex();
+    this.renderAudio();
+  },
+  ensureAudioContext() {
+    if (typeof window === "undefined") return false;
+    const AudioCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtor) return false;
+    if (!this._audio) {
+      this._audio = { enabled: false, userMuted: false };
+    }
+    if (!this._audio.ctx) {
+      const ctx = new AudioCtor();
+      const masterGain = ctx.createGain();
+      masterGain.gain.value = 0.5;
+      masterGain.connect(ctx.destination);
+      const bgmGain = ctx.createGain();
+      bgmGain.gain.value = 0;
+      bgmGain.connect(masterGain);
+      const sfxGain = ctx.createGain();
+      sfxGain.gain.value = 0.7;
+      sfxGain.connect(masterGain);
+      this._audio.ctx = ctx;
+      this._audio.masterGain = masterGain;
+      this._audio.bgmGain = bgmGain;
+      this._audio.sfxGain = sfxGain;
+    }
+    if (this._audio.ctx.state === "suspended") {
+      this._audio.ctx.resume();
+    }
+    return true;
+  },
+  startBgm() {
+    if (!this.ensureAudioContext()) return;
+    if (!this._audio || this._audio.bgmOsc) return;
+    const ctx = this._audio.ctx;
+    const osc1 = ctx.createOscillator();
+    osc1.type = "sawtooth";
+    osc1.frequency.value = 96;
+    const osc2 = ctx.createOscillator();
+    osc2.type = "triangle";
+    osc2.frequency.value = 168;
+    const mix1 = ctx.createGain();
+    mix1.gain.value = 0.3;
+    const mix2 = ctx.createGain();
+    mix2.gain.value = 0.2;
+    osc1.connect(mix1);
+    osc2.connect(mix2);
+    mix1.connect(this._audio.bgmGain);
+    mix2.connect(this._audio.bgmGain);
+    const lfo1 = ctx.createOscillator();
+    lfo1.type = "sine";
+    lfo1.frequency.value = 0.05;
+    const lfoGain1 = ctx.createGain();
+    lfoGain1.gain.value = 18;
+    lfo1.connect(lfoGain1);
+    lfoGain1.connect(osc1.frequency);
+    const lfo2 = ctx.createOscillator();
+    lfo2.type = "sine";
+    lfo2.frequency.value = 0.08;
+    const lfoGain2 = ctx.createGain();
+    lfoGain2.gain.value = 14;
+    lfo2.connect(lfoGain2);
+    lfoGain2.connect(osc2.frequency);
+    osc1.start();
+    osc2.start();
+    lfo1.start();
+    lfo2.start();
+    this._audio.bgmOsc = [osc1, osc2, lfo1, lfo2];
+    const gain = this._audio.bgmGain;
+    gain.gain.cancelScheduledValues(ctx.currentTime);
+    gain.gain.setTargetAtTime(0.18, ctx.currentTime, 2);
+  },
+  stopBgm() {
+    if (!this._audio?.bgmGain) return;
+    const ctx = this._audio.ctx;
+    if (ctx) {
+      this._audio.bgmGain.gain.setTargetAtTime(0, ctx.currentTime, 0.6);
+    }
+    if (Array.isArray(this._audio?.bgmOsc)) {
+      this._audio.bgmOsc.forEach((osc) => {
+        try {
+          osc.stop(ctx ? ctx.currentTime + 0.8 : undefined);
+        } catch (err) {
+          /* ignore */
+        }
+      });
+    }
+    this._audio.bgmOsc = null;
+  },
+  enableAudio(auto = false) {
+    if (!this.ensureAudioContext()) return;
+    if (!this._audio) {
+      this._audio = { enabled: false, userMuted: false };
+    }
+    if (this._audio.enabled) return;
+    this._audio.enabled = true;
+    if (auto) {
+      this._audio.userMuted = false;
+    }
+    this.startBgm();
+    this.playSfx("confirm");
+    this.renderAudio();
+  },
+  disableAudio(fromUser = false, force = false) {
+    if (!this._audio) return;
+    if (!force && !this._audio.enabled) {
+      if (fromUser) {
+        this._audio.userMuted = true;
+        this.renderAudio();
+      }
+      return;
+    }
+    this._audio.enabled = false;
+    if (fromUser) {
+      this._audio.userMuted = true;
+    }
+    this.stopBgm();
+    this.renderAudio();
+  },
+  toggleAudio() {
+    if (!this._audio) {
+      this._audio = { enabled: false, userMuted: false };
+    }
+    if (this._audio.enabled) {
+      this.disableAudio(true);
+    } else {
+      this.enableAudio(false);
+    }
+  },
+  playSfx(type = "select") {
+    if (!this._audio?.enabled) return;
+    if (!this.ensureAudioContext()) return;
+    const ctx = this._audio.ctx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const base = type === "confirm" ? 620 : type === "warning" ? 200 : 420;
+    osc.type = type === "warning" ? "sawtooth" : "sine";
+    osc.frequency.setValueAtTime(base, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(base / 2, ctx.currentTime + 0.25);
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.28, ctx.currentTime + 0.02);
+    gain.gain.setTargetAtTime(0, ctx.currentTime + 0.2, 0.08);
+    osc.connect(gain);
+    gain.connect(this._audio.sfxGain);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.4);
+  },
+  renderAudio() {
+    if (!this._els?.audioToggle) return;
+    const enabled = this._audio?.enabled;
+    this._els.audioToggle.textContent = enabled ? "🔊 音景开启" : "🔇 音景关闭";
+    this._els.audioToggle.setAttribute("aria-pressed", enabled ? "true" : "false");
   },
   renderStats() {
     if (!this._els?.stats || !this._state) return;
