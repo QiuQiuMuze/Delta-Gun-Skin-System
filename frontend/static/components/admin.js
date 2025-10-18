@@ -743,6 +743,11 @@ const AdminPage = {
         const plain = (user.password_plain !== undefined && user.password_plain !== null && user.password_plain !== '')
           ? user.password_plain
           : '（未记录）';
+        const matchesHash = resp?.password_matches_hash !== false;
+        const mismatchNote = matchesHash ? '' : [
+          '（警告：记录的明文与哈希不一致，可能为历史密码，',
+          '请考虑让玩家重新登录或直接重置。）',
+        ].join('');
         const userIdLabel = (user.user_id !== undefined && user.user_id !== null) ? user.user_id : id;
         let statusText;
         if (resp?.password_updated) {
@@ -753,7 +758,7 @@ const AdminPage = {
           statusText = '验证码仍在有效期，如需重置请填写新密码后再次提交。';
         }
         const extraNote = resp?.note ? ` ${resp.note}` : '';
-        updatePwResult(`用户 ID ${userIdLabel}（${user.username || '未知用户'}）的密码：${plain}；哈希：${hash}。${statusText}${extraNote}`);
+        updatePwResult(`用户 ID ${userIdLabel}（${user.username || '未知用户'}）的密码：${plain}；哈希：${hash}。${statusText}${extraNote}${mismatchNote}`);
         if (resp?.password_updated) {
           alert('密码已更新');
           byId("pw-code").value = "";
