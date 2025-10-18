@@ -84,7 +84,24 @@ const AdminPage = {
         </div>
         <div class="muted">提示：扣除会先校验余额，不足会失败并提示；不会出现负数。</div>
       </div>
-      
+
+      <div class="card">
+        <h3>玩家密码管理</h3>
+        <div class="muted">输入玩家 ID 后获取验证码，验证码会写入短信日志（purpose=admin-user-password）。验证通过可查看哈希并可选重置为新密码。</div>
+        <div class="input-row">
+          <input id="pw-user-id" type="number" min="1" placeholder="玩家ID" />
+          <button class="btn" id="pw-request">获取验证码</button>
+        </div>
+        <div class="input-row">
+          <input id="pw-code" placeholder="验证码（admin-user-password）" />
+          <input id="pw-new" placeholder="新密码（可选）" />
+        </div>
+        <div class="input-row">
+          <button class="btn primary" id="pw-confirm">验证 / 更新密码</button>
+        </div>
+        <div class="muted" id="pw-result">等待操作...</div>
+      </div>
+
             <div class="card">
         <h3>删除账号（需验证码）</h3>
         <div class="muted">
@@ -423,10 +440,12 @@ const AdminPage = {
 
     const renderUsers = (items=[])=>{
       const rows = items.map(u=>{
+        const userId = (u && typeof u.id !== 'undefined' && u.id !== null) ? u.id : '';
         const encoded = encodeURIComponent(u.username || "");
         const lastLoginText = formatLastLogin(u.last_login_ts);
         return `
         <tr>
+          <td>${userId}</td>
           <td>${escapeHtml(u.username||"")}</td>
           <td>${escapeHtml(u.phone||"")}</td>
           <td>${u.fiat}</td>
@@ -444,7 +463,7 @@ const AdminPage = {
       }).join("");
       byId("list").innerHTML = `
         <table class="table">
-          <thead><tr><th>用户名</th><th>手机号</th><th>法币</th><th>三角币</th><th>管理员</th><th>最近登录</th><th>备注</th><th>操作</th></tr></thead>
+          <thead><tr><th>ID</th><th>用户名</th><th>手机号</th><th>法币</th><th>三角币</th><th>管理员</th><th>最近登录</th><th>备注</th><th>操作</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>`;
     };
@@ -693,6 +712,56 @@ const AdminPage = {
       const {u, n} = getUserAndNum("op-username", "coin-amt");
       if (!u || n<=0) return alert("请填写用户名与数量（三角币）");
       try { await API.adminDeductCoins(u, n); alert("已扣除"); await loadUsers(); } catch(e){ alert(e.message); }
+    };
+
+    const pwResult = byId("pw-result");
+    const updatePwResult = (msg) => { if (pwResult) pwResult.textContent = msg; };
+    byId("pw-request").onclick = async () => {
+      const id = parseInt(byId("pw-user-id").value || "0", 10) || 0;
+      if (id <= 0) { alert("请输入有效的玩家ID"); return; }
+      try {
+        updatePwResult("正在发送验证码...");
+        const resp = await API.adminPasswordRequest(id);
+        const target = resp?.target || {};
+        const labelId = (target.user_id !== undefined && target.user_id !== null) ? target.user_id : id;
+        updatePwResult(`验证码已下发，请查看短信日志（目标用户：${target.username || labelId}，ID：${labelId}）`);
+        try { await loadSms(); } catch (_) {}
+      } catch (e) {
+        updatePwResult(e.message || String(e));
+      }
+    };
+    byId("pw-confirm").onclick = async () => {
+      const id = parseInt(byId("pw-user-id").value || "0", 10) || 0;
+      const code = byId("pw-code").value.trim();
+      const newPwd = byId("pw-new").value.trim();
+      if (id <= 0 || !code) { alert("请填写玩家ID与验证码"); return; }
+      try {
+        updatePwResult("正在校验...");
+        const resp = await API.adminPasswordConfirm(id, code, newPwd ? newPwd : null);
+        const user = resp?.user || {};
+        const hash = user.password_hash || '未知';
+        const plain = (user.password_plain !== undefined && user.password_plain !== null && user.password_plain !== '')
+          ? user.password_plain
+          : '（未记录）';
+        const userIdLabel = (user.user_id !== undefined && user.user_id !== null) ? user.user_id : id;
+        let statusText;
+        if (resp?.password_updated) {
+          statusText = '密码已更新，验证码已失效。';
+        } else if (resp?.code_consumed) {
+          statusText = '验证码已失效。';
+        } else {
+          statusText = '验证码仍在有效期，如需重置请填写新密码后再次提交。';
+        }
+        const extraNote = resp?.note ? ` ${resp.note}` : '';
+        updatePwResult(`用户 ID ${userIdLabel}（${user.username || '未知用户'}）的密码：${plain}；哈希：${hash}。${statusText}${extraNote}`);
+        if (resp?.password_updated) {
+          alert('密码已更新');
+          byId("pw-code").value = "";
+          byId("pw-new").value = "";
+        }
+      } catch (e) {
+        updatePwResult(e.message || String(e));
+      }
     };
 
     // —— 充值申请刷新 —— //
