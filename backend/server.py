@@ -75,6 +75,7 @@ class User(Base):
     username = Column(String, unique=True, nullable=False)
     phone = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
+    password_plain = Column(String, default="")
     fiat = Column(Integer, default=0)
     coins = Column(Integer, default=0)
     keys = Column(Integer, default=0)
@@ -517,6 +518,16 @@ def _ensure_user_gift_columns():
     con.commit()
     con.close()
 
+def _ensure_user_password_plain():
+    con = sqlite3.connect(DB_PATH_FS)
+    cur = con.cursor()
+    cur.execute("PRAGMA table_info(users)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "password_plain" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN password_plain TEXT NOT NULL DEFAULT ''")
+    con.commit()
+    con.close()
+
 def _ensure_cookie_profile_columns():
     con = sqlite3.connect(DB_PATH_FS)
     cur = con.cursor()
@@ -546,6 +557,7 @@ _ensure_trade_log_columns()
 _ensure_brick_sell_columns()
 _ensure_brick_buy_columns()
 _ensure_user_gift_columns()
+_ensure_user_password_plain()
 _ensure_cookie_profile_columns()
 
 # ------------------ Pydantic ------------------
@@ -9158,6 +9170,7 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
         username=username,
         phone=phone_value,
         password_hash=hash_pw(data.password),
+        password_plain=str(data.password or ""),
         fiat=fiat_bonus,
         gift_fiat_balance=fiat_bonus,
     )
@@ -9302,6 +9315,7 @@ def reset_password(inp: ResetPwdIn, db: Session = Depends(get_db)):
         raise HTTPException(401, "验证码错误或已过期")
     check_password_complexity(inp.new_password)
     u.password_hash = hash_pw(inp.new_password)
+    u.password_plain = str(inp.new_password or "")
     db.commit()
     return {"ok": True, "msg": "密码已重置，请使用新密码登录"}
 
@@ -11846,11 +11860,11 @@ def admin_users(q: _Optional[str]=None, page: int=1, page_size: int=20, admin=_D
     con=_conn(); cur=con.cursor()
     if q:
       qq = f"%{q}%"
-      cur.execute("""SELECT username, phone, fiat, coins, is_admin, last_login_ts, admin_note FROM users
+      cur.execute("""SELECT id, username, phone, fiat, coins, is_admin, last_login_ts, admin_note FROM users
                      WHERE username LIKE ? OR phone LIKE ?
                      ORDER BY id DESC LIMIT ? OFFSET ?""", (qq, qq, page_size, off))
     else:
-      cur.execute("""SELECT username, phone, fiat, coins, is_admin, last_login_ts, admin_note FROM users
+      cur.execute("""SELECT id, username, phone, fiat, coins, is_admin, last_login_ts, admin_note FROM users
                      ORDER BY id DESC LIMIT ? OFFSET ?""", (page_size, off))
     items=[dict(r) for r in cur.fetchall()]
     con.close()
@@ -12054,19 +12068,30 @@ def admin_user_password_confirm(payload: dict, admin=_Depends(_require_admin)):
         con.close(); raise _HTTPException(400, "code expired")
     if str(code) != str(row["code"]):
         con.close(); raise _HTTPException(400, "invalid code")
-    cur.execute("SELECT id, username, password_hash FROM users WHERE id=?", (target_id,))
+    cur.execute("SELECT id, username, password_hash, password_plain FROM users WHERE id=?", (target_id,))
     user_row = cur.fetchone()
     if not user_row:
         con.close(); raise _HTTPException(404, "user not found")
     updated_hash = user_row["password_hash"]
+    updated_plain = user_row["password_plain"]
     password_updated = False
+    code_consumed = False
     if new_password:
         if len(new_password) < 6:
             con.close(); raise _HTTPException(400, "new_password too short")
         updated_hash = pwd_context.hash(new_password)
-        cur.execute("UPDATE users SET password_hash=? WHERE id=?", (updated_hash, target_id))
+        updated_plain = str(new_password or "")
+        cur.execute(
+            "UPDATE users SET password_hash=?, password_plain=? WHERE id=?",
+            (updated_hash, updated_plain, target_id),
+        )
         password_updated = True
-    cur.execute("DELETE FROM admin_password_codes WHERE target_id=?", (target_id,))
+        cur.execute("DELETE FROM admin_password_codes WHERE target_id=?", (target_id,))
+        code_consumed = True
+    else:
+        # 未修改密码，仅查看信息：保留验证码以便后续操作
+        updated_plain = str(updated_plain or "")
+    updated_plain = str(updated_plain or "")
     con.commit(); con.close()
     return {
         "ok": True,
@@ -12074,9 +12099,11 @@ def admin_user_password_confirm(payload: dict, admin=_Depends(_require_admin)):
             "user_id": target_id,
             "username": user_row["username"],
             "password_hash": updated_hash,
+            "password_plain": updated_plain,
         },
         "password_updated": password_updated,
-        "note": "密码以哈希形式存储，若需重置请填写新密码。",
+        "code_consumed": code_consumed,
+        "note": "若仅查看密码，请保留验证码以便需要时再次提交新密码进行重置。",
     }
 
 # 管理员：申请“删除账号”验证码
