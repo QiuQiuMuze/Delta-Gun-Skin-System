@@ -3,6 +3,7 @@ const CultivationPage = {
   _state: null,
   _leaderboard: [],
   _showLeaderboard: false,
+  _handlers: null,
   _selection: { talents: new Set(), allocations: {}, originId: null, sectId: null, masterId: null },
   _lastEventId: null,
   _endingPlayed: false,
@@ -331,6 +332,19 @@ const CultivationPage = {
   },
   async bind() {
     this._root = document.getElementById('cultivation-root');
+    if (!this._root) return;
+    this._handlers = {
+      onRootClick: (ev) => {
+        const btn = ev.target.closest('#cultivation-leaderboard-toggle');
+        if (btn) {
+          ev.preventDefault();
+          this._showLeaderboard = !this._showLeaderboard;
+          this.renderStatus();
+          return;
+        }
+      },
+    };
+    this._root.addEventListener('click', this._handlers.onRootClick);
     this._selection = { talents: new Set(), allocations: {}, originId: null, sectId: null, masterId: null };
     this._lastEventId = null;
     this._endingPlayed = false;
@@ -499,14 +513,6 @@ const CultivationPage = {
       body += '<div class="cultivation-empty">暂无可用内容。</div>';
     }
     this._root.innerHTML = `<div class="cultivation-container">${body}</div>`;
-    const toggleBtn = this._root.querySelector('#cultivation-leaderboard-toggle');
-    if (toggleBtn) {
-      toggleBtn.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        this._showLeaderboard = !this._showLeaderboard;
-        this.renderStatus();
-      });
-    }
     if (state.run && !state.run.finished) {
       this.bindRun(state.run);
     } else if (state.lobby) {
