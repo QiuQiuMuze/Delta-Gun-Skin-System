@@ -91,6 +91,154 @@
           hat: { rate: 2, randomness: 0.4, swing: 0.22, cutoff: 0.52, pan: 0.18 }
         },
         pulse: { intervalBeats: 1, width: 0.55, amp: 0.14, freq: 176, shape: 'pluck', noise: 0.015, spread: 0.35 }
+      },
+      'starfall-prelude': {
+        key: 'starfall-prelude-v1',
+        seed: 44221,
+        tempo: 56,
+        scale: 'pentatonic',
+        root: 196,
+        bars: 16,
+        pad: true,
+        sparkle: 0.22,
+        warmth: 0.34,
+        volume: 0.6,
+        progression: [0, 3, 5, 2],
+        chordStyle: 'sustain',
+        chordOctave: -1,
+        arpeggio: { amp: 0.18, subdivision: 2, span: 5, swing: 0.16, randomness: 0.22, pan: 0.18 },
+        melody: { density: 0.36, resolution: 2, range: [-1, 4], legato: 1.4, vibrato: 0.018, detune: 0.003, accent: 0.24, spread: 0.28, randomness: 0.25 },
+        drone: { amp: 0.24, octave: -2, fifth: 0.38, shimmer: 0.18, vibrato: 0.01 },
+        pulse: { intervalBeats: 4, width: 1.4, amp: 0.16, freq: 52, shape: 'heartbeat', noise: 0.02, spread: 0.18 },
+        atmosphere: { type: 'wind', amp: 0.08, motion: 0.32, swayFreq: 0.01 }
+      },
+      'starfall-countdown': {
+        key: 'starfall-countdown-v1',
+        seed: 99231,
+        tempo: 108,
+        scale: 'mystic',
+        root: 220,
+        bars: 8,
+        pad: false,
+        sparkle: 0.12,
+        warmth: 0.28,
+        volume: 0.64,
+        progression: [0, 4, 1, 5],
+        chordStyle: 'stabs',
+        chordOctave: -1,
+        arpeggio: { amp: 0.26, subdivision: 4, span: 4, randomness: 0.3, pan: 0.15 },
+        melody: { density: 0.45, resolution: 4, range: [-2, 3], legato: 0.8, vibrato: 0.03, detune: 0.01, accent: 0.48, spread: 0.34, randomness: 0.3 },
+        percussion: {
+          amp: 0.38,
+          resolution: 4,
+          kick: { pattern: [1, 0, 0.6, 0], decay: 2.8 },
+          snare: { pattern: [0, 0, 1, 0], tone: 900, noise: 0.5 },
+          hat: { rate: 3, randomness: 0.25, cutoff: 0.6 }
+        },
+        pulse: { intervalBeats: 1, width: 0.6, amp: 0.22, freq: 120, shape: 'gate', curve: 1.4 },
+        bass: { subdivision: 2, length: 0.8, amp: 0.4, notes: [-12, -10, -15, -8], glide: 0.24, decay: 1.8 },
+        atmosphere: { type: 'wind', amp: 0.04, motion: 0.2 }
+      },
+      'starfall-deep': {
+        key: 'starfall-deep-v1',
+        seed: 55119,
+        tempo: 48,
+        scale: 'pentatonic',
+        root: 174,
+        bars: 12,
+        pad: true,
+        sparkle: 0.1,
+        warmth: 0.4,
+        volume: 0.58,
+        progression: [0, 5, 3, 2],
+        chordStyle: 'sustain',
+        chordOctave: -2,
+        arpeggio: { amp: 0.16, subdivision: 2, span: 5, randomness: 0.28, pan: 0.2 },
+        melody: { density: 0.28, resolution: 2, range: [-2, 3], legato: 1.7, vibrato: 0.02, detune: 0.006, accent: 0.2, spread: 0.3, randomness: 0.22 },
+        drone: { amp: 0.32, octave: -3, fifth: 0.34, shimmer: 0.16, vibrato: 0.012 },
+        pulse: { intervalBeats: 6, width: 1.6, amp: 0.12, freq: 36, shape: 'heartbeat', noise: 0.015, spread: 0.18 },
+        atmosphere: { type: 'wind', amp: 0.1, motion: 0.38, swayFreq: 0.008 },
+        celestial: { amp: 0.14, density: 0.5, steps: [5, 9], octave: 1, shimmer: 0.32, drift: 0.12, vibrato: 0.04, sustain: 0.65 }
+      },
+      'starfall-hope': {
+        key: 'starfall-hope-v1',
+        seed: 88417,
+        tempo: 60,
+        scale: 'lydian',
+        root: 220,
+        bars: 12,
+        pad: true,
+        sparkle: 0.28,
+        warmth: 0.38,
+        volume: 0.64,
+        progression: [0, 4, 5, 3],
+        chordStyle: 'sustain',
+        chordOctave: -1,
+        arpeggio: { amp: 0.24, subdivision: 2, span: 4, swing: 0.18, randomness: 0.22, pan: 0.24 },
+        melody: { density: 0.48, resolution: 2, range: [-1, 5], legato: 1.3, vibrato: 0.022, detune: 0.004, accent: 0.42, spread: 0.34, randomness: 0.28 },
+        drone: { amp: 0.22, octave: -2, fifth: 0.4, shimmer: 0.24, vibrato: 0.016 },
+        pulse: { intervalBeats: 3, width: 1.2, amp: 0.18, freq: 78, shape: 'swell', noise: 0.02, spread: 0.3 },
+        celestial: { amp: 0.22, density: 0.7, steps: [4, 7, 9], octave: 2, shimmer: 0.4, drift: 0.16, vibrato: 0.05, sustain: 0.72 }
+      },
+      'starfall-neutral': {
+        key: 'starfall-neutral-v1',
+        seed: 77431,
+        tempo: 58,
+        scale: 'pentatonic',
+        root: 196,
+        bars: 12,
+        pad: true,
+        sparkle: 0.16,
+        warmth: 0.32,
+        volume: 0.6,
+        progression: [0, 3, 5, 2],
+        chordStyle: 'sustain',
+        chordOctave: -1,
+        arpeggio: { amp: 0.18, subdivision: 3, span: 4, randomness: 0.24, pan: 0.18 },
+        melody: { density: 0.36, resolution: 2, range: [-1, 4], legato: 1.2, vibrato: 0.018, detune: 0.003, accent: 0.3, spread: 0.26, randomness: 0.24 },
+        pulse: { intervalBeats: 4, width: 1.0, amp: 0.14, freq: 64, shape: 'swell', noise: 0.015, spread: 0.22 },
+        atmosphere: { type: 'wind', amp: 0.07, motion: 0.28, swayFreq: 0.01 }
+      },
+      'starfall-mystic': {
+        key: 'starfall-mystic-v1',
+        seed: 66123,
+        tempo: 54,
+        scale: 'mystic',
+        root: 208,
+        bars: 16,
+        pad: true,
+        sparkle: 0.26,
+        warmth: 0.34,
+        volume: 0.62,
+        progression: [0, 3, 1, 4],
+        chordStyle: 'sustain',
+        chordOctave: -1,
+        arpeggio: { amp: 0.22, subdivision: 2, span: 5, randomness: 0.3, pan: 0.22 },
+        melody: { density: 0.4, resolution: 2, range: [-2, 4], legato: 1.6, vibrato: 0.03, detune: 0.005, accent: 0.36, spread: 0.32, randomness: 0.3 },
+        pulse: { intervalBeats: 5, width: 1.5, amp: 0.16, freq: 68, shape: 'swell', noise: 0.018, spread: 0.28 },
+        celestial: { amp: 0.24, density: 0.65, steps: [3, 6, 9], octave: 2, shimmer: 0.38, drift: 0.2, vibrato: 0.06, sustain: 0.74 },
+        atmosphere: { type: 'wind', amp: 0.09, motion: 0.36, swayFreq: 0.009 }
+      },
+      'starfall-void': {
+        key: 'starfall-void-v1',
+        seed: 91573,
+        tempo: 46,
+        scale: 'mystic',
+        root: 164,
+        bars: 14,
+        pad: true,
+        sparkle: 0.05,
+        warmth: 0.28,
+        volume: 0.52,
+        progression: [0, 3, 0, 5],
+        chordStyle: 'drones',
+        chordOctave: -2,
+        arpeggio: { amp: 0.12, subdivision: 2, span: 3, randomness: 0.18, pan: 0.12 },
+        melody: { density: 0.22, resolution: 2, range: [-3, 2], legato: 1.9, vibrato: 0.012, detune: 0.005, accent: 0.14, spread: 0.2, randomness: 0.18 },
+        drone: { amp: 0.38, octave: -3, fifth: 0.28, shimmer: 0.12, vibrato: 0.008 },
+        pulse: { intervalBeats: 7, width: 1.8, amp: 0.1, freq: 32, shape: 'heartbeat', noise: 0.012, spread: 0.15 },
+        atmosphere: { type: 'wind', amp: 0.12, motion: 0.4, swayFreq: 0.006 },
+        celestial: { amp: 0.12, density: 0.4, steps: [1, 5], octave: 1, shimmer: 0.26, drift: 0.18, vibrato: 0.05, sustain: 0.6, noise: 0.02 }
       }
     },
     ensure() {
@@ -208,6 +356,29 @@
       }
       this.stopAllMusic(false, route);
       this.playMusic(route, preset);
+    },
+    playPreset(channel, presetName) {
+      if (!channel || !presetName) return;
+      this.ensure();
+      if (!this.ctx) return;
+      const preset = this._musicPresets[presetName];
+      if (!preset) return;
+      const descriptor = { ...preset };
+      if (!descriptor.key) {
+        descriptor.key = String(presetName);
+      }
+      this.playMusic(channel, descriptor);
+    },
+    stopChannel(channel, immediate = false) {
+      if (!channel) return;
+      this.ensure();
+      if (!this.ctx) return;
+      if (!this._music.has(channel)) return;
+      if (immediate) {
+        this._stopChannel(channel);
+      } else {
+        this.fadeOut(channel, 0.4);
+      }
     },
     fadeOut(channel, duration = 0.6) {
       if (!this.ctx) return;

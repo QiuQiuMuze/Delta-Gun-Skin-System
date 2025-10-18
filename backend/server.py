@@ -12,8 +12,7 @@ from pydantic import BaseModel
 from typing import Optional, Literal, List, Dict, Any, Tuple, Set
 from datetime import datetime, timedelta
 import time, os, secrets, jwt, re, json, random, math, hashlib
-
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy import (
     create_engine, Column, Integer, String, Boolean, Float,
     ForeignKey, Text, func, UniqueConstraint
@@ -34,8 +33,6 @@ OTP_FILE = "sms_codes.txt"
 engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 Base = declarative_base()
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 http_bearer = HTTPBearer()
 
 WEAPON_NAME_ALIASES = {
@@ -254,6 +251,21 @@ class CultivationLeaderboardEntry(Base):
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     username = Column(String, nullable=False)
     best_score = Column(Integer, default=0)
+    updated_at = Column(Integer, default=lambda: int(time.time()))
+
+
+class StarfallLeaderboardEntry(Base):
+    __tablename__ = "starfall_leaderboard"
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    username = Column(String, nullable=False)
+    best_score = Column(Integer, default=0)
+    best_day = Column(Integer, default=0)
+    best_ending_id = Column(String, default="")
+    best_ending_title = Column(String, default="")
+    last_score = Column(Integer, default=0)
+    last_day = Column(Integer, default=0)
+    last_ending_id = Column(String, default="")
+    last_ending_title = Column(String, default="")
     updated_at = Column(Integer, default=lambda: int(time.time()))
 
 
@@ -642,6 +654,14 @@ class CookieActIn(BaseModel):
     mini: Optional[str] = None
 
 
+class StarfallRunIn(BaseModel):
+    score: int
+    day: int
+    ending_id: Optional[str] = None
+    ending_title: Optional[str] = None
+    ending_tone: Optional[str] = None
+
+
 class CultivationBeginIn(BaseModel):
     talents: List[str]
     attributes: Dict[str, int]
@@ -720,11 +740,27 @@ def get_db():
     finally:
         db.close()
 
+def _to_bcrypt_bytes(p: str) -> bytes:
+    if isinstance(p, bytes):
+        data = p
+    else:
+        data = str(p or "").encode("utf-8")
+    return data
+
+
 def hash_pw(p: str) -> str:
-    return pwd_context.hash(p)
+    data = _to_bcrypt_bytes(p)
+    hashed = bcrypt.hashpw(data, bcrypt.gensalt())
+    return hashed.decode("utf-8")
+
 
 def verify_pw(p: str, h: str) -> bool:
-    return pwd_context.verify(p, h)
+    if not h:
+        return False
+    try:
+        return bcrypt.checkpw(_to_bcrypt_bytes(p), str(h).encode("utf-8"))
+    except ValueError:
+        return False
 
 def mk_jwt(username: str, session_ver: int, exp_min: int = 60*24) -> str:
     payload = {"sub": username, "sv": int(session_ver), "exp": datetime.utcnow() + timedelta(minutes=exp_min)}
@@ -1936,6 +1972,7 @@ def ensure_visual(inv: Inventory, skin: Optional[Skin] = None) -> Dict[str, obje
 # ------------------ Cookie Factory Mini-game ------------------
 COOKIE_FACTORY_SETTING_KEY = "cookie_factory_enabled"
 COOKIE_CULTIVATION_SETTING_KEY = "cookie_cultivation_enabled"
+STARFALL_SETTING_KEY = "starfall_enabled"
 COOKIE_WEEKLY_CAP = 100
 COOKIE_DELTA_BONUS = 0.05
 COOKIE_DELTA_BONUS_CAP = 1.25
@@ -6027,6 +6064,31 @@ def _json_dump(data: Dict[str, Any]) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
+def _coerce_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            if not math.isfinite(value):
+                return default
+            return int(value)
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return default
+            try:
+                return int(text, 10)
+            except ValueError:
+                return int(float(text))
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def cookie_factory_enabled(db: Session) -> bool:
     row = db.query(SystemSetting).filter_by(key=COOKIE_FACTORY_SETTING_KEY).first()
     if not row:
@@ -6058,6 +6120,23 @@ def set_cookie_cultivation_enabled(db: Session, enabled: bool) -> None:
         row.value = value
     else:
         db.add(SystemSetting(key=COOKIE_CULTIVATION_SETTING_KEY, value=value))
+    db.flush()
+
+
+def starfall_game_enabled(db: Session) -> bool:
+    row = db.query(SystemSetting).filter_by(key=STARFALL_SETTING_KEY).first()
+    if not row:
+        return True
+    return str(row.value) != "0"
+
+
+def set_starfall_game_enabled(db: Session, enabled: bool) -> None:
+    value = "1" if enabled else "0"
+    row = db.query(SystemSetting).filter_by(key=STARFALL_SETTING_KEY).first()
+    if row:
+        row.value = value
+    else:
+        db.add(SystemSetting(key=STARFALL_SETTING_KEY, value=value))
     db.flush()
 
 
@@ -8081,6 +8160,127 @@ def update_cultivation_leaderboard(db: Session, user: User, score: int) -> None:
     db.flush()
 
 
+def _starfall_rank(db: Session, score: int, updated_at: int) -> int:
+    better = (
+        db.query(func.count(StarfallLeaderboardEntry.user_id))
+        .filter(
+            (StarfallLeaderboardEntry.best_score > score)
+            | (
+                (StarfallLeaderboardEntry.best_score == score)
+                & (StarfallLeaderboardEntry.updated_at < updated_at)
+            )
+        )
+        .scalar()
+    )
+    return int(better or 0) + 1
+
+
+def serialize_starfall_entry(entry: Optional[StarfallLeaderboardEntry], db: Session) -> Dict[str, Any]:
+    if not entry:
+        return {
+            "user_id": None,
+            "username": None,
+            "best_score": 0,
+            "best_day": 0,
+            "best_ending_id": "",
+            "best_ending_title": "",
+            "last_score": 0,
+            "last_day": 0,
+            "last_ending_id": "",
+            "last_ending_title": "",
+            "rank": None,
+        }
+    rank = _starfall_rank(
+        db,
+        int(entry.best_score or 0),
+        int(entry.updated_at or 0),
+    )
+    return {
+        "user_id": int(entry.user_id or 0),
+        "username": entry.username,
+        "best_score": int(entry.best_score or 0),
+        "best_day": int(entry.best_day or 0),
+        "best_ending_id": entry.best_ending_id or "",
+        "best_ending_title": entry.best_ending_title or "",
+        "last_score": int(entry.last_score or 0),
+        "last_day": int(entry.last_day or 0),
+        "last_ending_id": entry.last_ending_id or "",
+        "last_ending_title": entry.last_ending_title or "",
+        "rank": rank,
+    }
+
+
+def ensure_starfall_enabled(db: Session, user: User) -> None:
+    if starfall_game_enabled(db):
+        return
+    if getattr(user, "is_admin", False):
+        return
+    raise HTTPException(403, "星际余生暂未开放")
+
+
+def record_starfall_run(
+    db: Session,
+    user: User,
+    score: int,
+    day: int,
+    ending_id: Optional[str],
+    ending_title: Optional[str],
+) -> StarfallLeaderboardEntry:
+    entry = db.query(StarfallLeaderboardEntry).filter_by(user_id=int(user.id)).first()
+    now = int(time.time())
+    if not entry:
+        entry = StarfallLeaderboardEntry(user_id=int(user.id), username=user.username)
+        db.add(entry)
+    entry.username = user.username
+    safe_score = max(0, int(score or 0))
+    safe_day = max(0, int(day or 0))
+    entry.last_score = safe_score
+    entry.last_day = safe_day
+    entry.last_ending_id = (ending_id or "").strip()[:64]
+    entry.last_ending_title = (ending_title or "").strip()[:128]
+    if safe_score > int(entry.best_score or 0):
+        entry.best_score = safe_score
+        entry.best_day = safe_day
+        entry.best_ending_id = entry.last_ending_id
+        entry.best_ending_title = entry.last_ending_title
+    elif safe_score == int(entry.best_score or 0) and safe_day > int(entry.best_day or 0):
+        entry.best_day = safe_day
+        if entry.last_ending_id:
+            entry.best_ending_id = entry.last_ending_id
+        if entry.last_ending_title:
+            entry.best_ending_title = entry.last_ending_title
+    entry.updated_at = now
+    db.flush()
+    return entry
+
+
+def starfall_leaderboard_payload(db: Session, limit: int = 20) -> Dict[str, Any]:
+    rows = (
+        db.query(StarfallLeaderboardEntry)
+        .order_by(
+            StarfallLeaderboardEntry.best_score.desc(),
+            StarfallLeaderboardEntry.updated_at.asc(),
+            StarfallLeaderboardEntry.user_id.asc(),
+        )
+        .limit(max(1, int(limit or 0)))
+        .all()
+    )
+    entries = []
+    for idx, row in enumerate(rows, start=1):
+        entries.append(
+            {
+                "rank": idx,
+                "user_id": int(row.user_id or 0),
+                "username": row.username,
+                "score": int(row.best_score or 0),
+                "day": int(row.best_day or 0),
+                "ending_id": row.best_ending_id or "",
+                "ending_title": row.best_ending_title or "",
+            }
+        )
+    return {"entries": entries, "generated_at": int(time.time())}
+
+
 def _cultivation_finalize(
     db: Session,
     profile: CookieFactoryProfile,
@@ -8461,20 +8661,44 @@ def ensure_cookie_profile(db: Session, user: User, now: Optional[int] = None) ->
         db.add(profile)
         db.flush()
         cookie_mini_games_state(profile)
+    else:
+        start_ts = _coerce_int(getattr(profile, "week_start_ts", 0), 0)
+        if start_ts <= 0:
+            start_ts = cookie_week_start(now)
+            profile.production_bonus_multiplier = float(profile.pending_bonus_multiplier or 1.0)
+            profile.penalty_multiplier = float(profile.pending_penalty_multiplier or 1.0)
+            profile.pending_bonus_multiplier = 1.0
+            profile.pending_penalty_multiplier = 1.0
+            profile.claimed_bricks_this_week = _coerce_int(
+                getattr(profile, "claimed_bricks_this_week", 0),
+                0,
+            )
+        profile.week_start_ts = start_ts
+        if _coerce_int(getattr(profile, "last_active_ts", 0), 0) <= 0:
+            profile.last_active_ts = now
+        if _coerce_int(getattr(profile, "golden_cooldown", 0), 0) <= 0:
+            profile.golden_cooldown = 120
+        if _coerce_int(getattr(profile, "golden_ready_ts", 0), 0) <= 0:
+            profile.golden_ready_ts = now + int(profile.golden_cooldown or 0)
+        if _coerce_int(getattr(profile, "last_sugar_ts", 0), 0) <= 0:
+            profile.last_sugar_ts = now - COOKIE_SUGAR_COOLDOWN
+        if not getattr(profile, "mini_games", None):
+            cookie_mini_games_state(profile)
     return profile
 
 
 def cookie_prepare_week(profile: CookieFactoryProfile, now: int) -> None:
     current_week = cookie_week_start(now)
-    if profile.week_start_ts == 0:
-        profile.week_start_ts = current_week
+    start_ts = _coerce_int(getattr(profile, "week_start_ts", 0), 0)
+    if start_ts <= 0:
+        start_ts = current_week
         profile.production_bonus_multiplier = float(profile.pending_bonus_multiplier or 1.0)
         profile.penalty_multiplier = float(profile.pending_penalty_multiplier or 1.0)
         profile.pending_bonus_multiplier = 1.0
         profile.pending_penalty_multiplier = 1.0
         profile.claimed_bricks_this_week = 0
-    elif profile.week_start_ts < current_week:
-        profile.week_start_ts = current_week
+    elif start_ts < current_week:
+        start_ts = current_week
         profile.cookies_this_week = 0.0
         profile.weekly_bricks_awarded = 0
         profile.active_points = _json_dump({})
@@ -8484,10 +8708,12 @@ def cookie_prepare_week(profile: CookieFactoryProfile, now: int) -> None:
         profile.pending_bonus_multiplier = 1.0
         profile.pending_penalty_multiplier = 1.0
         profile.claimed_bricks_this_week = 0
+    profile.week_start_ts = start_ts
 
 
 def cookie_finalize_week(db: Session, profile: CookieFactoryProfile, user: User, now: int) -> Optional[Dict[str, Any]]:
-    if profile.week_start_ts == 0:
+    start_ts = _coerce_int(getattr(profile, "week_start_ts", 0), 0)
+    if start_ts <= 0:
         return None
     (
         base_bricks,
@@ -8510,8 +8736,8 @@ def cookie_finalize_week(db: Session, profile: CookieFactoryProfile, user: User,
         profile.total_bricks_earned += claimable
     profile.weekly_bricks_awarded = int(awarded)
     report = {
-        "week_start": profile.week_start_ts,
-        "week_end": profile.week_start_ts + 7 * 86400,
+        "week_start": start_ts,
+        "week_end": start_ts + 7 * 86400,
         "awarded": awarded,
         "base_bricks": base_bricks,
         "active_bricks": active_brick,
@@ -8537,10 +8763,12 @@ def cookie_finalize_week(db: Session, profile: CookieFactoryProfile, user: User,
 
 def cookie_maybe_settle(db: Session, profile: CookieFactoryProfile, user: User, now: int) -> Optional[Dict[str, Any]]:
     current_week = cookie_week_start(now)
-    if profile.week_start_ts == 0:
+    start_ts = _coerce_int(getattr(profile, "week_start_ts", 0), 0)
+    if start_ts <= 0:
+        profile.week_start_ts = current_week
         cookie_prepare_week(profile, now)
         return None
-    if profile.week_start_ts < current_week:
+    if start_ts < current_week:
         report = cookie_finalize_week(db, profile, user, now)
         profile.week_start_ts = current_week
         profile.production_bonus_multiplier = float(profile.pending_bonus_multiplier or 1.0)
@@ -8651,6 +8879,9 @@ def cookie_status_payload(
     golden_ready_in = max(0, int(profile.golden_ready_ts or 0) - now)
     today_challenge = int(challenge_map.get(today, 0) or 0)
     requirement = cookie_prestige_requirement(profile)
+    week_start = _coerce_int(getattr(profile, "week_start_ts", 0), 0)
+    if week_start <= 0:
+        week_start = cookie_week_start(now)
     return {
         "enabled": bool(feature_enabled),
         "now": now,
@@ -8675,8 +8906,8 @@ def cookie_status_payload(
         "buildings": buildings_payload,
         "mini_games": mini_payload,
         "weekly": {
-            "week_start": profile.week_start_ts,
-            "week_end": profile.week_start_ts + 7 * 86400,
+            "week_start": week_start,
+            "week_end": week_start + 7 * 86400,
             "base_bricks": base_bricks,
             "active_bricks": active_brick,
             "login_bricks": login_brick,
@@ -9335,6 +9566,7 @@ def me(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
         phone = ""
     cookie_enabled = cookie_factory_enabled(db)
     cultivation_enabled = cookie_cultivation_enabled(db)
+    starfall_enabled = starfall_game_enabled(db)
     brick_detail = brick_balance_detail(db, user.id)
     pity_detail = season_pity_detail(db, user.id)
     return {
@@ -9354,6 +9586,10 @@ def me(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
             "cultivation": {
                 "enabled": bool(cultivation_enabled),
                 "available": bool(cultivation_enabled or getattr(user, "is_admin", False)),
+            },
+            "starfall": {
+                "enabled": bool(starfall_enabled),
+                "available": bool(starfall_enabled or getattr(user, "is_admin", False)),
             },
         },
     }
@@ -10151,8 +10387,50 @@ def cultivation_leaderboard(
                 "updated_at": int(row.updated_at or 0),
                 "is_self": bool(user.id == row.user_id) if user else False,
             }
-        )
+    )
     return {"entries": entries, "generated_at": int(time.time())}
+
+
+@app.get("/starfall/profile")
+def starfall_profile(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    ensure_starfall_enabled(db, user)
+    entry = db.query(StarfallLeaderboardEntry).filter_by(user_id=int(user.id)).first()
+    return serialize_starfall_entry(entry, db)
+
+
+@app.get("/starfall/leaderboard")
+def starfall_leaderboard(
+    limit: int = Query(20, ge=1, le=100),
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    ensure_starfall_enabled(db, user)
+    board = starfall_leaderboard_payload(db, limit)
+    mine = db.query(StarfallLeaderboardEntry).filter_by(user_id=int(user.id)).first()
+    board["self"] = serialize_starfall_entry(mine, db)
+    return board
+
+
+@app.post("/starfall/run")
+def starfall_run(
+    payload: StarfallRunIn,
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    ensure_starfall_enabled(db, user)
+    entry = record_starfall_run(
+        db,
+        user,
+        int(payload.score or 0),
+        int(payload.day or 0),
+        payload.ending_id,
+        payload.ending_title,
+    )
+    db.commit()
+    profile = serialize_starfall_entry(entry, db)
+    board = starfall_leaderboard_payload(db)
+    board["self"] = profile
+    return {"profile": profile, "leaderboard": board}
 
 
 @app.post("/cultivation/refresh")
@@ -10375,10 +10653,14 @@ def admin_cookie_factory_status(user: User = Depends(user_from_token), db: Sessi
         raise HTTPException(403, "需要管理员权限")
     enabled = cookie_factory_enabled(db)
     cultivation_enabled = cookie_cultivation_enabled(db)
+    starfall_enabled = starfall_game_enabled(db)
     cultivation_runs, cultivation_best = cookie_cultivation_admin_stats(db)
     total_profiles = db.query(CookieFactoryProfile).count()
     total_bricks = db.query(func.coalesce(func.sum(CookieFactoryProfile.total_bricks_earned), 0)).scalar()
     total_bricks = int(total_bricks or 0)
+    starfall_players = db.query(func.count(StarfallLeaderboardEntry.user_id)).scalar() or 0
+    starfall_best_score = db.query(func.coalesce(func.max(StarfallLeaderboardEntry.best_score), 0)).scalar()
+    starfall_best_day = db.query(func.coalesce(func.max(StarfallLeaderboardEntry.best_day), 0)).scalar()
     return {
         "enabled": bool(enabled),
         "profiles": total_profiles,
@@ -10386,6 +10668,10 @@ def admin_cookie_factory_status(user: User = Depends(user_from_token), db: Sessi
         "cultivation_enabled": bool(cultivation_enabled),
         "cultivation_runs": int(cultivation_runs),
         "cultivation_best": int(cultivation_best),
+        "starfall_enabled": bool(starfall_enabled),
+        "starfall_players": int(starfall_players),
+        "starfall_best_score": int(starfall_best_score or 0),
+        "starfall_best_day": int(starfall_best_day or 0),
     }
 
 
@@ -10405,6 +10691,16 @@ def admin_cookie_cultivation_toggle(payload: Dict[str, Any], user: User = Depend
         raise HTTPException(403, "需要管理员权限")
     desired = bool((payload or {}).get("enabled", False))
     set_cookie_cultivation_enabled(db, desired)
+    db.commit()
+    return {"enabled": desired}
+
+
+@app.post("/admin/starfall/toggle")
+def admin_starfall_toggle(payload: Dict[str, Any], user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(403, "需要管理员权限")
+    desired = bool((payload or {}).get("enabled", False))
+    set_starfall_game_enabled(db, desired)
     db.commit()
     return {"enabled": desired}
 
@@ -12088,7 +12384,7 @@ def admin_user_password_confirm(payload: dict, admin=_Depends(_require_admin)):
     if new_password:
         if len(new_password) < 6:
             con.close(); raise _HTTPException(400, "new_password too short")
-        updated_hash = pwd_context.hash(new_password)
+        updated_hash = hash_pw(new_password)
         updated_plain = str(new_password or "")
         cur.execute(
             "UPDATE users SET password_hash=?, password_plain=? WHERE id=?",
@@ -12105,7 +12401,7 @@ def admin_user_password_confirm(payload: dict, admin=_Depends(_require_admin)):
     password_matches_hash = False
     if plain_for_check:
         try:
-            password_matches_hash = pwd_context.verify(plain_for_check, updated_hash)
+            password_matches_hash = verify_pw(plain_for_check, updated_hash)
         except Exception:
             password_matches_hash = False
     con.commit(); con.close()

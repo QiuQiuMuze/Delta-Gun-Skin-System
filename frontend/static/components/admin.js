@@ -27,6 +27,10 @@ const AdminPage = {
           <label><input type="checkbox" id="cultivation-toggle"/> 开启“模拟修仙”随机剧情玩法</label>
         </div>
         <div class="muted" id="cultivation-toggle-desc">加载中...</div>
+        <div class="input-row" style="margin-top:8px;">
+          <label><input type="checkbox" id="starfall-toggle"/> 对玩家开放《星际余生》</label>
+        </div>
+        <div class="muted" id="starfall-toggle-desc">加载中...</div>
       </div>
 
       <div class="card admin-presence">
@@ -159,6 +163,8 @@ const AdminPage = {
     const cookieDesc = byId("cookie-toggle-desc");
     const cultivationSwitch = byId("cultivation-toggle");
     const cultivationDesc = byId("cultivation-toggle-desc");
+    const starfallSwitch = byId("starfall-toggle");
+    const starfallDesc = byId("starfall-toggle-desc");
     modeDesc.textContent = "加载中...";
     if (cookieDesc) cookieDesc.textContent = "加载中...";
 
@@ -216,6 +222,17 @@ const AdminPage = {
         : `关闭状态，玩家将看不到修仙小游戏入口。`;
     };
 
+    const updateStarfallDesc = (info = {}) => {
+      if (!starfallDesc) return;
+      const enabled = !!info.starfall_enabled;
+      const players = info.starfall_players != null ? info.starfall_players : "-";
+      const bestScore = info.starfall_best_score != null ? info.starfall_best_score : "-";
+      const bestDay = info.starfall_best_day != null ? info.starfall_best_day : "-";
+      starfallDesc.innerHTML = enabled
+        ? `星际余生已开放，记录玩家 <b>${players}</b> 位 · 最高分 <b>${bestScore}</b> · 最长旅程 Day <b>${bestDay}</b>`
+        : `关闭状态，普通玩家无法进入星际余生页面。`;
+    };
+
     const loadCookie = async () => {
       if (!cookieSwitch) return;
       cookieSwitch.disabled = true;
@@ -225,6 +242,8 @@ const AdminPage = {
         updateCookieDesc(info);
         if (cultivationSwitch) cultivationSwitch.checked = !!info.cultivation_enabled;
         updateCultivationDesc(info);
+        if (starfallSwitch) starfallSwitch.checked = !!info.starfall_enabled;
+        updateStarfallDesc(info);
         API._features = {
           ...(API._features || {}),
           cookie_factory: {
@@ -234,6 +253,10 @@ const AdminPage = {
           cultivation: {
             enabled: !!info.cultivation_enabled,
             available: !!info.cultivation_enabled || !!API._me?.is_admin,
+          },
+          starfall: {
+            enabled: !!info.starfall_enabled,
+            available: !!info.starfall_enabled || !!API._me?.is_admin,
           },
         };
         if (typeof renderNav === 'function') renderNav();
@@ -275,6 +298,22 @@ const AdminPage = {
           await loadCookie();
         } finally {
           cultivationSwitch.disabled = false;
+        }
+      };
+    }
+
+    if (starfallSwitch) {
+      starfallSwitch.onchange = async () => {
+        const desired = !!starfallSwitch.checked;
+        starfallSwitch.disabled = true;
+        try {
+          await API.starfallAdminToggle(desired);
+          await loadCookie();
+        } catch (e) {
+          alert(e.message || '更新失败');
+          await loadCookie();
+        } finally {
+          starfallSwitch.disabled = false;
         }
       };
     }

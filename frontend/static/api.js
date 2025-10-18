@@ -251,6 +251,14 @@ const API = {
     const suffix = usp.toString() ? `?${usp.toString()}` : "";
     return API.json(`/cultivation/leaderboard${suffix}`);
   },
+  starfallProfile: () => API.json("/starfall/profile"),
+  starfallLeaderboard: (limit = 20) => {
+    const usp = new URLSearchParams();
+    if (limit) usp.append("limit", limit);
+    const suffix = usp.toString() ? `?${usp.toString()}` : "";
+    return API.json(`/starfall/leaderboard${suffix}`);
+  },
+  starfallSubmit: (payload) => API.json("/starfall/run", "POST", payload || {}),
   updatePresence: (payload) => API.json("/presence/update", "POST", payload || {}),
 
   // ---- Admin（JWT 管理接口）----
@@ -306,6 +314,7 @@ const API = {
   cookieAdminStatus: () => API.json("/admin/cookie-factory"),
   cookieAdminToggle: (enabled) => API.json("/admin/cookie-factory/toggle", "POST", { enabled }),
   cookieCultivationToggle: (enabled) => API.json("/admin/cookie-factory/cultivation-toggle", "POST", { enabled }),
+  starfallAdminToggle: (enabled) => API.json("/admin/starfall/toggle", "POST", { enabled }),
 
 
   adminAuthModeGet: () => API.json("/admin/auth-mode"),
