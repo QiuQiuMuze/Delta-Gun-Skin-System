@@ -2031,6 +2031,17 @@ const StarfallData = (() => {
   };
 })();
 
+const EFFECT_LABELS = {
+  fuel: "燃料",
+  food: "食物",
+  o2: "O₂",
+  mind: "心智",
+  signal: "信号",
+  satiety: "饱腹",
+  crew: "人员",
+  time: "时间",
+};
+
 const {
   crewTemplates,
   getRoster,
@@ -2092,6 +2103,7 @@ const StarfallPage = {
       bgmNodes: [],
       release: 0.7,
     };
+    this._isAdmin = (typeof API !== "undefined") && !!(API._me && API._me.is_admin);
     this._els = {
       stats: document.getElementById("starfall-stats"),
       story: document.getElementById("starfall-story"),
@@ -2139,6 +2151,7 @@ const StarfallPage = {
     this._state = null;
     this._els = null;
     this._handlers = null;
+    this._isAdmin = false;
   },
   loadCodex() {
     if (typeof window === "undefined") return [];
@@ -4459,6 +4472,9 @@ const StarfallPage = {
     this.renderLog();
   },
   renderState() {
+    if (typeof API !== "undefined") {
+      this._isAdmin = !!(API._me && API._me.is_admin);
+    }
     this.renderStats();
     this.renderStory();
     this.renderChoices();
@@ -4521,10 +4537,10 @@ const StarfallPage = {
         return "day";
       case "ending": {
         const tone = state.currentEnding?.codexTone || "neutral";
-        if (tone === "hope") return "ending-hope";
-        if (tone === "mystic") return "ending-mystic";
-        if (tone === "dark") return "ending-dark";
-        return "ending-neutral";
+        if (["dark", "grim", "void", "negative"].includes(tone)) return "ending-negative";
+        if (["mystic", "ascend", "awaken"].includes(tone)) return "ending-mystic";
+        if (["neutral", "balanced"].includes(tone)) return "ending-neutral";
+        return "ending-positive";
       }
       default:
         return "day";
@@ -4554,7 +4570,7 @@ const StarfallPage = {
             { type: "sawtooth", freq: 150, level: 0.1, detune: 5, lfo: { freq: 0.1, depth: 16 } },
           ],
         };
-      case "ending-hope":
+      case "ending-positive":
         return {
           gain: 0.23,
           attack: 1.1,
@@ -4576,7 +4592,7 @@ const StarfallPage = {
             { type: "sine", freq: 48, level: 0.1, lfo: { freq: 0.04, depth: 9 } },
           ],
         };
-      case "ending-dark":
+      case "ending-negative":
         return {
           gain: 0.18,
           attack: 1.5,
@@ -4881,14 +4897,289 @@ const StarfallPage = {
     const html = pendingStory.options.map((opt) => {
       const label = escapeHtml(opt.label || "选项");
       const detail = opt.detail ? `<span class="starfall-option__detail">${escapeHtml(opt.detail)}</span>` : "";
+      const adminBlock = this.renderAdminInspector(opt);
       return `
-        <button class="btn starfall-option" data-choice="${escapeHtml(opt.key)}">
-          <span class="starfall-option__label">${label}</span>
-          ${detail}
-        </button>
+        <div class="starfall-option-row">
+          <button class="btn starfall-option" data-choice="${escapeHtml(opt.key)}">
+            <span class="starfall-option__label">${label}</span>
+            ${detail}
+          </button>
+          ${adminBlock || ""}
+        </div>
       `;
     }).join("");
     this._els.choices.innerHTML = html;
+  },
+  renderAdminInspector(option) {
+    if (!this._isAdmin || !option) {
+      return "";
+    }
+    const preview = this.getOptionPreview(option);
+    if (!preview || !Array.isArray(preview.outcomes) || !preview.outcomes.length) {
+      return "";
+    }
+    const list = preview.outcomes.map((entry) => {
+      const chance = this._formatChance(entry.chance);
+      const summary = escapeHtml(entry.summary || "无显著变动");
+      return `
+        <li>
+          <span class="starfall-option__admin-chance">${chance}</span>
+          <span class="starfall-option__admin-text">${summary}</span>
+        </li>
+      `;
+    }).join("");
+    const note = preview.iterations
+      ? `<div class="starfall-option__admin-note">基于 ${preview.iterations} 次模拟</div>`
+      : "";
+    return `
+      <div class="starfall-option__admin">
+        <div class="starfall-option__admin-title">管理员预览</div>
+        <ul class="starfall-option__admin-list">${list}</ul>
+        ${note}
+      </div>
+    `;
+  },
+  getOptionPreview(option) {
+    if (!this._isAdmin || !this._state || !option) {
+      return null;
+    }
+    if (typeof option.resolve !== "function") {
+      return null;
+    }
+    const base = this._createPreviewBaseState();
+    if (!base) {
+      return null;
+    }
+    const iterations = Math.max(1, option.previewSamples || 160);
+    const outcomes = new Map();
+    for (let i = 0; i < iterations; i += 1) {
+      const sample = this._clonePreviewState(base);
+      let result;
+      try {
+        result = option.resolve(sample);
+      } catch (err) {
+        result = { error: err?.message || String(err) };
+      }
+      if (!result || typeof result !== "object") {
+        result = {};
+      }
+      const sanitized = this._sanitizeOutcome(result);
+      const signature = JSON.stringify(sanitized);
+      const bucket = outcomes.get(signature);
+      if (bucket) {
+        bucket.count += 1;
+      } else {
+        outcomes.set(signature, { count: 1, outcome: result, sanitized });
+      }
+    }
+    const list = Array.from(outcomes.values()).map((entry) => {
+      const chance = Math.round((entry.count / iterations) * 1000) / 10;
+      return {
+        chance,
+        summary: this._describeOutcome(entry.outcome, entry.sanitized),
+      };
+    }).sort((a, b) => b.chance - a.chance);
+    return { iterations, outcomes: list };
+  },
+  _createPreviewBaseState() {
+    if (!this._state) {
+      return null;
+    }
+    const snapshot = {
+      phase: this._state.phase,
+      countdownIndex: this._state.countdownIndex,
+      time: this._state.time,
+      resources: this._state.resources,
+      flags: this._state.flags,
+    };
+    try {
+      return JSON.parse(JSON.stringify(snapshot));
+    } catch (err) {
+      return null;
+    }
+  },
+  _clonePreviewState(base) {
+    if (!base) {
+      return null;
+    }
+    try {
+      return JSON.parse(JSON.stringify(base));
+    } catch (err) {
+      return null;
+    }
+  },
+  _sanitizeOutcome(outcome) {
+    if (!outcome || typeof outcome !== "object") {
+      return {};
+    }
+    const sanitized = {};
+    Object.keys(outcome).forEach((key) => {
+      if (key === "log") return;
+      const value = outcome[key];
+      if (typeof value === "function" || value === undefined) {
+        return;
+      }
+      sanitized[key] = this._normalizeOutcomeValue(value);
+    });
+    return sanitized;
+  },
+  _normalizeOutcomeValue(value) {
+    if (value == null) {
+      return value;
+    }
+    if (Array.isArray(value)) {
+      const mapped = value.map((item) => this._normalizeOutcomeValue(item));
+      const sortable = mapped.every((item) => item == null || typeof item !== "object");
+      if (sortable) {
+        return mapped.slice().sort((a, b) => {
+          if (a === b) return 0;
+          return a > b ? 1 : -1;
+        });
+      }
+      return mapped;
+    }
+    if (typeof value === "object") {
+      const ordered = Object.keys(value).sort().map((key) => [key, this._normalizeOutcomeValue(value[key])]);
+      const result = {};
+      ordered.forEach(([key, val]) => {
+        result[key] = val;
+      });
+      return result;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Math.round(value * 1000) / 1000;
+    }
+    return value;
+  },
+  _describeOutcome(outcome, sanitized) {
+    const parts = [];
+    const effects = sanitized.effects;
+    if (effects && typeof effects === "object") {
+      Object.keys(effects).forEach((key) => {
+        if (key === "set") return;
+        const change = this._formatEffectChange(key, effects[key]);
+        if (change) {
+          parts.push(change);
+        }
+      });
+      if (effects.set && typeof effects.set === "object") {
+        Object.entries(effects.set).forEach(([key, value]) => {
+          const label = EFFECT_LABELS[key] || key.toUpperCase();
+          parts.push(`${label} 设为 ${this._formatNumber(value)}`);
+        });
+      }
+    }
+    if (Array.isArray(sanitized.crewGain) && sanitized.crewGain.length) {
+      const names = sanitized.crewGain.map((id) => crewTemplates[id]?.name || id);
+      parts.push(`加入 ${names.join("、")}`);
+    }
+    if (Array.isArray(sanitized.crewLoss) && sanitized.crewLoss.length) {
+      const names = sanitized.crewLoss.map((id) => crewTemplates[id]?.name || id);
+      parts.push(`失去 ${names.join("、")}`);
+    }
+    if (sanitized.preventMindDecay) {
+      parts.push("心智稳定");
+    }
+    if (sanitized.mindShock) {
+      parts.push("心智冲击");
+    }
+    if (sanitized.error) {
+      parts.push(`异常 ${sanitized.error}`);
+    }
+    if (sanitized.flags && typeof sanitized.flags === "object") {
+      const entries = [];
+      Object.entries(sanitized.flags).forEach(([key, value]) => {
+        if (key === "crewRoster") return;
+        if (value === false || value == null) return;
+        if (typeof value === "boolean") {
+          if (value) entries.push(key);
+        } else if (typeof value === "number" || typeof value === "string") {
+          entries.push(`${key}:${value}`);
+        }
+      });
+      if (entries.length) {
+        const list = entries.slice(0, 3).join("、");
+        parts.push(`标记 ${list}${entries.length > 3 ? "…" : ""}`);
+      }
+    }
+    const handled = new Set(["effects", "crewGain", "crewLoss", "flags", "preventMindDecay", "mindShock", "error"]);
+    Object.keys(sanitized).forEach((key) => {
+      if (handled.has(key)) return;
+      const value = sanitized[key];
+      if (value === null || value === undefined || value === false) {
+        return;
+      }
+      if (typeof value === "boolean") {
+        if (value) {
+          parts.push(key);
+        }
+        return;
+      }
+      if (typeof value === "number") {
+        parts.push(`${key} ${this._formatNumber(value)}`);
+        return;
+      }
+      if (typeof value === "string") {
+        parts.push(`${key} ${value}`);
+      }
+    });
+    if (!parts.length && outcome?.log) {
+      const raw = String(outcome.log);
+      const snippet = raw.length > 36 ? `${raw.slice(0, 36)}…` : raw;
+      parts.push(snippet);
+    }
+    if (!parts.length) {
+      parts.push("无显著变动");
+    }
+    return parts.join("；");
+  },
+  _formatEffectChange(key, value) {
+    const label = EFFECT_LABELS[key] || key.toUpperCase();
+    if (typeof value === "number") {
+      return `${label} ${this._formatSignedNumber(value)}`;
+    }
+    if (value == null) {
+      return null;
+    }
+    return `${label} ${value}`;
+  },
+  _formatSignedNumber(value) {
+    if (!Number.isFinite(value)) {
+      return String(value);
+    }
+    if (value === 0) {
+      return "0";
+    }
+    const abs = Math.abs(value);
+    const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 1;
+    let str = value.toFixed(digits);
+    str = str.replace(/\.0$/, "");
+    if (value > 0) {
+      return `+${str}`;
+    }
+    return str;
+  },
+  _formatNumber(value) {
+    if (!Number.isFinite(value)) {
+      return String(value);
+    }
+    const abs = Math.abs(value);
+    const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 1;
+    return value.toFixed(digits).replace(/\.0$/, "");
+  },
+  _formatChance(value) {
+    if (!Number.isFinite(value)) {
+      return "-";
+    }
+    if (value >= 99.95) {
+      return "≈100%";
+    }
+    if (value <= 0.05) {
+      return "<0.1%";
+    }
+    const digits = value >= 10 ? 1 : 1;
+    const str = value.toFixed(digits).replace(/\.0$/, "");
+    return `${str}%`;
   },
   renderLog() {
     if (!this._els?.log || !this._state) return;
