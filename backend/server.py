@@ -12,8 +12,7 @@ from pydantic import BaseModel
 from typing import Optional, Literal, List, Dict, Any, Tuple, Set
 from datetime import datetime, timedelta
 import time, os, secrets, jwt, re, json, random, math, hashlib
-
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy import (
     create_engine, Column, Integer, String, Boolean, Float,
     ForeignKey, Text, func, UniqueConstraint
@@ -34,8 +33,6 @@ OTP_FILE = "sms_codes.txt"
 engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 Base = declarative_base()
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 http_bearer = HTTPBearer()
 
 WEAPON_NAME_ALIASES = {
@@ -720,11 +717,27 @@ def get_db():
     finally:
         db.close()
 
+def _to_bcrypt_bytes(p: str) -> bytes:
+    if isinstance(p, bytes):
+        data = p
+    else:
+        data = str(p or "").encode("utf-8")
+    return data
+
+
 def hash_pw(p: str) -> str:
-    return pwd_context.hash(p)
+    data = _to_bcrypt_bytes(p)
+    hashed = bcrypt.hashpw(data, bcrypt.gensalt())
+    return hashed.decode("utf-8")
+
 
 def verify_pw(p: str, h: str) -> bool:
-    return pwd_context.verify(p, h)
+    if not h:
+        return False
+    try:
+        return bcrypt.checkpw(_to_bcrypt_bytes(p), str(h).encode("utf-8"))
+    except ValueError:
+        return False
 
 def mk_jwt(username: str, session_ver: int, exp_min: int = 60*24) -> str:
     payload = {"sub": username, "sv": int(session_ver), "exp": datetime.utcnow() + timedelta(minutes=exp_min)}
@@ -12088,7 +12101,7 @@ def admin_user_password_confirm(payload: dict, admin=_Depends(_require_admin)):
     if new_password:
         if len(new_password) < 6:
             con.close(); raise _HTTPException(400, "new_password too short")
-        updated_hash = pwd_context.hash(new_password)
+        updated_hash = hash_pw(new_password)
         updated_plain = str(new_password or "")
         cur.execute(
             "UPDATE users SET password_hash=?, password_plain=? WHERE id=?",
@@ -12105,7 +12118,7 @@ def admin_user_password_confirm(payload: dict, admin=_Depends(_require_admin)):
     password_matches_hash = False
     if plain_for_check:
         try:
-            password_matches_hash = pwd_context.verify(plain_for_check, updated_hash)
+            password_matches_hash = verify_pw(plain_for_check, updated_hash)
         except Exception:
             password_matches_hash = False
     con.commit(); con.close()
