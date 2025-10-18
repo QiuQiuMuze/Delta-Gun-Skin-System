@@ -349,13 +349,17 @@ const StarfallPage = {
         <h2 class=\"starfall-title\">星际余生 · Starfall 60</h2>
         <p class=\"starfall-sub\">倒计时、抉择与孤独求生。每个选项都会在之后的十日里留下痕迹。</p>
       </div>
-      <div class=\"card starfall-card\">
+      <div class=\"card starfall-card starfall-card--layout\">
         <div class=\"starfall-layout\">
-          <section class=\"starfall-stats\" id=\"starfall-stats\"></section>
-          <section class=\"starfall-story\" id=\"starfall-story\"></section>
-          <section class=\"starfall-choices\" id=\"starfall-choices\"></section>
-          <section class=\"starfall-log\" id=\"starfall-log\" aria-live=\"polite\"></section>
-          <section class=\"starfall-codex\" id=\"starfall-codex\"></section>
+          <div class=\"starfall-main\">
+            <section class=\"starfall-stats\" id=\"starfall-stats\"></section>
+            <section class=\"starfall-story\" id=\"starfall-story\"></section>
+            <section class=\"starfall-choices\" id=\"starfall-choices\"></section>
+          </div>
+          <aside class=\"starfall-side\">
+            <section class=\"starfall-log\" id=\"starfall-log\" aria-live=\"polite\"></section>
+            <section class=\"starfall-codex\" id=\"starfall-codex\"></section>
+          </aside>
         </div>
         <div class=\"starfall-actions\">
           <button class=\"btn ghost\" id=\"starfall-restart\">重置旅程</button>
