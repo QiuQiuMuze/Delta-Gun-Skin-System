@@ -440,10 +440,12 @@ const AdminPage = {
 
     const renderUsers = (items=[])=>{
       const rows = items.map(u=>{
+        const userId = (u && typeof u.id !== 'undefined' && u.id !== null) ? u.id : '';
         const encoded = encodeURIComponent(u.username || "");
         const lastLoginText = formatLastLogin(u.last_login_ts);
         return `
         <tr>
+          <td>${userId}</td>
           <td>${escapeHtml(u.username||"")}</td>
           <td>${escapeHtml(u.phone||"")}</td>
           <td>${u.fiat}</td>
@@ -461,7 +463,7 @@ const AdminPage = {
       }).join("");
       byId("list").innerHTML = `
         <table class="table">
-          <thead><tr><th>用户名</th><th>手机号</th><th>法币</th><th>三角币</th><th>管理员</th><th>最近登录</th><th>备注</th><th>操作</th></tr></thead>
+          <thead><tr><th>ID</th><th>用户名</th><th>手机号</th><th>法币</th><th>三角币</th><th>管理员</th><th>最近登录</th><th>备注</th><th>操作</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>`;
     };
@@ -720,7 +722,9 @@ const AdminPage = {
       try {
         updatePwResult("正在发送验证码...");
         const resp = await API.adminPasswordRequest(id);
-        updatePwResult(`验证码已下发，请查看短信日志（目标用户：${resp?.target?.username || id}）`);
+        const target = resp?.target || {};
+        const labelId = (target.user_id !== undefined && target.user_id !== null) ? target.user_id : id;
+        updatePwResult(`验证码已下发，请查看短信日志（目标用户：${target.username || labelId}，ID：${labelId}）`);
         try { await loadSms(); } catch (_) {}
       } catch (e) {
         updatePwResult(e.message || String(e));
@@ -736,13 +740,25 @@ const AdminPage = {
         const resp = await API.adminPasswordConfirm(id, code, newPwd ? newPwd : null);
         const user = resp?.user || {};
         const hash = user.password_hash || '未知';
-        const resetText = resp?.password_updated ? '（密码已更新）' : '（未修改密码）';
-        updatePwResult(`用户 ${user.username || String(id)} 的密码哈希：${hash} ${resetText}`);
+        const plain = (user.password_plain !== undefined && user.password_plain !== null && user.password_plain !== '')
+          ? user.password_plain
+          : '（未记录）';
+        const userIdLabel = (user.user_id !== undefined && user.user_id !== null) ? user.user_id : id;
+        let statusText;
+        if (resp?.password_updated) {
+          statusText = '密码已更新，验证码已失效。';
+        } else if (resp?.code_consumed) {
+          statusText = '验证码已失效。';
+        } else {
+          statusText = '验证码仍在有效期，如需重置请填写新密码后再次提交。';
+        }
+        const extraNote = resp?.note ? ` ${resp.note}` : '';
+        updatePwResult(`用户 ID ${userIdLabel}（${user.username || '未知用户'}）的密码：${plain}；哈希：${hash}。${statusText}${extraNote}`);
         if (resp?.password_updated) {
           alert('密码已更新');
+          byId("pw-code").value = "";
+          byId("pw-new").value = "";
         }
-        byId("pw-code").value = "";
-        byId("pw-new").value = "";
       } catch (e) {
         updatePwResult(e.message || String(e));
       }
