@@ -171,6 +171,29 @@ const API = {
     return API.json(`/me/mailbox${usp.toString() ? `?${usp.toString()}` : ""}`);
   },
 
+  // ---- Friends ----
+  friendsList: () => API.json("/friends"),
+  friendsSearch: (query, limit = 10) => {
+    const usp = new URLSearchParams();
+    if (query) usp.append("q", query);
+    if (limit) usp.append("limit", limit);
+    return API.json(`/friends/search${usp.toString() ? `?${usp.toString()}` : ""}`);
+  },
+  friendsAdd: ({ target_id, username }) => {
+    const payload = {};
+    if (target_id != null) payload.target_id = target_id;
+    if (username) payload.username = username;
+    return API.json("/friends/add", "POST", payload);
+  },
+  friendsConversation: (friendId, limit = 50) => {
+    const usp = new URLSearchParams();
+    if (limit) usp.append("limit", limit);
+    const suffix = usp.toString() ? `?${usp.toString()}` : "";
+    return API.json(`/friends/conversation/${friendId}${suffix}`);
+  },
+  friendsSendMessage: (friendId, message) =>
+    API.json(`/friends/message/${friendId}`, "POST", { message }),
+
   // ---- Market ----
   marketBrowse: (params = {}) => {
     const usp = new URLSearchParams();
@@ -215,6 +238,12 @@ const API = {
   cultivationRefresh: () => API.json("/cultivation/refresh", "POST", {}),
   cultivationBegin: (payload) => API.json("/cultivation/begin", "POST", payload || {}),
   cultivationAdvance: (payload) => API.json("/cultivation/advance", "POST", payload || {}),
+  cultivationLeaderboard: (limit = 20) => {
+    const usp = new URLSearchParams();
+    if (limit) usp.append("limit", limit);
+    const suffix = usp.toString() ? `?${usp.toString()}` : "";
+    return API.json(`/cultivation/leaderboard${suffix}`);
+  },
   updatePresence: (payload) => API.json("/presence/update", "POST", payload || {}),
 
   // ---- Admin（JWT 管理接口）----

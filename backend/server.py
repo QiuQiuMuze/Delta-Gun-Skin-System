@@ -207,6 +207,41 @@ class UserPresence(Base):
     last_seen = Column(Integer, default=lambda: int(time.time()))
 
 
+class Friendship(Base):
+    __tablename__ = "friendships"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    friend_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(Integer, default=lambda: int(time.time()))
+
+    __table_args__ = (UniqueConstraint("user_id", "friend_id", name="uq_friendship_pair"),)
+
+
+class FriendMessage(Base):
+    __tablename__ = "friend_messages"
+    id = Column(Integer, primary_key=True)
+    sender_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    receiver_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(Integer, default=lambda: int(time.time()), index=True)
+
+
+class CultivationLeaderboardEntry(Base):
+    __tablename__ = "cultivation_leaderboard"
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    username = Column(String, nullable=False)
+    best_score = Column(Integer, default=0)
+    updated_at = Column(Integer, default=lambda: int(time.time()))
+
+
+def ensure_friendship_pair(db: Session, user_id: int, friend_id: int) -> None:
+    if not user_id or not friend_id or user_id == friend_id:
+        return
+    existing = db.query(Friendship).filter_by(user_id=int(user_id), friend_id=int(friend_id)).first()
+    if not existing:
+        db.add(Friendship(user_id=int(user_id), friend_id=int(friend_id)))
+
+
 class CookieFactoryProfile(Base):
     __tablename__ = "cookie_factory_profiles"
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
@@ -509,6 +544,15 @@ class BrickBuyOrderIn(BaseModel):
     quantity: int
     target_price: int
     season: Optional[str] = None
+
+
+class FriendAddIn(BaseModel):
+    target_id: Optional[int] = None
+    username: Optional[str] = None
+
+
+class FriendMessageIn(BaseModel):
+    message: str
 
 
 class CookieActIn(BaseModel):
@@ -7943,6 +7987,28 @@ def _cultivation_is_good_ending(ending_type: Optional[str]) -> bool:
     return key in {"ascend"}
 
 
+def update_cultivation_leaderboard(db: Session, user: User, score: int) -> None:
+    if not user or not getattr(user, "id", None):
+        return
+    safe_score = max(0, int(score or 0))
+    entry = db.query(CultivationLeaderboardEntry).filter_by(user_id=int(user.id)).first()
+    now = int(time.time())
+    if not entry:
+        entry = CultivationLeaderboardEntry(
+            user_id=int(user.id),
+            username=user.username,
+            best_score=safe_score,
+            updated_at=now,
+        )
+        db.add(entry)
+    else:
+        entry.username = user.username
+        if safe_score > int(entry.best_score or 0):
+            entry.best_score = safe_score
+        entry.updated_at = now
+    db.flush()
+
+
 def _cultivation_finalize(
     db: Session,
     profile: CookieFactoryProfile,
@@ -8012,6 +8078,8 @@ def _cultivation_finalize(
     best_prev = int(node.get("best_score") or 0)
     if score > best_prev:
         node["best_score"] = score
+    current_best = int(node.get("best_score") or 0)
+    update_cultivation_leaderboard(db, user, current_best)
     node["play_count"] = int(node.get("play_count") or 0) + 1
 
     run_talents = run.get("talents", [])
@@ -9187,6 +9255,7 @@ def me(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     brick_detail = brick_balance_detail(db, user.id)
     pity_detail = season_pity_detail(db, user.id)
     return {
+        "user_id": int(user.id),
         "username": user.username, "phone": phone,
         "fiat": user.fiat, "coins": user.coins, "keys": user.keys,
         "unopened_bricks": user.unopened_bricks,
@@ -9241,6 +9310,207 @@ def me_mailbox(
         }
         bucket[action].append(entry)
     return out
+
+
+@app.get("/friends")
+def friends_list(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    relations = (
+        db.query(Friendship)
+        .filter_by(user_id=user.id)
+        .order_by(Friendship.created_at.asc(), Friendship.id.asc())
+        .all()
+    )
+    friend_ids = [int(rel.friend_id) for rel in relations if rel.friend_id]
+    users: Dict[int, User] = {}
+    if friend_ids:
+        peers = db.query(User).filter(User.id.in_(friend_ids)).all()
+        users = {int(p.id): p for p in peers}
+    last_map: Dict[int, FriendMessage] = {}
+    if friend_ids:
+        messages = (
+            db.query(FriendMessage)
+            .filter(
+                ((FriendMessage.sender_id == user.id) & (FriendMessage.receiver_id.in_(friend_ids)))
+                | ((FriendMessage.receiver_id == user.id) & (FriendMessage.sender_id.in_(friend_ids)))
+            )
+            .order_by(FriendMessage.created_at.desc(), FriendMessage.id.desc())
+            .all()
+        )
+        for msg in messages:
+            fid = int(msg.receiver_id) if int(msg.sender_id) == int(user.id) else int(msg.sender_id)
+            if fid not in last_map:
+                last_map[fid] = msg
+            if len(last_map) >= len(friend_ids):
+                break
+    entries: List[Dict[str, Any]] = []
+    for rel in relations:
+        fid = int(rel.friend_id)
+        peer = users.get(fid)
+        if not peer:
+            continue
+        item: Dict[str, Any] = {
+            "user_id": fid,
+            "username": peer.username,
+            "friend_since": int(rel.created_at or 0),
+        }
+        last = last_map.get(fid)
+        if last:
+            item["last_message"] = {
+                "id": int(last.id),
+                "sender_id": int(last.sender_id),
+                "receiver_id": int(last.receiver_id),
+                "content": last.content,
+                "timestamp": int(last.created_at or 0),
+            }
+        entries.append(item)
+    return {"friends": entries}
+
+
+@app.get("/friends/search")
+def friends_search(
+    q: str = Query(..., min_length=1, max_length=50),
+    limit: int = Query(10, ge=1, le=50),
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    keyword = (q or "").strip()
+    if not keyword:
+        raise HTTPException(400, "请输入搜索关键词")
+    exclude_ids = {int(user.id)}
+    for rel in db.query(Friendship).filter_by(user_id=user.id).all():
+        exclude_ids.add(int(rel.friend_id))
+    results: List[User] = []
+    if keyword.isdigit():
+        target = db.query(User).filter_by(id=int(keyword)).first()
+        if target and int(target.id) not in exclude_ids:
+            results.append(target)
+    if len(results) < limit:
+        pattern = f"%{keyword}%"
+        matches = (
+            db.query(User)
+            .filter(User.username.ilike(pattern))
+            .order_by(User.username.asc())
+            .limit(limit * 2)
+            .all()
+        )
+        for candidate in matches:
+            cid = int(candidate.id)
+            if cid in exclude_ids or any(int(existing.id) == cid for existing in results):
+                continue
+            results.append(candidate)
+            if len(results) >= limit:
+                break
+    payload = [
+        {"user_id": int(item.id), "username": item.username}
+        for item in results[:limit]
+    ]
+    return {"results": payload}
+
+
+@app.post("/friends/add")
+def friends_add(
+    inp: FriendAddIn,
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    target: Optional[User] = None
+    if inp.target_id:
+        target = db.query(User).filter_by(id=int(inp.target_id)).first()
+    if not target and inp.username:
+        target = db.query(User).filter_by(username=inp.username).first()
+    if not target:
+        raise HTTPException(404, "未找到该玩家")
+    if int(target.id) == int(user.id):
+        raise HTTPException(400, "无法添加自己为好友")
+    existing = db.query(Friendship).filter_by(user_id=user.id, friend_id=target.id).first()
+    if existing:
+        return {
+            "ok": True,
+            "friend": {"user_id": int(target.id), "username": target.username},
+            "already": True,
+        }
+    ensure_friendship_pair(db, int(user.id), int(target.id))
+    ensure_friendship_pair(db, int(target.id), int(user.id))
+    db.commit()
+    return {"ok": True, "friend": {"user_id": int(target.id), "username": target.username}}
+
+
+@app.get("/friends/conversation/{friend_id}")
+def friends_conversation(
+    friend_id: int = Path(..., ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    relation = db.query(Friendship).filter_by(user_id=user.id, friend_id=friend_id).first()
+    if not relation:
+        raise HTTPException(404, "尚未互为好友")
+    friend = db.query(User).filter_by(id=friend_id).first()
+    if not friend:
+        raise HTTPException(404, "好友不存在")
+    messages = (
+        db.query(FriendMessage)
+        .filter(
+            ((FriendMessage.sender_id == user.id) & (FriendMessage.receiver_id == friend_id))
+            | ((FriendMessage.sender_id == friend_id) & (FriendMessage.receiver_id == user.id))
+        )
+        .order_by(FriendMessage.created_at.desc(), FriendMessage.id.desc())
+        .limit(limit)
+        .all()
+    )
+    history = [
+        {
+            "id": int(msg.id),
+            "sender_id": int(msg.sender_id),
+            "receiver_id": int(msg.receiver_id),
+            "content": msg.content,
+            "timestamp": int(msg.created_at or 0),
+        }
+        for msg in reversed(messages)
+    ]
+    return {
+        "friend": {"user_id": int(friend.id), "username": friend.username},
+        "messages": history,
+    }
+
+
+@app.post("/friends/message/{friend_id}")
+def friends_send_message(
+    payload: FriendMessageIn,
+    friend_id: int = Path(..., ge=1),
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    relation = db.query(Friendship).filter_by(user_id=user.id, friend_id=friend_id).first()
+    if not relation:
+        raise HTTPException(404, "尚未互为好友")
+    friend = db.query(User).filter_by(id=friend_id).first()
+    if not friend:
+        raise HTTPException(404, "好友不存在")
+    content = (payload.message if payload else "").strip()
+    if not content:
+        raise HTTPException(400, "消息内容不能为空")
+    if len(content) > 1000:
+        content = content[:1000]
+    msg = FriendMessage(
+        sender_id=int(user.id),
+        receiver_id=int(friend.id),
+        content=content,
+        created_at=int(time.time()),
+    )
+    db.add(msg)
+    db.flush()
+    db.commit()
+    return {
+        "ok": True,
+        "message": {
+            "id": int(msg.id),
+            "sender_id": int(msg.sender_id),
+            "receiver_id": int(msg.receiver_id),
+            "content": msg.content,
+            "timestamp": int(msg.created_at or 0),
+        },
+    }
 
 
 @app.get("/cookie-factory/status")
@@ -9502,6 +9772,37 @@ def cultivation_status(user: User = Depends(user_from_token), db: Session = Depe
     profile.mini_games = _json_dump(state)
     db.commit()
     return payload
+
+
+@app.get("/cultivation/leaderboard")
+def cultivation_leaderboard(
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(user_from_token),
+):
+    rows = (
+        db.query(CultivationLeaderboardEntry)
+        .order_by(
+            CultivationLeaderboardEntry.best_score.desc(),
+            CultivationLeaderboardEntry.updated_at.asc(),
+            CultivationLeaderboardEntry.user_id.asc(),
+        )
+        .limit(int(limit))
+        .all()
+    )
+    entries: List[Dict[str, Any]] = []
+    for idx, row in enumerate(rows, start=1):
+        entries.append(
+            {
+                "rank": idx,
+                "user_id": int(row.user_id),
+                "username": row.username,
+                "best_score": int(row.best_score or 0),
+                "updated_at": int(row.updated_at or 0),
+                "is_self": bool(user.id == row.user_id) if user else False,
+            }
+        )
+    return {"entries": entries, "generated_at": int(time.time())}
 
 
 @app.post("/cultivation/refresh")
