@@ -1023,7 +1023,7 @@ h3 + .muted.small { margin-top:-6px; }
 .starfall-card--layout { display:flex; flex-direction:column; gap:16px; padding:20px 22px; min-height:480px; height:min(70vh, 760px); overflow:hidden; }
 .starfall-layout { display:grid; gap:16px; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); align-items:stretch; flex:1; min-height:0; }
 .starfall-main,.starfall-side { display:grid; gap:14px; min-height:0; }
-.starfall-main { grid-template-rows:auto minmax(0,1fr) auto minmax(0,220px); }
+.starfall-main { grid-template-rows:auto minmax(0,1fr) auto minmax(0,1.4fr); }
 .starfall-side { grid-template-rows:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); }
 .starfall-stats { display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); }
 .starfall-stat { padding:12px 14px; border-radius:14px; background: linear-gradient(155deg, rgba(40,58,110,0.85), rgba(18,30,56,0.85)); border:1px solid rgba(148,197,255,0.32); box-shadow: 0 14px 32px rgba(6,12,28,0.5); text-shadow: 0 0 10px rgba(82,156,255,0.28); }
@@ -1099,7 +1099,7 @@ h3 + .muted.small { margin-top:-6px; }
 @media (max-width: 1040px) {
   .starfall-layout { grid-template-columns:1fr; }
   .starfall-card--layout { min-height:0; }
-  .starfall-main { grid-template-rows:auto minmax(0,1fr) minmax(0,1fr); }
+  .starfall-main { grid-template-rows:auto minmax(0,1fr) auto minmax(0,1.3fr); }
   .starfall-side { grid-template-rows:minmax(0,220px) minmax(0,220px) minmax(0,1fr); }
 }
 @media (max-width: 720px) {
