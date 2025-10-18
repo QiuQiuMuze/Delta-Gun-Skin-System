@@ -79,14 +79,17 @@ const StarfallData = (() => {
           detail: "牺牲几秒钟，把他拖出来。",
           resolve(state) {
             const extraTime = state.resources.crew >= 2 ? -6 : -4;
-            const crewGain = state.resources.crew >= 3 ? 0 : 1;
-            const log = crewGain
-              ? "你撬开安全门，把浑身冒烟的工程师拖进走廊。"
-              : "门后是空荡的舱室，警报声在里面回旋。";
+            if (state.resources.crew >= 3 || getCrewById(state, "rae")) {
+              return {
+                log: "门后是空荡的舱室，警报声在里面回旋。",
+                effects: { mind: -4, time: extraTime },
+              };
+            }
             return {
-              log,
-              effects: { crew: crewGain ? crewGain : 0, mind: crewGain ? 8 : -4, time: extraTime },
-              flags: crewGain ? { savedCrew: true } : {},
+              log: "你撬开安全门，把浑身冒烟的工程师 Rae 拖进走廊。",
+              effects: { mind: 8, time: extraTime },
+              crewGain: ["rae"],
+              flags: { savedCrew: true },
             };
           },
         },
@@ -272,15 +275,35 @@ const StarfallData = (() => {
           detail: "把座位留给喘息的人。",
           resolve(state) {
             const freeSlots = Math.max(0, 3 - state.resources.crew);
-            const rescued = Math.min(2, freeSlots);
-            const effects = { crew: rescued ? rescued : 0, food: rescued ? -4 : -2, fuel: -6, mind: rescued ? 10 : -4 };
-            const log = rescued
-              ? "你把箱子扔出舱门，扶起两名满身灰烬的船员。他们虚弱地说了声谢谢。"
-              : "救生舱里已经没有其他人。你意识到自己还是一个人。";
+            if (freeSlots <= 0) {
+              return {
+                log: "救生舱里已经没有多余座位。你只能祈祷他们能逃到别的舱。",
+                effects: { fuel: -4, mind: -6 },
+              };
+            }
+            const crewIds = [];
+            const first = chooseCrew(state, ["noor", "maru", "ilya"]);
+            if (first) crewIds.push(first);
+            if (freeSlots > 1) {
+              const tempState = { flags: { crewRoster: [...getRoster(state)] } };
+              if (first) {
+                tempState.flags.crewRoster.push(crewTemplates[first]);
+              }
+              const second = chooseCrew(tempState, ["maru", "ilya", "noor"]);
+              if (second && second !== first) {
+                crewIds.push(second);
+              }
+            }
             return {
-              log,
-              effects,
-              flags: rescued ? { savedCrew: true } : {},
+              log:
+                crewIds.length > 0
+                  ? `你把箱子扔出舱门，扶起${crewIds
+                      .map((id) => crewTemplates[id]?.name || "陌生人")
+                      .join("和")}。他们喘着粗气点头致谢。`
+                  : "门外只剩空荡荡的走廊。",
+              effects: { fuel: -6, mind: crewIds.length ? 10 : -4, food: -2 },
+              crewGain: crewIds.length ? crewIds : undefined,
+              flags: crewIds.length ? { savedCrew: true } : {},
             };
           },
         },
@@ -290,12 +313,13 @@ const StarfallData = (() => {
           detail: "把重物交给无人机拖行，其余人依次进入。",
           resolve(state) {
             const drone = state.flags.supportDrone;
-            const crewBoost = drone ? 1 : 0;
+            const crewBoost = drone && !getCrewById(state, "maru") ? 1 : 0;
             return {
               log: drone
-                ? "无人机抓起两箱燃料，沿着轨道滑向救生舱后方。你们依次挤进座位。"
+                ? "无人机抓起两箱燃料，沿着轨道滑向救生舱后方。导航员 Maru 顺势跳进座位，立刻开始校准舱体。"
                 : "你安排人手按顺序登舱，最后时刻仍有人留在原地。",
-              effects: { fuel: drone ? 6 : 2, food: 2, mind: drone ? 6 : 0, crew: crewBoost },
+              effects: { fuel: drone ? 6 : 2, food: 2, mind: drone ? 6 : 0 },
+              crewGain: crewBoost ? ["maru"] : undefined,
               flags: drone ? { convoy: true } : {},
             };
           },
@@ -305,10 +329,11 @@ const StarfallData = (() => {
           label: "只身逃离",
           detail: "清空舱室，独自起航。",
           resolve(state) {
-            const crewLost = state.resources.crew;
+            const roster = getRoster(state);
             return {
               log: "你关上舱门。嘈杂的声音被隔绝在另一侧。",
-              effects: { crew: crewLost ? -crewLost : 0, fuel: 5, mind: -22 },
+              effects: { fuel: 5, mind: -22 },
+              crewLoss: roster.length ? roster.map((member) => member.id) : undefined,
               flags: { loner: true },
             };
           },
@@ -316,6 +341,84 @@ const StarfallData = (() => {
       ],
     },
   ];
+
+  const crewTemplates = {
+    rae: {
+      id: "rae",
+      name: "Rae",
+      role: "工程师",
+      description: "负责推进器和能源回路，她的手永远沾着机油。",
+      focus: "repair",
+    },
+    ilya: {
+      id: "ilya",
+      name: "Ilya",
+      role: "科学官",
+      description: "研究信号折射的科学官，随身携带一叠数据片。",
+      focus: "signal",
+    },
+    noor: {
+      id: "noor",
+      name: "Noor",
+      role: "医师",
+      description: "舰医，善于调配镇静剂与热量片。",
+      focus: "care",
+    },
+    maru: {
+      id: "maru",
+      name: "Maru",
+      role: "导航员",
+      description: "导航员，擅长读取旧时代的星图。",
+      focus: "nav",
+    },
+  };
+
+  function getRoster(state) {
+    if (!state?.flags) return [];
+    if (!Array.isArray(state.flags.crewRoster)) {
+      state.flags.crewRoster = [];
+    }
+    return state.flags.crewRoster;
+  }
+
+  function hasCrewRole(state, focus) {
+    return getRoster(state).some((member) => member.focus === focus);
+  }
+
+  function getCrewById(state, id) {
+    return getRoster(state).find((member) => member.id === id) || null;
+  }
+
+  function pickCrewForLoss(state, preferredFocus) {
+    const roster = getRoster(state);
+    if (!roster.length) return null;
+    if (preferredFocus) {
+      const match = roster.find((member) => member.focus === preferredFocus);
+      if (match) {
+        return match.id;
+      }
+    }
+    const index = Math.floor(Math.random() * roster.length);
+    return roster[index]?.id || null;
+  }
+
+  function crewListLabel(state) {
+    const roster = getRoster(state);
+    if (!roster.length) return "无";
+    return roster.map((member) => `${member.name}·${member.role}`).join(" / ");
+  }
+
+  function chooseCrew(state, priorities) {
+    const roster = getRoster(state);
+    const owned = new Set(roster.map((member) => member.id));
+    for (const key of priorities) {
+      if (!owned.has(key) && crewTemplates[key]) {
+        return key;
+      }
+    }
+    const remaining = Object.keys(crewTemplates).filter((key) => !owned.has(key));
+    return remaining[0] || null;
+  }
 
   function randomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -454,12 +557,13 @@ const StarfallPage = {
       countdownIndex: 0,
       resources: {
         day: 0,
-        fuel: 30,
-        food: 10,
-        o2: 40,
+        fuel: 48,
+        food: 18,
+        o2: 60,
         mind: 100,
         crew: 0,
         signal: 0,
+        satiety: 2,
       },
       time: 60,
       flags: {},
@@ -631,17 +735,18 @@ const StarfallPage = {
                   key: "airlock",
                   label: "开启外舱",
                   detail: "让敲门的人进来并分享一点口粮。",
-                  resolve: () => {
+                  resolve: (state) => {
                     const free = Math.max(0, 3 - (r.crew || 0));
-                    const joined = free > 0 ? 1 : 0;
+                    const joinedId = free > 0 ? chooseCrew(state, ["noor", "ilya"]) : null;
                     const updateFlags = { allyAwaiting: false, guidedCrew: false };
-                    if (joined) {
+                    if (joinedId) {
                       updateFlags.savedCrew = true;
                     }
                     return {
-                      effects: { crew: joined, food: joined ? -1 : 0, mind: joined ? 12 : 6 },
-                      log: joined
-                        ? "你打开外舱闸门。一名焦黑的船员跌入舱内，喃喃地说着谢谢。"
+                      effects: { food: joinedId ? -1 : 0, mind: joinedId ? 12 : 6 },
+                      crewGain: joinedId ? [joinedId] : undefined,
+                      log: joinedId
+                        ? `你打开外舱闸门。${crewTemplates[joinedId]?.name || "一名船员"} 跌入舱内，喃喃地说着谢谢。`
                         : "舱门外只有风声。你把通道重新锁上。",
                       flags: updateFlags,
                       preventMindDecay: true,
@@ -661,7 +766,7 @@ const StarfallPage = {
                 key: "force",
                 label: "强行前往",
                 detail: "燃料 -15，赌一次获救。",
-                resolve: () => {
+                resolve: (state) => {
                   const success = Math.random() < 0.4;
                   const outcome = {
                     effects: { fuel: -15 },
@@ -675,8 +780,13 @@ const StarfallPage = {
                       outcome.effects.o2 = 15;
                       outcome.effects.mind = 6;
                     } else {
-                      outcome.effects.crew = r.crew >= 3 ? 0 : 1;
-                      outcome.effects.mind = 8;
+                      const scientistId = chooseCrew(state, ["ilya", "noor"]);
+                      if (scientistId) {
+                        outcome.crewGain = [scientistId];
+                        outcome.effects.mind = 8;
+                      } else {
+                        outcome.effects.mind = 6;
+                      }
                     }
                     outcome.preventMindDecay = true;
                     outcome.flags = { rescueScientist: true };
@@ -800,26 +910,27 @@ const StarfallPage = {
               key: "repair",
               label: "冒险修理",
               detail: "亲自拆开能源舱。",
-              resolve: () => {
-                const success = Math.random() < 0.6;
+              resolve: (state) => {
+                const engineer = hasCrewRole(state, "repair");
+                const success = Math.random() < (engineer ? 0.75 : 0.6);
                 if (success) {
                   return {
-                    effects: { fuel: 15, mind: 6 },
-                    log: "你重新焊接电极，能量流恢复平稳。仪表提示：‘探测到行星 Erevia。’",
+                    effects: { fuel: 16, mind: engineer ? 8 : 6 },
+                    log: engineer
+                      ? "你与 Rae 配合焊接电极。能量流恢复平稳，仪表提示：‘探测到行星 Erevia。’"
+                      : "你重新焊接电极，能量流恢复平稳。仪表提示：‘探测到行星 Erevia。’",
                     flags: { ereviaHint: true },
                     preventMindDecay: true,
                   };
                 }
-                const crewLost = r.crew > 0;
-                const effects = { fuel: -5, mind: crewLost ? -18 : -22 };
-                if (crewLost) {
-                  effects.crew = -1;
-                }
+                const casualtyId = pickCrewForLoss(state, "repair");
+                const log = casualtyId
+                  ? `${crewTemplates[casualtyId]?.name || "同伴"} 被爆裂的火花击倒，你没能拉住他。`
+                  : "电流在你掌心炸开。空气焦灼的味道久久不散。";
                 return {
-                  effects,
-                  log: crewLost
-                    ? "火花炸裂。你把手上的工具甩开，却没能拉住跌倒的同伴。"
-                    : "电流在你掌心炸开。空气焦灼的味道久久不散。",
+                  effects: { fuel: -5, mind: casualtyId ? -18 : -22 },
+                  crewLoss: casualtyId ? [casualtyId] : undefined,
+                  log,
                   mindShock: true,
                 };
               },
@@ -837,12 +948,17 @@ const StarfallPage = {
               key: "assign",
               label: "让船员修理",
               detail: "交给他们处理。",
-              resolve: () => {
-                const success = Math.random() < 0.6 && r.crew > 0;
+              resolve: (state) => {
+                const engineer = hasCrewRole(state, "repair");
+                const medic = hasCrewRole(state, "care");
+                const success = Math.random() < (engineer ? 0.75 : 0.55) && state.resources.crew > 0;
                 if (success) {
+                  const helper = engineer
+                    ? getCrewById(state, "rae")?.name || "工程师"
+                    : (getRoster(state)[0]?.name || "船员");
                   return {
-                    effects: { mind: 4, fuel: 10 },
-                    log: "船员 Rae 挽起袖子，十分钟后系统重新点亮。",
+                    effects: { mind: medic ? 6 : 4, fuel: engineer ? 12 : 8 },
+                    log: `${helper} 在火花雨中稳住了线路，十分钟后系统重新点亮。`,
                     preventMindDecay: true,
                   };
                 }
@@ -903,16 +1019,13 @@ const StarfallPage = {
               key: "endure",
               label: "不作为",
               detail: "让寒冷自行过去。",
-              resolve: () => {
-                const crewLost = r.crew > 0 && Math.random() < 0.4;
-                const effects = { mind: -30 };
-                if (crewLost) {
-                  effects.crew = -1;
-                }
+              resolve: (state) => {
+                const loss = Math.random() < 0.4 ? pickCrewForLoss(state) : null;
                 return {
-                  effects,
-                  log: crewLost
-                    ? "清晨时 Rae 没有醒来。她的手还紧抓着空水袋。"
+                  effects: { mind: loss ? -32 : -24 },
+                  crewLoss: loss ? [loss] : undefined,
+                  log: loss
+                    ? `${crewTemplates[loss]?.name || "同伴"} 没能撑过这夜。她的手还紧抓着空水袋。`
                     : "你整晚没睡。肌肉僵硬得像铁。",
                   mindShock: true,
                 };
@@ -920,49 +1033,144 @@ const StarfallPage = {
             },
           ],
         };
-      case 7:
+      case 7: {
+        const lastLost = state.flags.lastLostCrew;
+        const livingCrew = getRoster(state);
+        if (lastLost) {
+          return {
+            title: "Day 7 · 遗体",
+            body: `${lastLost} 的身体躺在储物舱旁。她的指甲掐进水袋。`,
+            options: [
+              {
+                key: "bury",
+                label: "安葬",
+                detail: "把她送入星海。",
+                resolve: () => ({
+                  effects: { mind: 12, food: -1 },
+                  log: `你打开外舱闸门，目送 ${lastLost} 缓缓漂离。她像一颗温顺的卫星。`,
+                  flags: { lastLostCrew: null },
+                  preventMindDecay: true,
+                }),
+              },
+              {
+                key: "preserve",
+                label: "保留遗体",
+                detail: "让身体成为隔热屏障。",
+                resolve: () => ({
+                  effects: { fuel: 5, mind: -18 },
+                  log: `你把 ${lastLost} 固定在舱壁，让她的宇航服替你挡住寒气。`,
+                  mindShock: true,
+                }),
+              },
+              {
+                key: "memento",
+                label: "留下遗物",
+                detail: "取下她的徽章，与船员分享记忆。",
+                resolve: () => ({
+                  effects: { mind: 10 },
+                  log: livingCrew.length
+                    ? `你把 ${lastLost} 的徽章贴在仪表盘上。其他人围在一起，默默点头。`
+                    : `你把 ${lastLost} 的徽章贴在仪表盘上，告诉自己要记住她的名字。`,
+                  flags: { memorialized: true, lastLostCrew: null },
+                  preventMindDecay: true,
+                }),
+              },
+              {
+                key: "consume",
+                label: "吃掉",
+                detail: "在死亡与饥饿之间选择。",
+                resolve: () => {
+                  const mindChange = Math.random() < 0.5 ? -24 : -12;
+                  return {
+                    effects: { food: 6, mind: mindChange },
+                    log: `你闭上眼睛。${lastLost} 的名字在齿间回响。`,
+                    flags: { cannibal: true, lastLostCrew: null },
+                    mindShock: true,
+                  };
+                },
+              },
+            ],
+          };
+        }
+        if (livingCrew.length > 0) {
+          return {
+            title: "Day 7 · 值守",
+            body: "连续的寒夜让每个人的呼吸都带着雾气。你得决定下一班的安排。",
+            options: [
+              {
+                key: "watch",
+                label: "安排轮守",
+                detail: "让每个人轮流守夜。",
+                resolve: () => ({
+                  effects: { mind: 8 },
+                  log: "你列出值守表。每一次交班都伴着彼此的寒暄。",
+                  flags: { crewBond: true },
+                  preventMindDecay: true,
+                }),
+              },
+              {
+                key: "train",
+                label: "训练技能",
+                detail: "让船员练习推进器流程。",
+                resolve: (state) => ({
+                  effects: { fuel: hasCrewRole(state, "nav") ? 4 : 2, mind: 6 },
+                  log: "你们重复检视推力表。每个人都更熟悉下一步。",
+                  flags: { crewPrepared: true },
+                  preventMindDecay: true,
+                }),
+              },
+              {
+                key: "rest",
+                label: "集体休息",
+                detail: "允许大家睡上一个整班。",
+                resolve: (state) => ({
+                  effects: { mind: 14 },
+                  log: hasCrewRole(state, "care")
+                    ? "Noor 分发镇静剂，你们难得睡了一整夜。"
+                    : "舱里陷入沉睡。即便是短暂的，也像一个完整的世界。",
+                  preventMindDecay: true,
+                }),
+              },
+            ],
+          };
+        }
         return {
-          title: "Day 7 · 遗体",
-          body: r.crew > 0
-            ? "Rae 的身体躺在储物舱旁。她的指甲掐进水袋。"
-            : "空气闻起来像铁。你想起那些没能逃出来的人。",
+          title: "Day 7 · 空舱",
+          body: "空气闻起来像铁。只有你自己在回声里徘徊。",
           options: [
             {
-              key: "bury",
-              label: "安葬",
-              detail: "把她送入星海。",
+              key: "clean",
+              label: "彻底清理舱室",
+              detail: "把血迹与灰尘擦掉。",
               resolve: () => ({
-                effects: { mind: 10, food: -1 },
-                log: "你打开外舱闸门。她缓慢漂离，像一颗温顺的卫星。",
+                effects: { mind: 6 },
+                log: "你擦掉走廊里的每一滴焦黑痕迹，让舱室恢复秩序。",
                 preventMindDecay: true,
               }),
             },
             {
-              key: "preserve",
-              label: "保留遗体",
-              detail: "让身体成为隔热屏障。",
+              key: "write",
+              label: "写信",
+              detail: "把经历写给从未抵达的收件人。",
               resolve: () => ({
-                effects: { fuel: 5, mind: -18 },
-                log: "你把身体固定在舱壁，让它替你挡住寒气。",
-                mindShock: true,
+                effects: { mind: 10, signal: 4 },
+                log: "你在日志里写下：‘如果有人看到这条记录，请替我告诉星星我还在坚持。’",
+                preventMindDecay: true,
               }),
             },
             {
-              key: "consume",
-              label: "吃掉",
-              detail: "在死亡与饥饿之间选择。",
-              resolve: () => {
-                const mindChange = Math.random() < 0.5 ? -24 : -12;
-                return {
-                  effects: { food: 6, mind: mindChange },
-                  log: "你闭上眼睛。齿间传来的味道在记忆里盘旋。",
-                  flags: { cannibal: true },
-                  mindShock: true,
-                };
-              },
+              key: "stare",
+              label: "凝视星海",
+              detail: "让空无把你填满。",
+              resolve: () => ({
+                effects: { mind: -10 },
+                log: "星光像旧电影的底片，你感到自己正在褪色。",
+                mindShock: true,
+              }),
             },
           ],
         };
+      }
       case 8:
         return {
           title: "Day 8 · Erevia 轨道",
@@ -1411,6 +1619,211 @@ const StarfallPage = {
             },
           ],
         };
+      case 13:
+        if (flags.landedErevia) {
+          return {
+            title: "Day 13 · 冰下矿脉",
+            body: "探测器显示冰层下有稳定的热信号。你们可以继续开采、搭建营地，或追逐那条神秘的低频脉冲。",
+            options: [
+              {
+                key: "prospect",
+                label: "开采晶体",
+                detail: "提取更多能量晶体，补充燃料。",
+                resolve: (state) => {
+                  const engineer = hasCrewRole(state, "repair");
+                  const scientist = hasCrewRole(state, "signal");
+                  const fuelGain = engineer ? 14 : 10;
+                  const signalGain = scientist ? 12 : 6;
+                  return {
+                    effects: { fuel: fuelGain, signal: signalGain, mind: 6 },
+                    log: engineer
+                      ? "Rae 带头钻入冰壁。晶体被整齐切割下来，像蓝色的火焰。"
+                      : "你独自操控钻机。晶体碎屑如雪飘散。",
+                    flags: { surfaceForge: true },
+                    preventMindDecay: true,
+                  };
+                },
+              },
+              {
+                key: "shelter",
+                label: "搭建营地",
+                detail: "加固帐篷，改善夜间温度。",
+                resolve: (state) => {
+                  const medic = hasCrewRole(state, "care");
+                  return {
+                    effects: { mind: medic ? 18 : 12, satiety: medic ? 2 : 1 },
+                    log: medic
+                      ? "Noor 用加热毯裹住每个人。营地里飘着热水的气味。"
+                      : "你用残片搭出风障。至少今晚不会被冻醒。",
+                    flags: medic ? { surfaceAwaken: true } : {},
+                    preventMindDecay: true,
+                  };
+                },
+              },
+              {
+                key: "pulse",
+                label: "追踪低频",
+                detail: "深入冰裂缝，寻找隐藏的信号源。",
+                resolve: () => {
+                  const success = Math.random() < 0.6;
+                  return {
+                    effects: { o2: -4, signal: success ? 16 : 6, mind: success ? 10 : -8 },
+                    log: success
+                      ? "你沿着冰缝下潜，发现一座古老的信标塔在缓慢跳动。"
+                      : "裂缝深处只有回声。低频脉冲像心跳般若隐若现。",
+                    flags: success ? { surfaceBeacon: true } : {},
+                    preventMindDecay: success,
+                    mindShock: !success,
+                  };
+                },
+              },
+            ],
+          };
+        }
+        return {
+          title: "Day 13 · 宇宙潮汐",
+          body: "逃生舱掠过一片反光的碎片带。每一次引擎脉冲都会牵动燃料与生机。",
+          options: [
+            {
+              key: "trace",
+              label: "追踪余波",
+              detail: "沿着遥远的回声调整航线。",
+              resolve: (state) => {
+                const navigator = hasCrewRole(state, "nav");
+                return {
+                  effects: { fuel: navigator ? -4 : -6, signal: navigator ? 18 : 12, mind: 8 },
+                  log: navigator
+                    ? "Maru 推算出回收船留下的细小曲率。舱体在真空中轻盈滑行。"
+                    : "你凭直觉调整航向，祈祷那串回声确实来自友军。",
+                  flags: { vectorPlotted: true },
+                  preventMindDecay: true,
+                };
+              },
+            },
+            {
+              key: "harvest",
+              label: "收拢碎片",
+              detail: "动用无人机拖回物资。",
+              resolve: (state) => {
+                const drone = state.flags.supportDrone;
+                const success = drone && Math.random() < 0.7;
+                return {
+                  effects: { food: success ? 5 : 1, o2: success ? 6 : 2, mind: success ? 8 : 0 },
+                  log: success
+                    ? "无人机带回密封罐与一箱压缩粮。你们终于能正经吃一顿。"
+                    : "无人机返回时只有碎铁和冰渣。你们勉强收集了些可用的零件。",
+                  preventMindDecay: success,
+                };
+              },
+            },
+            {
+              key: "hibernate",
+              label: "半休眠",
+              detail: "降低消耗，积累饱腹值。",
+              resolve: () => ({
+                effects: { mind: 6, satiety: 1 },
+                log: "你设置半休眠程序，让舱体保持最低功率。饥饿暂时离开。",
+                preventMindDecay: true,
+              }),
+            },
+          ],
+        };
+      case 14:
+        if (flags.landedErevia) {
+          return {
+            title: "Day 14 · 极夜抉择",
+            body: "极夜下的风像砂纸划过舱壁。你们要决定最后的举动——点火离开、点亮灯塔，或是留下来聆听冰下的歌声。",
+            options: [
+              {
+                key: "ignite",
+                label: "重新点火",
+                detail: "耗费燃料检查喷嘴，为最终起飞做准备。",
+                resolve: (state) => {
+                  const engineer = hasCrewRole(state, "repair");
+                  const success = Math.random() < (engineer ? 0.8 : 0.55);
+                  return {
+                    effects: { fuel: -6, signal: success ? 10 : -4, mind: success ? 12 : -6 },
+                    log: success
+                      ? "喷嘴喷出稳定蓝焰，冰块被震成粉末。离开只差一个指令。"
+                      : "引擎咳出一口白雾又熄灭。Rae 皱着眉再次拆开外壳。",
+                    flags: success ? { launchReady: true } : {},
+                    preventMindDecay: success,
+                    mindShock: !success,
+                  };
+                },
+              },
+              {
+                key: "lighthouse",
+                label: "建造冰灯塔",
+                detail: "组合晶体与信标，扩大求救信号。",
+                resolve: (state) => {
+                  const scientist = hasCrewRole(state, "signal");
+                  const bonus = scientist ? 26 : 18;
+                  return {
+                    effects: { signal: bonus, mind: 10 },
+                    log: scientist
+                      ? "Ilya 调整晶体折射角，蓝光冲上极夜。远方或许有人回应。"
+                      : "你把晶体一块块插入冰面，灯塔亮起时你的影子被拉得很长。",
+                    flags: { surfaceBeacon: true },
+                    preventMindDecay: true,
+                  };
+                },
+              },
+              {
+                key: "listen",
+                label: "聆听冰歌",
+                detail: "坐在极夜下，让意识与星海同步。",
+                resolve: () => ({
+                  effects: { mind: 22 },
+                  log: "你盘腿坐在冰原。地底的低鸣与你的心跳合拍。极夜像深海一样敞开。",
+                  flags: { surfaceAwaken: true, awakenChance: true },
+                  preventMindDecay: true,
+                }),
+              },
+            ],
+          };
+        }
+        return {
+          title: "Day 14 · 终端抉择",
+          body: "这是逃生舱漂流的第十四天。记录器的灯一次次跳动，你必须决定是燃烧最后的燃料，还是把故事交给星海。",
+          options: [
+            {
+              key: "superflare",
+              label: "释放终极求救",
+              detail: "燃料 -8，信号大幅提升。",
+              resolve: () => ({
+                effects: { fuel: -8, signal: 28, mind: 10 },
+                log: "你把所有频段推到极限，逃生舱像一颗微小的恒星般闪耀。",
+                flags: { rescuePulse: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "driftvector",
+              label: "驶向未知航迹",
+              detail: "将航线对准未标记的引力缝隙。",
+              resolve: (state) => ({
+                effects: { fuel: -6, mind: 12 },
+                log: hasCrewRole(state, "nav")
+                  ? "Maru 把航线锁定在一条隐形曲率上。你们决定赌上一切。"
+                  : "你把舱体旋向深空，未知的航迹像黑色的河流。",
+                flags: { vectorPlotted: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "eulogize",
+              label: "记录终章",
+              detail: "把经历写进日志，交给星海保管。",
+              resolve: () => ({
+                effects: { mind: 20 },
+                log: "你把十四日的碎片记录成一段讯息：如果有人找到它，请告诉星星我曾经来过。",
+                flags: { awakenChance: true },
+                preventMindDecay: true,
+              }),
+            },
+          ],
+        };
       default:
         return null;
     }
@@ -1437,6 +1850,18 @@ const StarfallPage = {
     if (outcome.log) {
       this.pushLog(outcome.log);
     }
+    if (Array.isArray(outcome.crewGain)) {
+      outcome.crewGain.forEach((id) => {
+        if (id) {
+          this.addCrewMember(id);
+        }
+      });
+    }
+    if (Array.isArray(outcome.crewLoss)) {
+      outcome.crewLoss.forEach((id) => {
+        this.removeCrewMember(id);
+      });
+    }
     if (outcome.effects) {
       this.applyEffects(outcome.effects);
     }
@@ -1455,6 +1880,41 @@ const StarfallPage = {
     if (state.phase === "day") {
       this.endOfDay(outcome);
     }
+  },
+  addCrewMember(id) {
+    const state = this._state;
+    if (!state) return null;
+    const template = crewTemplates[id];
+    if (!template) return null;
+    const roster = getRoster(state);
+    if (roster.some((member) => member.id === id)) {
+      return template;
+    }
+    roster.push({ ...template });
+    state.resources.crew = Math.max(0, (state.resources.crew || 0) + 1);
+    state.flags.crewRoster = roster;
+    state.flags.lastGainedCrew = template.name;
+    return template;
+  },
+  removeCrewMember(id) {
+    const state = this._state;
+    if (!state) return null;
+    const roster = getRoster(state);
+    if (!roster.length) return null;
+    let index = -1;
+    if (id) {
+      index = roster.findIndex((member) => member.id === id);
+    }
+    if (index < 0) {
+      index = roster.length - 1;
+    }
+    const [removed] = roster.splice(index, 1);
+    if (removed) {
+      state.resources.crew = Math.max(0, (state.resources.crew || 0) - 1);
+      state.flags.lastLostCrew = removed.name;
+    }
+    state.flags.crewRoster = roster;
+    return removed || null;
   },
   applyEffects(effects = {}) {
     const res = this._state?.resources;
@@ -1476,7 +1936,7 @@ const StarfallPage = {
         res[key] += num;
       }
     });
-    ["fuel", "food", "o2", "mind", "signal"].forEach((key) => {
+    ["fuel", "food", "o2", "mind", "signal", "satiety"].forEach((key) => {
       if (res[key] !== undefined) {
         res[key] = Math.round(res[key] * 100) / 100;
       }
@@ -1484,20 +1944,63 @@ const StarfallPage = {
     if (res.crew !== undefined) {
       res.crew = Math.max(0, Math.min(3, Math.round(res.crew)));
     }
+    if (res.satiety !== undefined) {
+      res.satiety = Math.max(-3, Math.min(5, Math.round(res.satiety)));
+    }
   },
   endOfDay(outcome = {}) {
     const state = this._state;
     if (!state) return;
     const res = state.resources;
+    const roster = getRoster(state);
+    const crewCount = roster.length;
     const summary = [];
-    res.fuel -= 3;
-    summary.push("燃料 -3");
-    res.o2 -= 5;
-    summary.push("O₂ -5");
-    const mouths = 1 + Math.max(0, res.crew || 0);
-    const foodCost = 2 * mouths;
-    res.food -= foodCost;
-    summary.push(`食物 -${foodCost}`);
+
+    const engineerBonus = hasCrewRole(state, "repair") ? 0.4 : 0;
+    const navigatorBonus = hasCrewRole(state, "nav") ? 0.6 : 0;
+    let fuelDrain = 2.5 + Math.max(0, crewCount - 1) * 0.3 - engineerBonus - navigatorBonus;
+    fuelDrain = Math.max(1.6, Math.round(fuelDrain * 10) / 10);
+    res.fuel -= fuelDrain;
+    summary.push(`燃料 -${fuelDrain}`);
+
+    const careBonus = hasCrewRole(state, "care") ? 0.5 : 0;
+    const signalBonus = hasCrewRole(state, "signal") ? 0.3 : 0;
+    let o2Drain = 4 + crewCount * 0.8 - careBonus - signalBonus;
+    o2Drain = Math.max(3, Math.round(o2Drain * 10) / 10);
+    res.o2 -= o2Drain;
+    summary.push(`O₂ -${o2Drain}`);
+
+    if (typeof res.satiety !== "number") {
+      res.satiety = 2;
+    }
+    res.satiety -= 1;
+    summary.push("饱腹 -1");
+
+    let foodNote = "食物 0 (节约)";
+    if (res.satiety <= 0) {
+      const appetites = 1 + crewCount;
+      const rationBase = state.flags.rationTight ? 1 : 2;
+      let foodCost = rationBase * appetites;
+      if (careBonus > 0) {
+        foodCost = Math.max(1, foodCost - 1);
+      }
+      const available = Math.max(0, res.food);
+      const consumed = Math.min(foodCost, available);
+      res.food -= consumed;
+      if (consumed < foodCost) {
+        const deficit = foodCost - consumed;
+        res.mind -= deficit * 6;
+        foodNote = `食物 -${consumed} (不足 ${deficit})`;
+        this.pushLog("粮仓发出空洞回声。你们紧紧裹着安全带，忍受饥饿。", "system");
+        res.satiety = 1;
+      } else {
+        foodNote = `食物 -${consumed}`;
+        this.pushLog("你们凑到一起分配热量片。每个人咬下去时都尽量不发出声响。", "system");
+        res.satiety = 2 + (careBonus > 0 ? 1 : 0);
+      }
+    }
+    summary.push(foodNote);
+
     if (outcome.preventMindDecay) {
       summary.push("心智 稳定");
     } else {
@@ -1513,7 +2016,7 @@ const StarfallPage = {
       return;
     }
     res.day += 1;
-    if (res.day > 12) {
+    if (res.day > 14) {
       this.checkEnding();
       return;
     }
@@ -1551,7 +2054,7 @@ const StarfallPage = {
           codexSummary: "心智坠入虚空，没有人听见。",
         };
       }
-    } else if (r.day > 12) {
+    } else if (r.day > 14) {
       if (flags.surfaceAscended) {
         ending = {
           id: "erevia-ascent",
@@ -1683,14 +2186,16 @@ const StarfallPage = {
     }
     const res = resources;
     const warn = (key, threshold) => (res[key] <= threshold ? "is-warning" : "");
+    const hungerState = res.satiety <= 0 ? "饥饿" : res.satiety === 1 ? "微饥" : "温饱";
     const items = [
-      build("DAY", Math.min(res.day, 12)),
-      build("燃料", Math.round(res.fuel), warn("fuel", 15)),
-      build("食物", Math.round(res.food), warn("food", 6)),
-      build("O₂", Math.round(res.o2), warn("o2", 20)),
+      build("DAY", Math.max(1, res.day || 1)),
+      build("燃料", Math.round(res.fuel), warn("fuel", 18)),
+      build("食物", Math.round(res.food), warn("food", 8)),
+      build("O₂", Math.round(res.o2), warn("o2", 25)),
       build("心智", Math.round(res.mind), warn("mind", 50)),
       build("信号", Math.round(res.signal)),
-      build("人员", res.crew),
+      build("饱腹", hungerState, res.satiety <= 0 ? "is-warning" : ""),
+      build("同伴", crewListLabel(this._state)),
     ];
     this._els.stats.innerHTML = items.join("");
   },
