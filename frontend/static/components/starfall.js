@@ -1,4 +1,18 @@
 const StarfallData = (() => {
+  const ITEM_CATALOG = {
+    rationSeal: { name: "真空封装器", hint: "降低每日口粮消耗。" },
+    thrusterKit: { name: "推进器稳定器", hint: "让燃料消耗更可控。" },
+    o2Recycler: { name: "O₂ 再生装置", hint: "缓解氧气流失。" },
+    distressBeacon: { name: "相位信标", hint: "大幅提升求救信号。" },
+    stasisPatch: { name: "医用稳态贴", hint: "抵御极寒或创伤。" },
+    grappleHarness: { name: "磁索工具组", hint: "安全拖回漂浮残骸。" },
+  };
+
+  const getItemName = (id) => ITEM_CATALOG[id]?.name || id;
+
+  function defineEvent(generator, meta = {}) {
+    return Object.assign(generator, meta);
+  }
   const countdownEvents = [
     {
       id: "alarm",
@@ -14,6 +28,7 @@ const StarfallData = (() => {
             return {
               log: "你抱起两箱冻干口粮，冰冷的金属边割破手套。",
               effects: { food: 8, mind: -2 },
+              itemsGain: ["rationSeal"],
             };
           },
         },
@@ -25,6 +40,7 @@ const StarfallData = (() => {
             return {
               log: "你撬开储油柜，把剩下的两桶推进背带里。",
               effects: { fuel: 12 },
+              itemsGain: ["thrusterKit"],
             };
           },
         },
@@ -38,6 +54,7 @@ const StarfallData = (() => {
               log: "你拔出一块闪着余温的信号芯片。希望它还能接通宇宙。",
               effects: { signal: bonus },
               flags: { signalChip: true },
+              itemsGain: ["distressBeacon"],
             };
           },
         },
@@ -50,6 +67,7 @@ const StarfallData = (() => {
               log: "你踢开药柜，拖出一只半融化的医疗箱。里面还有几枚注射剂。",
               effects: { food: 2, mind: 6, o2: 4 },
               flags: { medkit: true },
+              itemsGain: ["stasisPatch"],
             };
           },
         },
@@ -62,6 +80,7 @@ const StarfallData = (() => {
               log: "你拍醒一台维护无人机，它的光学镜片快速聚焦到你身上。",
               effects: { fuel: 4, signal: 6 },
               flags: { supportDrone: true },
+              itemsGain: ["grappleHarness"],
             };
           },
         },
@@ -176,6 +195,7 @@ const StarfallData = (() => {
             return {
               log: "你把挂带勾在罐阀上，让它跟着你滑向舱门。",
               effects: { o2: 8 + bonus, time: -1 },
+              itemsGain: ["o2Recycler"],
             };
           },
         },
@@ -461,12 +481,13 @@ const StarfallData = (() => {
   }
 
   const sharedLongHaulEvents = [];
-  sharedLongHaulEvents.push((state, day) => {
-    const roster = getRoster(state);
-    const care = hasCrewRole(state, "care");
-    const nav = hasCrewRole(state, "nav");
-    return buildDayEvent(
-      day,
+  sharedLongHaulEvents.push(
+    defineEvent((state, day) => {
+      const roster = getRoster(state);
+      const care = hasCrewRole(state, "care");
+      const nav = hasCrewRole(state, "nav");
+      return buildDayEvent(
+        day,
       "静域调整",
       "逃生舱缓慢旋转，只有仪表的脉冲在跳动。你趁这个窗口重新布置长期旅程。",
       [
@@ -507,14 +528,16 @@ const StarfallData = (() => {
         },
       ]
     );
-  });
+    }, { tags: ["o2", "food", "signal", "mind"], baseWeight: 1.2 })
+  );
 
-  sharedLongHaulEvents.push((state, day) => {
-    const engineer = hasCrewRole(state, "repair");
-    return buildDayEvent(
-      day,
-      "漂流拾荒",
-      "雷达捕捉到一串散落的残骸，也许能拆出可用的燃料芯。",
+  sharedLongHaulEvents.push(
+    defineEvent((state, day) => {
+      const engineer = hasCrewRole(state, "repair");
+      return buildDayEvent(
+        day,
+        "漂流拾荒",
+        "雷达捕捉到一串散落的残骸，也许能拆出可用的燃料芯。",
       [
         {
           key: "harvest",
@@ -553,311 +576,330 @@ const StarfallData = (() => {
         },
       ]
     );
-  });
+    }, { tags: ["fuel", "food", "signal", "mind"], baseWeight: 1.1 })
+  );
 
-  sharedLongHaulEvents.push((state, day) => {
-    const roster = getRoster(state);
-    return buildDayEvent(
-      day,
-      "航程预测",
-      "AI 建议进行一次百日航程模拟，以评估资源是否足够。",
-      [
-        {
-          key: "optimize",
-          label: "优化航线",
-          detail: "重新推算燃料曲线。",
-          resolve: () => ({
-            effects: { fuel: 8, signal: 8, mind: 6 },
-            log: "你删去几段弯折的航线，能耗图表变得顺眼。",
-            flags: { vectorPlotted: true },
-          }),
-        },
-        {
-          key: "drill",
-          label: "应急演练",
-          detail: roster.length ? "同伴分组演练故障。" : "独自模拟突发。",
-          resolve: () => ({
-            effects: { mind: roster.length ? 14 : 8, o2: -2 },
-            log: roster.length
-              ? "你们演练火警、失压和舱外作业，肌肉记住了动作。"
-              : "你对着镜面重复操作，直到反应变成直觉。",
-            preventMindDecay: true,
-          }),
-        },
-        {
-          key: "diet",
-          label: "规划进食",
-          detail: "决定下一次进食窗口。",
-          resolve: () => ({
-            effects: { food: 4, satiety: 2 },
-            log: "你安排错峰进食，留出额外的储备。",
-            preventMindDecay: true,
-          }),
-        },
-      ]
-    );
-  });
-  const surfaceLongHaulEvents = [];
-  surfaceLongHaulEvents.push((state, day) => {
-    const engineer = hasCrewRole(state, "repair");
-    return buildDayEvent(
-      day,
-      "冰原踏勘",
-      "Erevia 的冰层在极夜里发出细微的裂响。新的裂谷可能藏着晶体或液态水。",
-      [
-        {
-          key: "crystal",
-          label: "采集晶体",
-          detail: "提炼燃料补给。",
-          resolve: () => {
-            const gain = randomInt(8, 14);
-            return {
-              effects: { fuel: gain, mind: engineer ? 8 : 4 },
-              log: engineer
-                ? "Rae 设计了支撑器，晶体矿车安全返回营地。"
-                : "你小心把晶体装进保温箱，手套被寒霜磨白。",
-            };
+  sharedLongHaulEvents.push(
+    defineEvent((state, day) => {
+      const roster = getRoster(state);
+      return buildDayEvent(
+        day,
+        "航程预测",
+        "AI 建议进行一次百日航程模拟，以评估资源是否足够。",
+        [
+          {
+            key: "optimize",
+            label: "优化航线",
+            detail: "重新推算燃料曲线。",
+            resolve: () => ({
+              effects: { fuel: 8, signal: 8, mind: 6 },
+              log: "你删去几段弯折的航线，能耗图表变得顺眼。",
+              flags: { vectorPlotted: true },
+            }),
           },
-        },
-        {
-          key: "water",
-          label: "融化冰河",
-          detail: "补充氧气与饮水。",
-          resolve: () => ({
-            effects: { o2: 12, satiety: 1 },
-            log: "融化的冰雾在舱内形成透明水珠，你们轮流饮下。",
-            preventMindDecay: true,
-          }),
-        },
-        {
-          key: "map",
-          label: "绘制地貌",
-          detail: "为基地扩张记录安全路线。",
-          resolve: () => ({
-            effects: { signal: 10, mind: 10 },
-            log: "你把地形标注在全息图上，为未来的温室找到了遮蔽点。",
-            preventMindDecay: true,
-            flags: { surfaceSurvey: true },
-          }),
-        },
-      ]
-    );
-  });
+          {
+            key: "drill",
+            label: "应急演练",
+            detail: roster.length ? "同伴分组演练故障。" : "独自模拟突发。",
+            resolve: () => ({
+              effects: { mind: roster.length ? 14 : 8, o2: -2 },
+              log: roster.length
+                ? "你们演练火警、失压和舱外作业，肌肉记住了动作。"
+                : "你对着镜面重复操作，直到反应变成直觉。",
+              preventMindDecay: true,
+            }),
+          },
+          {
+            key: "diet",
+            label: "规划进食",
+            detail: "决定下一次进食窗口。",
+            resolve: () => ({
+              effects: { food: 4, satiety: 2 },
+              log: "你安排错峰进食，留出额外的储备。",
+              preventMindDecay: true,
+            }),
+          },
+        ]
+      );
+    }, { tags: ["fuel", "signal", "mind", "food"], baseWeight: 1 })
+  );
+  const surfaceLongHaulEvents = [];
+  surfaceLongHaulEvents.push(
+    defineEvent((state, day) => {
+      const engineer = hasCrewRole(state, "repair");
+      return buildDayEvent(
+        day,
+        "冰原踏勘",
+        "Erevia 的冰层在极夜里发出细微的裂响。新的裂谷可能藏着晶体或液态水。",
+        [
+          {
+            key: "crystal",
+            label: "采集晶体",
+            detail: "提炼燃料补给。",
+            resolve: () => {
+              const gain = randomInt(8, 14);
+              return {
+                effects: { fuel: gain, mind: engineer ? 8 : 4 },
+                log: engineer
+                  ? "Rae 设计了支撑器，晶体矿车安全返回营地。"
+                  : "你小心把晶体装进保温箱，手套被寒霜磨白。",
+              };
+            },
+          },
+          {
+            key: "water",
+            label: "融化冰河",
+            detail: "补充氧气与饮水。",
+            resolve: () => ({
+              effects: { o2: 12, satiety: 1 },
+              log: "融化的冰雾在舱内形成透明水珠，你们轮流饮下。",
+              preventMindDecay: true,
+            }),
+          },
+          {
+            key: "map",
+            label: "绘制地貌",
+            detail: "为基地扩张记录安全路线。",
+            resolve: () => ({
+              effects: { signal: 10, mind: 10 },
+              log: "你把地形标注在全息图上，为未来的温室找到了遮蔽点。",
+              preventMindDecay: true,
+              flags: { surfaceSurvey: true },
+            }),
+          },
+        ]
+      );
+    }, { tags: ["fuel", "o2", "signal", "mind"], baseWeight: 1.1 })
+  );
 
-  surfaceLongHaulEvents.push((state, day) => {
-    const care = hasCrewRole(state, "care");
-    return buildDayEvent(
-      day,
-      "极夜温室",
-      "临时温室里出现第一批真菌，只要投入热量就能形成稳定的食物循环。",
-      [
-        {
-          key: "expand",
-          label: "扩建温室",
-          detail: "耗费燃料维持温度。",
-          resolve: () => ({
-            effects: { fuel: -4, food: 10, mind: 8 },
-            log: "你铺设新的加热管，真菌孢子在暗红光里舒展。",
-            flags: { surfaceGreenhouse: true },
-            preventMindDecay: true,
-          }),
-        },
-        {
-          key: "med",
-          label: "调配营养剂",
-          detail: care ? "Noor 调制镇静饮剂。" : "提取高热量汤剂。",
-          resolve: () => ({
-            effects: { food: 6, mind: care ? 12 : 6 },
-            log: care
-              ? "Noor 把真菌磨成药剂，分给每位船员。"
-              : "你提取的汤剂让喉咙再次感到温热。",
-            preventMindDecay: true,
-          }),
-        },
-        {
-          key: "seed",
-          label: "封存孢子",
-          detail: "为未来的基地保留种子。",
-          resolve: () => ({
-            effects: { food: 3, signal: 6 },
-            log: "你把成熟孢子封进储存舱，希望有一天能在其他世界生根。",
-            flags: { surfaceColonySeed: true },
-          }),
-        },
-      ]
-    );
-  });
+  surfaceLongHaulEvents.push(
+    defineEvent((state, day) => {
+      const care = hasCrewRole(state, "care");
+      return buildDayEvent(
+        day,
+        "极夜温室",
+        "临时温室里出现第一批真菌，只要投入热量就能形成稳定的食物循环。",
+        [
+          {
+            key: "expand",
+            label: "扩建温室",
+            detail: "耗费燃料维持温度。",
+            resolve: () => ({
+              effects: { fuel: -4, food: 10, mind: 8 },
+              log: "你铺设新的加热管，真菌孢子在暗红光里舒展。",
+              flags: { surfaceGreenhouse: true },
+              preventMindDecay: true,
+            }),
+          },
+          {
+            key: "med",
+            label: "调配营养剂",
+            detail: care ? "Noor 调制镇静饮剂。" : "提取高热量汤剂。",
+            resolve: () => ({
+              effects: { food: 6, mind: care ? 12 : 6 },
+              log: care
+                ? "Noor 把真菌磨成药剂，分给每位船员。"
+                : "你提取的汤剂让喉咙再次感到温热。",
+              preventMindDecay: true,
+            }),
+          },
+          {
+            key: "seed",
+            label: "封存孢子",
+            detail: "为未来的基地保留种子。",
+            resolve: () => ({
+              effects: { food: 3, signal: 6 },
+              log: "你把成熟孢子封进储存舱，希望有一天能在其他世界生根。",
+              flags: { surfaceColonySeed: true },
+            }),
+          },
+        ]
+      );
+    }, { tags: ["food", "mind", "signal"], baseWeight: 1 })
+  );
 
-  surfaceLongHaulEvents.push((state, day) =>
-    buildDayEvent(
-      day,
-      "极光脉冲",
-      "极夜上空出现罕见的亮度，科学官建议同步信号，借助极光把讯息投射得更远。",
-      [
-        {
-          key: "sync",
-          label: "同步极光",
-          detail: "调节晶体阵列。",
-          resolve: () => ({
-            effects: { signal: 18, mind: 12 },
-            log: "极光顺着晶体折射，灯塔的音调被无限延伸。",
-            flags: { surfaceChorus: true, surfaceAwaken: true },
-            preventMindDecay: true,
-          }),
-        },
-        {
-          key: "sample",
-          label: "采集样本",
-          detail: "储存能量碎屑。",
-          resolve: () => ({
-            effects: { fuel: 10, signal: 6 },
-            log: "你收集的极光碎屑像微小的流星，提供了额外能源。",
-          }),
-        },
-        {
-          key: "meditate",
-          label: "静坐观测",
-          detail: "让意识与行星同频。",
-          resolve: () => ({
-            effects: { mind: 18 },
-            log: "你躺在冰面上，星光的低语穿过骨骼。",
-            preventMindDecay: true,
-          }),
-        },
-      ]
+  surfaceLongHaulEvents.push(
+    defineEvent(
+      (state, day) =>
+        buildDayEvent(
+          day,
+          "极光脉冲",
+          "极夜上空出现罕见的亮度，科学官建议同步信号，借助极光把讯息投射得更远。",
+          [
+            {
+              key: "sync",
+              label: "同步极光",
+              detail: "调节晶体阵列。",
+              resolve: () => ({
+                effects: { signal: 18, mind: 12 },
+                log: "极光顺着晶体折射，灯塔的音调被无限延伸。",
+                flags: { surfaceChorus: true, surfaceAwaken: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "sample",
+              label: "采集样本",
+              detail: "储存能量碎屑。",
+              resolve: () => ({
+                effects: { fuel: 10, signal: 6 },
+                log: "你收集的极光碎屑像微小的流星，提供了额外能源。",
+              }),
+            },
+            {
+              key: "meditate",
+              label: "静坐观测",
+              detail: "让意识与行星同频。",
+              resolve: () => ({
+                effects: { mind: 18 },
+                log: "你躺在冰面上，星光的低语穿过骨骼。",
+                preventMindDecay: true,
+              }),
+            },
+          ]
+        ),
+      { tags: ["signal", "fuel", "mind"], baseWeight: 1 }
     )
   );
   const orbitalLongHaulEvents = [];
-  orbitalLongHaulEvents.push((state, day) => {
-    const nav = hasCrewRole(state, "nav");
-    return buildDayEvent(
-      day,
-      "星港残影",
-      "雷达捕捉到早已废弃的星港。结构尚存，或许还能拆下能源模块。",
-      [
-        {
-          key: "dock",
-          label: "靠近拆解",
-          detail: "冒险获取燃料。",
-          resolve: () => {
-            const success = Math.random() < (nav ? 0.8 : 0.6);
-            return {
-              effects: { fuel: success ? 14 : 5, mind: success ? 10 : -4 },
-              log: success
-                ? "你稳稳贴近残骸，成功拆下完整的燃料芯。"
-                : "残骸碎裂，金属擦过舱壁，你在惊喘中脱离。",
-              mindShock: !success,
-            };
+  orbitalLongHaulEvents.push(
+    defineEvent((state, day) => {
+      const nav = hasCrewRole(state, "nav");
+      return buildDayEvent(
+        day,
+        "星港残影",
+        "雷达捕捉到早已废弃的星港。结构尚存，或许还能拆下能源模块。",
+        [
+          {
+            key: "dock",
+            label: "靠近拆解",
+            detail: "冒险获取燃料。",
+            resolve: () => {
+              const success = Math.random() < (nav ? 0.8 : 0.6);
+              return {
+                effects: { fuel: success ? 14 : 5, mind: success ? 10 : -4 },
+                log: success
+                  ? "你稳稳贴近残骸，成功拆下完整的燃料芯。"
+                  : "残骸碎裂，金属擦过舱壁，你在惊喘中脱离。",
+                mindShock: !success,
+              };
+            },
           },
-        },
-        {
-          key: "relay",
-          label: "申请协助",
-          detail: "呼叫经过的商队。",
-          resolve: () => ({
-            effects: { signal: 12, food: 6 },
-            log: "一支流浪舰队回应，丢下一箱干燥蔬菜。",
-            flags: { caravanAlliance: true },
-            preventMindDecay: true,
-          }),
-        },
-        {
-          key: "record",
-          label: "记录结构",
-          detail: "将星港数据上传档案。",
-          resolve: () => ({
-            effects: { signal: 10, mind: 8 },
-            log: "你整理星港构造，准备将来重建时使用。",
-            preventMindDecay: true,
-            flags: { archiveLinked: true },
-          }),
-        },
-      ]
-    );
-  });
+          {
+            key: "relay",
+            label: "申请协助",
+            detail: "呼叫经过的商队。",
+            resolve: () => ({
+              effects: { signal: 12, food: 6 },
+              log: "一支流浪舰队回应，丢下一箱干燥蔬菜。",
+              flags: { caravanAlliance: true },
+              preventMindDecay: true,
+            }),
+          },
+          {
+            key: "record",
+            label: "记录结构",
+            detail: "将星港数据上传档案。",
+            resolve: () => ({
+              effects: { signal: 10, mind: 8 },
+              log: "你整理星港构造，准备将来重建时使用。",
+              preventMindDecay: true,
+              flags: { archiveLinked: true },
+            }),
+          },
+        ]
+      );
+    }, { tags: ["fuel", "food", "signal", "mind"], baseWeight: 1.1 })
+  );
 
-  orbitalLongHaulEvents.push((state, day) =>
-    buildDayEvent(
-      day,
-      "彗尾补给",
-      "一颗缓慢的彗星擦过。尾部冻结气体足以补充氧气和饮水。",
-      [
-        {
-          key: "collect",
-          label: "部署捕捉帆",
-          detail: "收集彗尾。",
-          resolve: () => ({
-            effects: { o2: 16, satiety: 1 },
-            log: "捕捉帆布满霜花，你们吸入久违的清新空气。",
-            preventMindDecay: true,
-          }),
-        },
-        {
-          key: "distill",
-          label: "蒸馏水源",
-          detail: "把冰晶化为饮水。",
-          resolve: () => ({
-            effects: { food: 4, mind: 6 },
-            log: "蒸馏器发出轻鸣，透明水珠滴入储罐。",
-            preventMindDecay: true,
-          }),
-        },
-        {
-          key: "log",
-          label: "记录轨迹",
-          detail: "上传彗星数据。",
-          resolve: () => ({
-            effects: { signal: 12 },
-            log: "你把彗星轨迹标注在信标网里，提醒后来者。",
-          }),
-        },
-      ]
+  orbitalLongHaulEvents.push(
+    defineEvent(
+      (state, day) =>
+        buildDayEvent(
+          day,
+          "彗尾补给",
+          "一颗缓慢的彗星擦过。尾部冻结气体足以补充氧气和饮水。",
+          [
+            {
+              key: "collect",
+              label: "部署捕捉帆",
+              detail: "收集彗尾。",
+              resolve: () => ({
+                effects: { o2: 16, satiety: 1 },
+                log: "捕捉帆布满霜花，你们吸入久违的清新空气。",
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "distill",
+              label: "蒸馏水源",
+              detail: "把冰晶化为饮水。",
+              resolve: () => ({
+                effects: { food: 4, mind: 6 },
+                log: "蒸馏器发出轻鸣，透明水珠滴入储罐。",
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "log",
+              label: "记录轨迹",
+              detail: "上传彗星数据。",
+              resolve: () => ({
+                effects: { signal: 12 },
+                log: "你把彗星轨迹标注在信标网里，提醒后来者。",
+              }),
+            },
+          ]
+        ),
+      { tags: ["o2", "food", "signal", "mind"], baseWeight: 1.15 }
     )
   );
 
-  orbitalLongHaulEvents.push((state, day) => {
-    const signaler = hasCrewRole(state, "signal");
-    return buildDayEvent(
-      day,
-      "深空集市",
-      "一支临时拼装的集市船队向你广播问候，只要交换故事，他们愿意分享资源。",
-      [
-        {
-          key: "stories",
-          label: "交换经历",
-          detail: "讲述逃离的经过。",
-          resolve: () => ({
-            effects: { food: 8, mind: 10 },
-            log: "你讲述了 Ecliptica 的爆炸，换来一批新鲜的营养果冻。",
-            preventMindDecay: true,
-            flags: { caravanAlliance: true },
-          }),
-        },
-        {
-          key: "harmonic",
-          label: "建立中继",
-          detail: signaler ? "Ilya 调整频率。" : "请求他们放大信号。",
-          resolve: () => ({
-            effects: { signal: 20, mind: signaler ? 12 : 6 },
-            log: signaler
-              ? "Ilya 与他们同步谐波，信号板亮成一片。"
-              : "他们分享中继器，你的求救声传得更远。",
-            preventMindDecay: true,
-            flags: { rescuePulse: true },
-          }),
-        },
-        {
-          key: "trade",
-          label: "燃料换补给",
-          detail: "付出少量燃料换稀缺物资。",
-          resolve: () => ({
-            effects: { fuel: -4, food: 6, o2: 6 },
-            log: "你把老化燃料换成急救箱与干燥蔬菜。",
-          }),
-        },
-      ]
-    );
-  });
+  orbitalLongHaulEvents.push(
+    defineEvent((state, day) => {
+      const signaler = hasCrewRole(state, "signal");
+      return buildDayEvent(
+        day,
+        "深空集市",
+        "一支临时拼装的集市船队向你广播问候，只要交换故事，他们愿意分享资源。",
+        [
+          {
+            key: "stories",
+            label: "交换经历",
+            detail: "讲述逃离的经过。",
+            resolve: () => ({
+              effects: { food: 8, mind: 10 },
+              log: "你讲述了 Ecliptica 的爆炸，换来一批新鲜的营养果冻。",
+              preventMindDecay: true,
+              flags: { caravanAlliance: true },
+            }),
+          },
+          {
+            key: "harmonic",
+            label: "建立中继",
+            detail: signaler ? "Ilya 调整频率。" : "请求他们放大信号。",
+            resolve: () => ({
+              effects: { signal: 20, mind: signaler ? 12 : 6 },
+              log: signaler
+                ? "Ilya 与他们同步谐波，信号板亮成一片。"
+                : "他们分享中继器，你的求救声传得更远。",
+              preventMindDecay: true,
+              flags: { rescuePulse: true },
+            }),
+          },
+          {
+            key: "trade",
+            label: "燃料换补给",
+            detail: "付出少量燃料换稀缺物资。",
+            resolve: () => ({
+              effects: { fuel: -4, food: 6, o2: 6 },
+              log: "你把老化燃料换成急救箱与干燥蔬菜。",
+            }),
+          },
+        ]
+      );
+    }, { tags: ["food", "signal", "mind", "o2"], baseWeight: 1.05 })
+  );
   const longHaulMilestones = {};
   longHaulMilestones[19] = (state, day) => {
     const surface = state.flags.landedErevia && !state.flags.surfaceAscended;
@@ -1945,10 +1987,77 @@ const StarfallData = (() => {
     );
   };
 
-  function fromPool(pool, day, seed = 0) {
+  function calculateTagWeight(state, tag) {
+    const res = state?.resources || {};
+    switch (tag) {
+      case "fuel": {
+        const value = Number(res.fuel || 0);
+        if (value <= 18) return 2.2;
+        if (value <= 32) return 1.1;
+        return 0;
+      }
+      case "food": {
+        const value = Number(res.food || 0);
+        if (value <= 6) return 2.4;
+        if (value <= 14) return 1.2;
+        return 0;
+      }
+      case "o2": {
+        const value = Number(res.o2 || 0);
+        if (value <= 28) return 2;
+        if (value <= 48) return 1;
+        return 0;
+      }
+      case "mind": {
+        const value = Number(res.mind || 0);
+        if (value <= 40) return 1.8;
+        if (value <= 65) return 0.9;
+        return 0;
+      }
+      case "signal": {
+        const value = Number(res.signal || 0);
+        if (value <= 12) return 1.6;
+        if (value <= 30) return 0.8;
+        return 0;
+      }
+      case "satiety": {
+        const value = Number(res.satiety || 0);
+        if (value <= 0) return 1.5;
+        if (value <= 1) return 0.7;
+        return 0;
+      }
+      default:
+        return 0;
+    }
+  }
+
+  function fromPool(pool, state, day, seed = 0) {
     if (!pool.length) return null;
-    const index = Math.abs(Math.floor(day + seed)) % pool.length;
-    return pool[index];
+    const weights = pool.map((generator, index) => {
+      if (!generator) return 0;
+      if (typeof generator.weight === "function") {
+        const value = Number(generator.weight(state, day));
+        return Number.isFinite(value) ? Math.max(0, value) : 0;
+      }
+      const base = Number.isFinite(generator.baseWeight) ? generator.baseWeight : 1;
+      const tags = Array.isArray(generator.tags) ? generator.tags : [];
+      const bonus = tags.reduce((sum, tag) => sum + calculateTagWeight(state, tag), 0);
+      const jitter = ((Math.abs(Math.floor(day + seed + index)) % 7) + 1) * 0.001;
+      return Math.max(0, base + bonus + jitter);
+    });
+    const total = weights.reduce((sum, w) => sum + w, 0);
+    if (total <= 0) {
+      const index = Math.abs(Math.floor(day + seed)) % pool.length;
+      return pool[index];
+    }
+    let roll = Math.random() * total;
+    for (let i = 0; i < pool.length; i += 1) {
+      roll -= weights[i];
+      if (roll <= 0) {
+        return pool[i];
+      }
+    }
+    return pool[pool.length - 1];
   }
 
   function getExtendedEvent(state, day) {
@@ -1959,8 +2068,8 @@ const StarfallData = (() => {
     }
     const surface = state.flags.landedErevia && !state.flags.surfaceAscended;
     const pool = surface ? surfaceLongHaulEvents : orbitalLongHaulEvents;
-    const shared = fromPool(sharedLongHaulEvents, day, surface ? 2 : 5);
-    const pick = fromPool(pool, day, state.flags.goalStage || 0);
+    const shared = fromPool(sharedLongHaulEvents, state, day, surface ? 2 : 5);
+    const pick = fromPool(pool, state, day, state.flags.goalStage || 0);
     const generator = pick || shared;
     if (!generator) return shared ? shared(state, day) : null;
     return generator(state, day);
@@ -2013,6 +2122,41 @@ const StarfallData = (() => {
     return remaining[0] || null;
   }
 
+  function getInventory(state) {
+    if (!state?.flags) return [];
+    if (!Array.isArray(state.flags.inventory)) {
+      state.flags.inventory = [];
+    }
+    return state.flags.inventory;
+  }
+
+  function hasItem(state, id) {
+    if (!id) return false;
+    const inventory = getInventory(state);
+    return inventory.includes(id);
+  }
+
+  function addItem(state, id) {
+    if (!state || !id) return false;
+    const inventory = getInventory(state);
+    if (inventory.includes(id)) {
+      return false;
+    }
+    inventory.push(id);
+    return true;
+  }
+
+  function removeItem(state, id) {
+    if (!state || !id) return false;
+    const inventory = getInventory(state);
+    const index = inventory.indexOf(id);
+    if (index >= 0) {
+      inventory.splice(index, 1);
+      return true;
+    }
+    return false;
+  }
+
   function randomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
@@ -2028,6 +2172,12 @@ const StarfallData = (() => {
     crewListLabel,
     chooseCrew,
     getExtendedEvent,
+    getInventory,
+    hasItem,
+    addItem,
+    removeItem,
+    getItemName,
+    ITEM_CATALOG,
   };
 })();
 
@@ -2051,6 +2201,11 @@ const {
   crewListLabel,
   chooseCrew,
   getExtendedEvent,
+  getInventory: getInventoryState,
+  hasItem: hasInventoryItem,
+  addItem: addInventoryItem,
+  removeItem: removeInventoryItem,
+  getItemName,
 } = StarfallData;
 
 const StarfallPage = {
@@ -2239,18 +2394,18 @@ const StarfallPage = {
       countdownIndex: 0,
       resources: {
         day: 0,
-        fuel: 48,
-        food: 18,
-        o2: 60,
+        fuel: 56,
+        food: 24,
+        o2: 72,
         mind: 100,
         crew: 0,
         signal: 0,
-        satiety: 2,
+        satiety: 3,
       },
       score: 0,
       currentEnding: null,
       time: 60,
-      flags: {},
+      flags: { inventory: [] },
       log: [],
       codex: this.loadCodex(),
       pendingStory: {
@@ -2687,6 +2842,37 @@ const StarfallPage = {
                 };
               },
             },
+            ...(hasItem(state, "o2Recycler")
+              ? [
+                  {
+                    key: "cycle",
+                    label: "启动再生器",
+                    detail: "运行 O₂ 再生装置，温热舱内空气。",
+                    requires: ["o2Recycler"],
+                    resolve: () => ({
+                      effects: { o2: 12, mind: 6 },
+                      log: "你连接再生装置，霜雾化作细雨落在护目镜上。",
+                      preventMindDecay: true,
+                    }),
+                  },
+                ]
+              : []),
+            ...(hasItem(state, "stasisPatch")
+              ? [
+                  {
+                    key: "patch",
+                    label: "贴敷稳态贴",
+                    detail: "消耗医用稳态贴让体温迅速回升。",
+                    requires: ["stasisPatch"],
+                    resolve: () => ({
+                      effects: { mind: 18, satiety: 1 },
+                      log: "稳态贴贴在颈侧，暖意沿着神经缓缓铺开。",
+                      itemsUse: ["stasisPatch"],
+                      preventMindDecay: true,
+                    }),
+                  },
+                ]
+              : []),
             ...(flags.medkit
               ? [{
                   key: "aid",
@@ -2974,6 +3160,82 @@ const StarfallPage = {
                     preventMindDecay: find,
                   };
                 },
+              },
+            ],
+          };
+        }
+        if (!flags.toolChallengeComplete) {
+          const beaconName = getItemName("distressBeacon");
+          const thrusterName = getItemName("thrusterKit");
+          const sealName = getItemName("rationSeal");
+          const tetherName = getItemName("grappleHarness");
+          const inventory = getInventory(state);
+          const hasAnyTool = inventory.length > 0;
+          return {
+            title: "Day 9 · 工具调配",
+            body:
+              "救生舱里散落着在倒计时中抢救出的工具。每件道具只有一次决定性的用途，你得挑选最紧急的需求。",
+            options: [
+              {
+                key: "beacon",
+                label: `${beaconName} · 强化呼救`,
+                detail: `需要 ${beaconName}，消耗信标释放相位脉冲。`,
+                requires: ["distressBeacon"],
+                resolve: () => ({
+                  effects: { signal: 28, mind: 8 },
+                  log: "你部署相位信标，蓝白色脉冲像潮汐般扫过暗带。应答灯瞬间亮得刺眼。",
+                  itemsUse: ["distressBeacon"],
+                  flags: { rescuePulse: true, toolChallengeComplete: true },
+                  preventMindDecay: true,
+                }),
+              },
+              {
+                key: "thruster",
+                label: `${thrusterName} · 调整姿态`,
+                detail: `需要 ${thrusterName}，稳定推进器的燃烧曲线。`,
+                requires: ["thrusterKit"],
+                resolve: () => ({
+                  effects: { fuel: 14, mind: 6 },
+                  log: "你把稳定器锁进喷口，燃烧室的噪声骤然平顺。燃料表回升了一段让人安心的刻度。",
+                  flags: { thrusterTuned: true, toolChallengeComplete: true },
+                  preventMindDecay: true,
+                }),
+              },
+              {
+                key: "seal",
+                label: `${sealName} · 重构口粮`,
+                detail: `需要 ${sealName}，把散落的食物重新封装。`,
+                requires: ["rationSeal"],
+                resolve: () => ({
+                  effects: { food: 10, satiety: 2, mind: 6 },
+                  log: "你用真空封装器重建配给，热量片在灯光下排列成整齐的序列。",
+                  flags: { rationRepacked: true, toolChallengeComplete: true },
+                  preventMindDecay: true,
+                }),
+              },
+              {
+                key: "tether",
+                label: `${tetherName} · 拖回残骸`,
+                detail: `需要 ${tetherName}，系住附近的补给碎片。`,
+                requires: ["grappleHarness"],
+                resolve: () => ({
+                  effects: { fuel: 6, food: 6, mind: 5 },
+                  log: "磁索锁住漂浮的贮藏箱。你们拖着它回舱，金属的撞击声听起来像胜利。",
+                  flags: { salvageCache: true, toolChallengeComplete: true },
+                  preventMindDecay: true,
+                }),
+              },
+              {
+                key: "wait",
+                label: "暂缓动作",
+                detail: hasAnyTool
+                  ? "保留道具，等待更合适的窗口。"
+                  : "缺少任何专用道具，只能记录需求并继续等待。",
+                resolve: () => ({
+                  effects: { mind: -4 },
+                  log: "你把工具锁进柜中，提醒自己下一次机会必须精准出手。",
+                  flags: { toolChallengeComplete: true },
+                }),
               },
             ],
           };
@@ -3958,6 +4220,13 @@ const StarfallPage = {
     if (!story) return;
     const option = story.options?.find((opt) => opt.key === key);
     if (!option) return;
+    if (!this.canUseOption(option)) {
+      const status = this.optionRequirementStatus(option);
+      if (status.missing.length) {
+        this.pushLog(`系统：缺少道具「${this.describeItems(status.missing)}」，无法执行该选项。`, "system");
+      }
+      return;
+    }
     const outcome = option.resolve ? option.resolve(this._state) : option;
     this.applyOutcome(outcome);
   },
@@ -3977,6 +4246,20 @@ const StarfallPage = {
     if (Array.isArray(outcome.crewLoss)) {
       outcome.crewLoss.forEach((id) => {
         this.removeCrewMember(id);
+      });
+    }
+    if (Array.isArray(outcome.itemsGain)) {
+      outcome.itemsGain.forEach((id) => {
+        if (this.addItem(id)) {
+          this.pushLog(`系统：获得道具「${this.itemName(id)}」`, "system");
+        }
+      });
+    }
+    if (Array.isArray(outcome.itemsUse)) {
+      outcome.itemsUse.forEach((id) => {
+        if (this.removeItem(id)) {
+          this.pushLog(`系统：消耗道具「${this.itemName(id)}」`, "system");
+        }
       });
     }
     if (outcome.effects) {
@@ -4033,6 +4316,55 @@ const StarfallPage = {
     state.flags.crewRoster = roster;
     return removed || null;
   },
+  getInventory() {
+    if (!this._state) return [];
+    return getInventoryState(this._state);
+  },
+  hasItem(id) {
+    if (!this._state) return false;
+    return hasInventoryItem(this._state, id);
+  },
+  addItem(id) {
+    if (!this._state) return false;
+    const added = addInventoryItem(this._state, id);
+    if (added) {
+      this.renderStats();
+    }
+    return added;
+  },
+  removeItem(id) {
+    if (!this._state) return false;
+    const removed = removeInventoryItem(this._state, id);
+    if (removed) {
+      this.renderStats();
+    }
+    return removed;
+  },
+  itemName(id) {
+    return getItemName(id);
+  },
+  inventoryLabel() {
+    const list = this.getInventory();
+    if (!list.length) {
+      return "无";
+    }
+    return list.map((id) => this.itemName(id)).join("、");
+  },
+  describeItems(ids) {
+    if (!Array.isArray(ids) || !ids.length) return "";
+    return ids.map((id) => this.itemName(id)).join("、");
+  },
+  optionRequirementStatus(option) {
+    if (!option || !Array.isArray(option.requires) || !option.requires.length) {
+      return { missing: [] };
+    }
+    const missing = option.requires.filter((id) => !this.hasItem(id));
+    return { missing };
+  },
+  canUseOption(option) {
+    const status = this.optionRequirementStatus(option);
+    return !status.missing.length;
+  },
   applyEffects(effects = {}) {
     const res = this._state?.resources;
     if (!res) return;
@@ -4073,29 +4405,42 @@ const StarfallPage = {
     const crewCount = roster.length;
     const summary = [];
 
+    const hasThrusterKit = this.hasItem("thrusterKit");
+    const hasO2Recycler = this.hasItem("o2Recycler");
+    const hasRationSeal = this.hasItem("rationSeal");
+
     const engineerBonus = hasCrewRole(state, "repair") ? 0.4 : 0;
     const navigatorBonus = hasCrewRole(state, "nav") ? 0.6 : 0;
     const day = res.day || 1;
     const ramp = Math.max(0, (day - 12) * 0.04);
     const deepRamp = Math.max(0, (day - 60) * 0.05);
-    let fuelDrain = 2.5 + Math.max(0, crewCount - 1) * 0.3 - engineerBonus - navigatorBonus + ramp + deepRamp * 0.5;
-    fuelDrain = Math.max(1.6, Math.round(fuelDrain * 10) / 10);
+    let fuelDrain = 2.1 + Math.max(0, crewCount - 1) * 0.3 - engineerBonus - navigatorBonus + ramp + deepRamp * 0.5;
+    if (hasThrusterKit) {
+      fuelDrain -= 0.4;
+    }
+    fuelDrain = Math.max(1.4, Math.round(fuelDrain * 10) / 10);
     res.fuel -= fuelDrain;
     summary.push(`燃料 -${fuelDrain}`);
 
     const careBonus = hasCrewRole(state, "care") ? 0.5 : 0;
     const signalBonus = hasCrewRole(state, "signal") ? 0.3 : 0;
-    let o2Drain = 4 + crewCount * 0.8 - careBonus - signalBonus + ramp * 0.6 + deepRamp * 0.4;
-    o2Drain = Math.max(3, Math.round(o2Drain * 10) / 10);
+    let o2Drain = 3.6 + crewCount * 0.75 - careBonus - signalBonus + ramp * 0.6 + deepRamp * 0.4;
+    if (hasO2Recycler) {
+      o2Drain -= 0.8;
+    }
+    o2Drain = Math.max(2.4, Math.round(o2Drain * 10) / 10);
     res.o2 -= o2Drain;
     summary.push(`O₂ -${o2Drain}`);
 
     if (typeof res.satiety !== "number") {
       res.satiety = 2;
     }
-    const hungerDrain = 1 + (day >= 70 ? 1 : 0);
+    let hungerDrain = 1 + (day >= 70 ? 1 : 0);
+    if (hasRationSeal) {
+      hungerDrain = Math.max(0, hungerDrain - 1);
+    }
     res.satiety -= hungerDrain;
-    summary.push(`饱腹 -${hungerDrain}`);
+    summary.push(hungerDrain > 0 ? `饱腹 -${hungerDrain}` : "饱腹 稳定");
 
     let foodNote = "食物 0 (节约)";
     if (res.satiety <= 0) {
@@ -4103,6 +4448,9 @@ const StarfallPage = {
       const rationBase = state.flags.rationTight ? 1 : 2;
       let foodCost = rationBase * appetites;
       if (careBonus > 0) {
+        foodCost = Math.max(1, foodCost - 1);
+      }
+      if (hasRationSeal) {
         foodCost = Math.max(1, foodCost - 1);
       }
       const available = Math.max(0, res.food);
@@ -5028,6 +5376,7 @@ const StarfallPage = {
         build("心智", Math.round(res.mind)),
         build("人员", res.crew),
         build("信号", Math.round(res.signal)),
+        build("道具", this.inventoryLabel()),
         build("当前分数", this.formatScore(score)),
         build("最佳分数", this.formatScore(bestScoreRaw)),
         build("最长日数", Math.max(0, bestDay || 0)),
@@ -5046,6 +5395,7 @@ const StarfallPage = {
       build("心智", Math.round(res.mind), warn("mind", 50)),
       build("信号", Math.round(res.signal)),
       build("饱腹", hungerState, res.satiety <= 0 ? "is-warning" : ""),
+      build("道具", this.inventoryLabel()),
       build("同伴", crewListLabel(this._state)),
       build("当前分数", this.formatScore(score)),
       build("最佳分数", this.formatScore(bestScoreRaw)),
@@ -5084,20 +5434,40 @@ const StarfallPage = {
       this._els.choices.innerHTML = '<p class="muted">没有可选项，使用下方按钮重新开始。</p>';
       return;
     }
-    const html = pendingStory.options.map((opt) => {
-      const label = escapeHtml(opt.label || "选项");
-      const detail = opt.detail ? `<span class="starfall-option__detail">${escapeHtml(opt.detail)}</span>` : "";
-      const adminBlock = this.renderAdminInspector(opt);
-      return `
-        <div class="starfall-option-row">
-          <button class="btn starfall-option" data-choice="${escapeHtml(opt.key)}">
-            <span class="starfall-option__label">${label}</span>
-            ${detail}
-          </button>
-          ${adminBlock || ""}
-        </div>
-      `;
-    }).join("");
+    const html = pendingStory.options
+      .map((opt) => {
+        const label = escapeHtml(opt.label || "选项");
+        const status = this.optionRequirementStatus(opt);
+        const available = !status.missing.length;
+        const detailParts = [];
+        if (opt.detail) {
+          detailParts.push(escapeHtml(opt.detail));
+        }
+        if (Array.isArray(opt.requires) && opt.requires.length) {
+          detailParts.push(`需要：${escapeHtml(this.describeItems(opt.requires))}`);
+        }
+        if (status.missing.length) {
+          detailParts.push(
+            `<span class="starfall-option__missing">缺少：${escapeHtml(this.describeItems(status.missing))}</span>`
+          );
+        }
+        const detail = detailParts.length
+          ? `<span class="starfall-option__detail">${detailParts.join("<br>")}</span>`
+          : "";
+        const classes = `btn starfall-option${available ? "" : " is-disabled"}`;
+        const disabledAttr = available ? "" : " disabled";
+        const adminBlock = this.renderAdminInspector(opt);
+        return `
+          <div class="starfall-option-row">
+            <button class="${classes}" data-choice="${escapeHtml(opt.key)}"${disabledAttr}>
+              <span class="starfall-option__label">${label}</span>
+              ${detail}
+            </button>
+            ${adminBlock || ""}
+          </div>
+        `;
+      })
+      .join("");
     this._els.choices.innerHTML = html;
   },
   renderAdminInspector(option) {
@@ -5266,6 +5636,14 @@ const StarfallPage = {
     if (Array.isArray(sanitized.crewLoss) && sanitized.crewLoss.length) {
       const names = sanitized.crewLoss.map((id) => crewTemplates[id]?.name || id);
       parts.push(`失去 ${names.join("、")}`);
+    }
+    if (Array.isArray(sanitized.itemsGain) && sanitized.itemsGain.length) {
+      const names = sanitized.itemsGain.map((id) => this.itemName(id));
+      parts.push(`获得 ${names.join("、")}`);
+    }
+    if (Array.isArray(sanitized.itemsUse) && sanitized.itemsUse.length) {
+      const names = sanitized.itemsUse.map((id) => this.itemName(id));
+      parts.push(`消耗 ${names.join("、")}`);
     }
     if (sanitized.preventMindDecay) {
       parts.push("心智稳定");
