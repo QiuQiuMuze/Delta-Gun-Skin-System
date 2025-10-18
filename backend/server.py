@@ -6040,6 +6040,31 @@ def _json_dump(data: Dict[str, Any]) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
+def _coerce_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            if not math.isfinite(value):
+                return default
+            return int(value)
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return default
+            try:
+                return int(text, 10)
+            except ValueError:
+                return int(float(text))
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def cookie_factory_enabled(db: Session) -> bool:
     row = db.query(SystemSetting).filter_by(key=COOKIE_FACTORY_SETTING_KEY).first()
     if not row:
@@ -8474,20 +8499,44 @@ def ensure_cookie_profile(db: Session, user: User, now: Optional[int] = None) ->
         db.add(profile)
         db.flush()
         cookie_mini_games_state(profile)
+    else:
+        start_ts = _coerce_int(getattr(profile, "week_start_ts", 0), 0)
+        if start_ts <= 0:
+            start_ts = cookie_week_start(now)
+            profile.production_bonus_multiplier = float(profile.pending_bonus_multiplier or 1.0)
+            profile.penalty_multiplier = float(profile.pending_penalty_multiplier or 1.0)
+            profile.pending_bonus_multiplier = 1.0
+            profile.pending_penalty_multiplier = 1.0
+            profile.claimed_bricks_this_week = _coerce_int(
+                getattr(profile, "claimed_bricks_this_week", 0),
+                0,
+            )
+        profile.week_start_ts = start_ts
+        if _coerce_int(getattr(profile, "last_active_ts", 0), 0) <= 0:
+            profile.last_active_ts = now
+        if _coerce_int(getattr(profile, "golden_cooldown", 0), 0) <= 0:
+            profile.golden_cooldown = 120
+        if _coerce_int(getattr(profile, "golden_ready_ts", 0), 0) <= 0:
+            profile.golden_ready_ts = now + int(profile.golden_cooldown or 0)
+        if _coerce_int(getattr(profile, "last_sugar_ts", 0), 0) <= 0:
+            profile.last_sugar_ts = now - COOKIE_SUGAR_COOLDOWN
+        if not getattr(profile, "mini_games", None):
+            cookie_mini_games_state(profile)
     return profile
 
 
 def cookie_prepare_week(profile: CookieFactoryProfile, now: int) -> None:
     current_week = cookie_week_start(now)
-    if profile.week_start_ts == 0:
-        profile.week_start_ts = current_week
+    start_ts = _coerce_int(getattr(profile, "week_start_ts", 0), 0)
+    if start_ts <= 0:
+        start_ts = current_week
         profile.production_bonus_multiplier = float(profile.pending_bonus_multiplier or 1.0)
         profile.penalty_multiplier = float(profile.pending_penalty_multiplier or 1.0)
         profile.pending_bonus_multiplier = 1.0
         profile.pending_penalty_multiplier = 1.0
         profile.claimed_bricks_this_week = 0
-    elif profile.week_start_ts < current_week:
-        profile.week_start_ts = current_week
+    elif start_ts < current_week:
+        start_ts = current_week
         profile.cookies_this_week = 0.0
         profile.weekly_bricks_awarded = 0
         profile.active_points = _json_dump({})
@@ -8497,10 +8546,12 @@ def cookie_prepare_week(profile: CookieFactoryProfile, now: int) -> None:
         profile.pending_bonus_multiplier = 1.0
         profile.pending_penalty_multiplier = 1.0
         profile.claimed_bricks_this_week = 0
+    profile.week_start_ts = start_ts
 
 
 def cookie_finalize_week(db: Session, profile: CookieFactoryProfile, user: User, now: int) -> Optional[Dict[str, Any]]:
-    if profile.week_start_ts == 0:
+    start_ts = _coerce_int(getattr(profile, "week_start_ts", 0), 0)
+    if start_ts <= 0:
         return None
     (
         base_bricks,
@@ -8523,8 +8574,8 @@ def cookie_finalize_week(db: Session, profile: CookieFactoryProfile, user: User,
         profile.total_bricks_earned += claimable
     profile.weekly_bricks_awarded = int(awarded)
     report = {
-        "week_start": profile.week_start_ts,
-        "week_end": profile.week_start_ts + 7 * 86400,
+        "week_start": start_ts,
+        "week_end": start_ts + 7 * 86400,
         "awarded": awarded,
         "base_bricks": base_bricks,
         "active_bricks": active_brick,
@@ -8550,10 +8601,12 @@ def cookie_finalize_week(db: Session, profile: CookieFactoryProfile, user: User,
 
 def cookie_maybe_settle(db: Session, profile: CookieFactoryProfile, user: User, now: int) -> Optional[Dict[str, Any]]:
     current_week = cookie_week_start(now)
-    if profile.week_start_ts == 0:
+    start_ts = _coerce_int(getattr(profile, "week_start_ts", 0), 0)
+    if start_ts <= 0:
+        profile.week_start_ts = current_week
         cookie_prepare_week(profile, now)
         return None
-    if profile.week_start_ts < current_week:
+    if start_ts < current_week:
         report = cookie_finalize_week(db, profile, user, now)
         profile.week_start_ts = current_week
         profile.production_bonus_multiplier = float(profile.pending_bonus_multiplier or 1.0)
@@ -8664,6 +8717,9 @@ def cookie_status_payload(
     golden_ready_in = max(0, int(profile.golden_ready_ts or 0) - now)
     today_challenge = int(challenge_map.get(today, 0) or 0)
     requirement = cookie_prestige_requirement(profile)
+    week_start = _coerce_int(getattr(profile, "week_start_ts", 0), 0)
+    if week_start <= 0:
+        week_start = cookie_week_start(now)
     return {
         "enabled": bool(feature_enabled),
         "now": now,
@@ -8688,8 +8744,8 @@ def cookie_status_payload(
         "buildings": buildings_payload,
         "mini_games": mini_payload,
         "weekly": {
-            "week_start": profile.week_start_ts,
-            "week_end": profile.week_start_ts + 7 * 86400,
+            "week_start": week_start,
+            "week_end": week_start + 7 * 86400,
             "base_bricks": base_bricks,
             "active_bricks": active_brick,
             "login_bricks": login_brick,

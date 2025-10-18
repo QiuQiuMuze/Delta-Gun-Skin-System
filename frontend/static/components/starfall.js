@@ -2084,7 +2084,14 @@ const StarfallPage = {
     `;
   },
   bind() {
-    this._audio = { enabled: false, userMuted: false };
+    this._audio = {
+      enabled: false,
+      userMuted: false,
+      currentMode: null,
+      pendingMode: "prelude",
+      bgmNodes: [],
+      release: 0.7,
+    };
     this._els = {
       stats: document.getElementById("starfall-stats"),
       story: document.getElementById("starfall-story"),
@@ -2190,6 +2197,7 @@ const StarfallPage = {
         signal: 0,
         satiety: 2,
       },
+      currentEnding: null,
       time: 60,
       flags: {},
       log: [],
@@ -2206,6 +2214,7 @@ const StarfallPage = {
     this._state.countdownIndex = 0;
     this._state.time = 60;
     this._state.log = [];
+    this._state.currentEnding = null;
     this.pushLog("主控舱发出尖锐的蜂鸣。每个选择都会跟随你进入深空。", "system");
     this.showCountdownEvent();
   },
@@ -4430,6 +4439,7 @@ const StarfallPage = {
       return false;
     }
     this.unlockEnding(ending);
+    state.currentEnding = ending;
     state.phase = "ending";
     state.pendingStory = {
       title: `结局 · ${ending.title}`,
@@ -4461,7 +4471,21 @@ const StarfallPage = {
     const AudioCtor = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtor) return false;
     if (!this._audio) {
-      this._audio = { enabled: false, userMuted: false };
+      this._audio = {
+        enabled: false,
+        userMuted: false,
+        currentMode: null,
+        pendingMode: this.determineBgmMode(),
+        bgmNodes: [],
+        release: 0.7,
+      };
+    } else {
+      if (!Array.isArray(this._audio.bgmNodes)) {
+        this._audio.bgmNodes = [];
+      }
+      if (typeof this._audio.pendingMode !== "string") {
+        this._audio.pendingMode = this.determineBgmMode();
+      }
     }
     if (!this._audio.ctx) {
       const ctx = new AudioCtor();
@@ -4484,75 +4508,245 @@ const StarfallPage = {
     }
     return true;
   },
-  startBgm() {
-    if (!this.ensureAudioContext()) return;
-    if (!this._audio || this._audio.bgmOsc) return;
-    const ctx = this._audio.ctx;
-    const osc1 = ctx.createOscillator();
-    osc1.type = "sawtooth";
-    osc1.frequency.value = 96;
-    const osc2 = ctx.createOscillator();
-    osc2.type = "triangle";
-    osc2.frequency.value = 168;
-    const mix1 = ctx.createGain();
-    mix1.gain.value = 0.3;
-    const mix2 = ctx.createGain();
-    mix2.gain.value = 0.2;
-    osc1.connect(mix1);
-    osc2.connect(mix2);
-    mix1.connect(this._audio.bgmGain);
-    mix2.connect(this._audio.bgmGain);
-    const lfo1 = ctx.createOscillator();
-    lfo1.type = "sine";
-    lfo1.frequency.value = 0.05;
-    const lfoGain1 = ctx.createGain();
-    lfoGain1.gain.value = 18;
-    lfo1.connect(lfoGain1);
-    lfoGain1.connect(osc1.frequency);
-    const lfo2 = ctx.createOscillator();
-    lfo2.type = "sine";
-    lfo2.frequency.value = 0.08;
-    const lfoGain2 = ctx.createGain();
-    lfoGain2.gain.value = 14;
-    lfo2.connect(lfoGain2);
-    lfoGain2.connect(osc2.frequency);
-    osc1.start();
-    osc2.start();
-    lfo1.start();
-    lfo2.start();
-    this._audio.bgmOsc = [osc1, osc2, lfo1, lfo2];
-    const gain = this._audio.bgmGain;
-    gain.gain.cancelScheduledValues(ctx.currentTime);
-    gain.gain.setTargetAtTime(0.18, ctx.currentTime, 2);
+  determineBgmMode() {
+    const state = this._state;
+    if (!state) return "prelude";
+    switch (state.phase) {
+      case "intro":
+        return "prelude";
+      case "countdown":
+        return "countdown";
+      case "interlude":
+      case "day":
+        return "day";
+      case "ending": {
+        const tone = state.currentEnding?.codexTone || "neutral";
+        if (tone === "hope") return "ending-hope";
+        if (tone === "mystic") return "ending-mystic";
+        if (tone === "dark") return "ending-dark";
+        return "ending-neutral";
+      }
+      default:
+        return "day";
+    }
   },
-  stopBgm() {
+  _getBgmConfig(mode) {
+    switch (mode) {
+      case "countdown":
+        return {
+          gain: 0.24,
+          attack: 0.8,
+          release: 0.6,
+          layers: [
+            { type: "sawtooth", freq: 180, level: 0.26, lfo: { freq: 0.8, depth: 28 } },
+            { type: "square", freq: 96, level: 0.16, lfo: { freq: 0.4, depth: 18 } },
+            { type: "triangle", freq: 48, level: 0.12, lfo: { freq: 0.18, depth: 10 } },
+          ],
+        };
+      case "day":
+        return {
+          gain: 0.2,
+          attack: 1.2,
+          release: 0.9,
+          layers: [
+            { type: "triangle", freq: 82, level: 0.2, lfo: { freq: 0.07, depth: 12 } },
+            { type: "sine", freq: 38, level: 0.13, lfo: { freq: 0.03, depth: 6 } },
+            { type: "sawtooth", freq: 150, level: 0.1, detune: 5, lfo: { freq: 0.1, depth: 16 } },
+          ],
+        };
+      case "ending-hope":
+        return {
+          gain: 0.23,
+          attack: 1.1,
+          release: 1.2,
+          layers: [
+            { type: "triangle", freq: 144, level: 0.24, lfo: { freq: 0.12, depth: 18 } },
+            { type: "sine", freq: 72, level: 0.16, lfo: { freq: 0.05, depth: 0.05, target: "gain" } },
+            { type: "sawtooth", freq: 216, level: 0.12, detune: 6, lfo: { freq: 0.18, depth: 24 } },
+          ],
+        };
+      case "ending-mystic":
+        return {
+          gain: 0.22,
+          attack: 1.4,
+          release: 1.3,
+          layers: [
+            { type: "sine", freq: 128, level: 0.18, lfo: { freq: 0.09, depth: 22 } },
+            { type: "triangle", freq: 256, level: 0.14, lfo: { freq: 0.16, depth: 28 } },
+            { type: "sine", freq: 48, level: 0.1, lfo: { freq: 0.04, depth: 9 } },
+          ],
+        };
+      case "ending-dark":
+        return {
+          gain: 0.18,
+          attack: 1.5,
+          release: 1.4,
+          layers: [
+            { type: "sawtooth", freq: 38, level: 0.2, lfo: { freq: 0.02, depth: 6 } },
+            { type: "triangle", freq: 68, level: 0.14, lfo: { freq: 0.05, depth: 10 } },
+            { type: "square", freq: 22, level: 0.1, lfo: { freq: 0.015, depth: 4 } },
+          ],
+        };
+      case "ending-neutral":
+        return {
+          gain: 0.2,
+          attack: 1.3,
+          release: 1.0,
+          layers: [
+            { type: "triangle", freq: 104, level: 0.2, lfo: { freq: 0.1, depth: 16 } },
+            { type: "sine", freq: 58, level: 0.15, lfo: { freq: 0.05, depth: 9 } },
+            { type: "sawtooth", freq: 174, level: 0.12, lfo: { freq: 0.14, depth: 20 } },
+          ],
+        };
+      case "prelude":
+      default:
+        return {
+          gain: 0.17,
+          attack: 1.5,
+          release: 1.0,
+          layers: [
+            { type: "sine", freq: 54, level: 0.18, lfo: { freq: 0.05, depth: 8 } },
+            { type: "triangle", freq: 112, level: 0.14, lfo: { freq: 0.08, depth: 12 } },
+          ],
+        };
+    }
+  },
+  setBgmMode(mode) {
+    if (!this._audio) {
+      this._audio = {
+        enabled: false,
+        userMuted: false,
+        currentMode: null,
+        pendingMode: mode || this.determineBgmMode(),
+        bgmNodes: [],
+        release: 0.7,
+      };
+    }
+    const target = mode || this.determineBgmMode();
+    this._audio.pendingMode = target;
+    if (!this._audio.enabled) {
+      return;
+    }
+    if (
+      this._audio.currentMode === target &&
+      Array.isArray(this._audio.bgmNodes) &&
+      this._audio.bgmNodes.length
+    ) {
+      return;
+    }
+    this.startBgm(target);
+  },
+  syncAudioState() {
+    if (!this._audio) {
+      this._audio = {
+        enabled: false,
+        userMuted: false,
+        currentMode: null,
+        pendingMode: this.determineBgmMode(),
+        bgmNodes: [],
+        release: 0.7,
+      };
+    }
+    const mode = this.determineBgmMode();
+    this._audio.pendingMode = mode;
+    if (this._audio.enabled) {
+      this.setBgmMode(mode);
+    }
+  },
+  startBgm(mode = null) {
+    if (!this.ensureAudioContext()) return;
+    if (!this._audio) return;
+    const ctx = this._audio.ctx;
+    const target = mode || this._audio.pendingMode || this.determineBgmMode();
+    const config = this._getBgmConfig(target);
+    if (!config) return;
+    this.stopBgm(true);
+    const nodes = [];
+    const gainNode = this._audio.bgmGain;
+    const now = ctx.currentTime;
+    gainNode.gain.cancelScheduledValues(now);
+    gainNode.gain.setValueAtTime(0.0001, now);
+    (config.layers || []).forEach((layer) => {
+      const osc = ctx.createOscillator();
+      osc.type = layer.type || "sine";
+      osc.frequency.value = layer.freq || 110;
+      if (typeof layer.detune === "number") {
+        osc.detune.value = layer.detune;
+      }
+      const gain = ctx.createGain();
+      const level = typeof layer.level === "number" ? layer.level : 0.18;
+      gain.gain.value = level;
+      osc.connect(gain);
+      gain.connect(gainNode);
+      if (layer.lfo) {
+        const lfo = ctx.createOscillator();
+        lfo.type = layer.lfo.type || "sine";
+        lfo.frequency.value = layer.lfo.freq || 0.2;
+        const lfoGain = ctx.createGain();
+        lfoGain.gain.value = layer.lfo.depth || 6;
+        lfo.connect(lfoGain);
+        if (layer.lfo.target === "gain") {
+          lfoGain.connect(gain.gain);
+        } else {
+          lfoGain.connect(osc.frequency);
+        }
+        lfo.start();
+        nodes.push(lfo, lfoGain);
+      }
+      osc.start();
+      nodes.push(osc, gain);
+    });
+    gainNode.gain.setTargetAtTime(config.gain ?? 0.2, now, config.attack ?? 1.2);
+    this._audio.bgmNodes = nodes;
+    this._audio.currentMode = target;
+    this._audio.release = config.release ?? 0.8;
+  },
+  stopBgm(immediate = false) {
     if (!this._audio?.bgmGain) return;
     const ctx = this._audio.ctx;
+    const nodes = Array.isArray(this._audio.bgmNodes) ? this._audio.bgmNodes : [];
+    const release = immediate ? 0.05 : (this._audio.release || 0.6);
     if (ctx) {
-      this._audio.bgmGain.gain.setTargetAtTime(0, ctx.currentTime, 0.6);
+      const now = ctx.currentTime;
+      this._audio.bgmGain.gain.cancelScheduledValues(now);
+      if (immediate) {
+        this._audio.bgmGain.gain.setValueAtTime(0.0001, now);
+      } else {
+        const current = Math.max(0.0001, this._audio.bgmGain.gain.value || 0.0001);
+        this._audio.bgmGain.gain.setValueAtTime(current, now);
+        this._audio.bgmGain.gain.setTargetAtTime(0.0001, now, release);
+      }
     }
-    if (Array.isArray(this._audio?.bgmOsc)) {
-      this._audio.bgmOsc.forEach((osc) => {
-        try {
-          osc.stop(ctx ? ctx.currentTime + 0.8 : undefined);
-        } catch (err) {
-          /* ignore */
+    nodes.forEach((node) => {
+      if (!node) return;
+      try {
+        if (typeof node.stop === "function") {
+          const stopAt = ctx ? ctx.currentTime + (immediate ? 0.05 : release + 0.1) : undefined;
+          node.stop(stopAt);
         }
-      });
-    }
-    this._audio.bgmOsc = null;
+      } catch (_) {
+        /* ignore */
+      }
+      try {
+        if (typeof node.disconnect === "function") {
+          node.disconnect();
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    });
+    this._audio.bgmNodes = [];
+    this._audio.currentMode = null;
   },
   enableAudio(auto = false) {
     if (!this.ensureAudioContext()) return;
-    if (!this._audio) {
-      this._audio = { enabled: false, userMuted: false };
-    }
+    if (!this._audio) return;
     if (this._audio.enabled) return;
     this._audio.enabled = true;
     if (auto) {
       this._audio.userMuted = false;
     }
-    this.startBgm();
+    this.setBgmMode(this.determineBgmMode());
     this.playSfx("confirm");
     this.renderAudio();
   },
@@ -4569,12 +4763,20 @@ const StarfallPage = {
     if (fromUser) {
       this._audio.userMuted = true;
     }
-    this.stopBgm();
+    this.stopBgm(!!force);
+    this._audio.currentMode = null;
     this.renderAudio();
   },
   toggleAudio() {
     if (!this._audio) {
-      this._audio = { enabled: false, userMuted: false };
+      this._audio = {
+        enabled: false,
+        userMuted: false,
+        currentMode: null,
+        pendingMode: this.determineBgmMode(),
+        bgmNodes: [],
+        release: 0.7,
+      };
     }
     if (this._audio.enabled) {
       this.disableAudio(true);
@@ -4602,6 +4804,7 @@ const StarfallPage = {
   },
   renderAudio() {
     if (!this._els?.audioToggle) return;
+    this.syncAudioState();
     const enabled = this._audio?.enabled;
     this._els.audioToggle.textContent = enabled ? "🔊 音景开启" : "🔇 音景关闭";
     this._els.audioToggle.setAttribute("aria-pressed", enabled ? "true" : "false");
