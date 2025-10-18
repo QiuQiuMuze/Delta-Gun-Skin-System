@@ -314,6 +314,7 @@ const API = {
   cookieAdminStatus: () => API.json("/admin/cookie-factory"),
   cookieAdminToggle: (enabled) => API.json("/admin/cookie-factory/toggle", "POST", { enabled }),
   cookieCultivationToggle: (enabled) => API.json("/admin/cookie-factory/cultivation-toggle", "POST", { enabled }),
+  starfallAdminToggle: (enabled) => API.json("/admin/starfall/toggle", "POST", { enabled }),
 
 
   adminAuthModeGet: () => API.json("/admin/auth-mode"),
