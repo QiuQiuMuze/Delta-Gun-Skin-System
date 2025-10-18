@@ -94,6 +94,22 @@ const StarfallData = (() => {
           },
         },
         {
+          key: "bulkhead",
+          label: "封锁隔舱",
+          detail: "封住破裂的通道，为撤离争取空间。",
+          resolve(state) {
+            const drone = state.flags.supportDrone;
+            const timeGain = drone ? 6 : 4;
+            return {
+              log: drone
+                ? "无人机快速焊上舱门边缘，你趁机封住爆裂口。走廊重获稳定。"
+                : "你合上隔舱门，把锁杆死死压下。短暂的安静让每个人重新呼吸。",
+              effects: { time: timeGain, mind: drone ? 6 : 3, signal: drone ? 6 : 3 },
+              flags: { corridorSafe: true },
+            };
+          },
+        },
+        {
           key: "supply",
           label: "隔门递送工具",
           detail: "把拆卸器塞进门缝，让他自己挣脱。",
@@ -140,13 +156,14 @@ const StarfallData = (() => {
           },
         },
         {
-          key: "skip",
-          label: "放弃",
-          detail: "继续奔跑，争取几秒。",
+          key: "dash",
+          label: "冲刺前进",
+          detail: "绕过罐体，直接冲向舱门。",
           resolve() {
             return {
-              log: "你越过氧气罐，靴底划出火花。你告诉自己：下一口气还够。",
-              effects: { time: 4, mind: -4 },
+              log: "你跨过氧气罐，沿着火花滑行。每一步都像踩在爆炸的边缘。",
+              effects: { time: 5, mind: -2 },
+              flags: { sprintFocus: true },
             };
           },
         },
@@ -159,6 +176,21 @@ const StarfallData = (() => {
             return {
               log: "你把挂带勾在罐阀上，让它跟着你滑向舱门。",
               effects: { o2: 8 + bonus, time: -1 },
+            };
+          },
+        },
+        {
+          key: "share",
+          label: "分发氧气",
+          detail: "把罐子推给跟随的同伴，自己继续前进。",
+          resolve(state) {
+            const hasCrew = state.resources.crew > 0 || getRoster(state).length > 0;
+            return {
+              log: hasCrew
+                ? "你把氧气罐推向身后的伙伴。她点头致谢，你们一同跑向舱口。"
+                : "你把罐子滑向通道尽头，希望有人能捡到。",
+              effects: { mind: hasCrew ? 8 : 2, o2: hasCrew ? 6 : 0 },
+              flags: hasCrew ? { crewBond: true } : {},
             };
           },
         },
@@ -201,6 +233,22 @@ const StarfallData = (() => {
               log: "你猛地扳下排气阀。火焰被真空吞没，你的耳朵一阵轰鸣。",
               effects: { o2: -6, fuel: 6, mind: 2 },
               flags: { rapidVent: true },
+            };
+          },
+        },
+        {
+          key: "rig",
+          label: "拆下能源轨道",
+          detail: "把备用导轨拆走，日后可修复推进器。",
+          resolve(state) {
+            const engineer = hasCrewRole(state, "repair");
+            const helper = engineer ? getCrewById(state, "rae")?.name || "工程师" : null;
+            return {
+              log: engineer
+                ? `${helper} 与你合力拆下烧红的导轨。她说这些金属还能救你们一次。`
+                : "你徒手拉扯烫手的导轨，终于在报警声中取下一段完好的金属。",
+              effects: { fuel: 6, mind: engineer ? 6 : -2, signal: engineer ? 4 : 0 },
+              flags: { spareRails: true },
             };
           },
         },
@@ -247,6 +295,21 @@ const StarfallData = (() => {
                 : "你试图用工具挡住火光，但还是被灼到。",
               effects: helped ? { mind: 6, signal: 4 } : { mind: -8 },
               flags: helped ? { consoleSaved: true } : { consoleDamaged: true },
+            };
+          },
+        },
+        {
+          key: "backup",
+          label: "下载航行日志",
+          detail: "趁火花减弱时拷出星图。",
+          resolve(state) {
+            const hasChip = state.flags.signalChip;
+            return {
+              log: hasChip
+                ? "你把备用芯片插入接口。完整的航行日志涌入终端。"
+                : "你强行拷贝数据，虽然杂音密布，但至少保住了部分航道。",
+              effects: { signal: hasChip ? 20 : 12, mind: hasChip ? 6 : 0, time: -1 },
+              flags: { navArchive: true },
             };
           },
         },
@@ -321,6 +384,22 @@ const StarfallData = (() => {
               effects: { fuel: drone ? 6 : 2, food: 2, mind: drone ? 6 : 0 },
               crewGain: crewBoost ? ["maru"] : undefined,
               flags: drone ? { convoy: true } : {},
+            };
+          },
+        },
+        {
+          key: "balance",
+          label: "重新分配负重",
+          detail: "把物资按用途划分，确保舱内重心稳定。",
+          resolve(state) {
+            const roster = getRoster(state);
+            const helper = roster.length ? roster.map((member) => member.name).join("、") : null;
+            return {
+              log: helper
+                ? `${helper} 帮你把燃料与食物分区堆放。舱体重心稳定下来，你们的心也稳了。`
+                : "你迅速把物资分成三堆，确保起飞时不会倾斜。",
+              effects: { fuel: 4, food: 2, mind: helper ? 8 : 4, signal: helper ? 4 : 2 },
+              flags: { organizedCargo: true },
             };
           },
         },
@@ -1841,6 +1920,432 @@ const StarfallPage = {
             },
           ],
         };
+      case 15:
+        if (flags.landedErevia) {
+          return {
+            title: "Day 15 · 冰下峡谷",
+            body: "营地周围的冰层被你们踏出折痕。裂缝深处传来缓慢的水声。",
+            options: [
+              {
+                key: "river",
+                label: "开凿融水渠",
+                detail: "消耗氧气换取可饮用融水与地衣。",
+                resolve: (state) => {
+                  const medic = hasCrewRole(state, "care");
+                  return {
+                    effects: { o2: -5, food: medic ? 7 : 5, mind: medic ? 12 : 8 },
+                    log: medic
+                      ? "Noor 监测每个人的血氧，你们把冰层刨成沟渠，温水沿着沟槽流入储罐。"
+                      : "你独自在冰层上切开一道沟槽。融水沿着靴底缓缓流淌。",
+                    flags: { surfaceRiver: true, surfaceStage: 3 },
+                    preventMindDecay: true,
+                  };
+                },
+              },
+              {
+                key: "forge",
+                label: "搭建地热炉",
+                detail: "消耗燃料，换取稳定的营地热源。",
+                resolve: (state) => {
+                  const engineer = hasCrewRole(state, "repair");
+                  return {
+                    effects: { fuel: -8, mind: engineer ? 18 : 12, signal: engineer ? 10 : 6 },
+                    log: engineer
+                      ? "Rae 把拆下的导轨焊成炉膛，热浪驱散了极夜的寒霜。"
+                      : "你搭起简易火炉。火焰摇曳，照亮狭小的穹顶。",
+                    flags: { surfaceForge: true, surfaceColonyHint: true },
+                    preventMindDecay: true,
+                  };
+                },
+              },
+              {
+                key: "chart",
+                label: "派出测绘队",
+                detail: "让导航员绘制更深入的冰洞地图。",
+                resolve: (state) => {
+                  const navigator = hasCrewRole(state, "nav");
+                  const success = Math.random() < (navigator ? 0.8 : 0.55);
+                  return {
+                    effects: { o2: -4, signal: success ? 18 : 9, mind: success ? 10 : -6 },
+                    log: success
+                      ? navigator
+                        ? "Maru 标注出数条安全通道，并发现了通往地底的光带。"
+                        : "你靠着惯性测量绘制出一张粗略地图。裂缝边缘泛着幽蓝的光。"
+                      : "风暴遮蔽了视线，你在冰洞里迷失数小时才回到营地。",
+                    flags: success ? { surfaceSurvey: true, auroraTrail: true } : {},
+                    preventMindDecay: success,
+                    mindShock: !success,
+                  };
+                },
+              },
+            ],
+          };
+        }
+        return {
+          title: "Day 15 · 交错航道",
+          body: "深空频道闪烁着求救信标。一支流浪船队与逃生舱平行滑行。",
+          options: [
+            {
+              key: "convoy",
+              label: "与船队并航",
+              detail: "分享补给换取航道坐标。",
+              resolve: (state) => {
+                const candidate = chooseCrew(state, ["noor", "maru", "ilya", "rae"]);
+                const recruitable = candidate && !getCrewById(state, candidate);
+                return {
+                  effects: { food: -2, mind: recruitable ? 14 : 8, signal: recruitable ? 16 : 10 },
+                  log: recruitable
+                    ? `你与船队对接，${crewTemplates[candidate].name} 背着设备跨入舱内，承诺会带来新的方向。`
+                    : "船队把一张旧星图上传给你们，作为交换，你分享了口粮。",
+                  crewGain: recruitable ? [candidate] : undefined,
+                  flags: { convoyAllies: true },
+                  preventMindDecay: true,
+                };
+              },
+            },
+            {
+              key: "barter",
+              label: "交易航材",
+              detail: "拿晶体换取推进剂与零件。",
+              resolve: () => ({
+                effects: { fuel: 12, mind: 6, signal: -4 },
+                log: "你在公共频道上开价。很快，一箱闪着油光的推进剂换来了几块晶体。",
+                flags: { tradeLedger: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "cloak",
+              label: "关闭外灯",
+              detail: "降低特征信号，避免未知船只。",
+              resolve: () => ({
+                effects: { mind: 6, signal: -6 },
+                log: "你关掉舱体外灯。救生舱隐入阴影，只剩监控光点。",
+                flags: { shadowRun: true },
+                preventMindDecay: true,
+              }),
+            },
+          ],
+        };
+      case 16:
+        if (flags.landedErevia) {
+          return {
+            title: "Day 16 · 地热脉冲",
+            body: "地底传来持续的低鸣，热浪时而透过裂缝喷涌。",
+            options: [
+              {
+                key: "vent",
+                label: "沿裂隙下潜",
+                detail: "寻找地热井，换取更多能源。",
+                resolve: (state) => {
+                  const engineer = hasCrewRole(state, "repair");
+                  const success = Math.random() < (engineer ? 0.75 : 0.55);
+                  return {
+                    effects: {
+                      o2: -5,
+                      fuel: success ? 14 : 6,
+                      mind: success ? 12 : -6,
+                      signal: success ? 6 : 0,
+                    },
+                    log: success
+                      ? "你们顺着热浪找到地热井。蒸汽在灯光里跳动，温暖的气息扑面而来。"
+                      : "岩壁突然坍塌，你被迫返程，浑身都是冰屑。",
+                    flags: success ? { surfaceForge: true } : {},
+                    preventMindDecay: success,
+                    mindShock: !success,
+                  };
+                },
+              },
+              {
+                key: "garden",
+                label: "培植极光藻",
+                detail: "在融水槽里投放营养剂，尝试养出可食植物。",
+                resolve: (state) => {
+                  const medic = hasCrewRole(state, "care");
+                  return {
+                    effects: { food: medic ? 8 : 5, satiety: medic ? 2 : 1, mind: medic ? 14 : 9 },
+                    log: medic
+                      ? "Noor 搅拌营养剂，绿色的光点在水面浮动，像星星落入掌心。"
+                      : "你撒入救生舱里剩下的营养粉，静候第一层嫩芽破冰而出。",
+                    flags: { surfaceGarden: true },
+                    preventMindDecay: true,
+                  };
+                },
+              },
+              {
+                key: "council",
+                label: "召开夜议",
+                detail: "让所有人提出长期驻留与离开的计划。",
+                resolve: (state) => {
+                  const scientist = hasCrewRole(state, "signal");
+                  return {
+                    effects: { mind: 18, signal: scientist ? 12 : 6 },
+                    log: scientist
+                      ? "Ilya 把每个人的提案整理成星图，冰穹上投射出蓝色的路线。"
+                      : "你们围坐在炉火边，逐条写下可能的未来。",
+                    flags: { surfaceColonyHint: true, crewBond: true },
+                    preventMindDecay: true,
+                  };
+                },
+              },
+            ],
+          };
+        }
+        return {
+          title: "Day 16 · 星港残响",
+          body: "一座废弃星港缓慢旋转，散落的泊位像冻结的花朵。",
+          options: [
+            {
+              key: "dock",
+              label: "尝试对接",
+              detail: "燃料 -6，有机会补充物资。",
+              resolve: () => {
+                const success = Math.random() < 0.6;
+                return {
+                  effects: {
+                    fuel: -6,
+                    food: success ? 4 : 0,
+                    o2: success ? 6 : -2,
+                    mind: success ? 10 : -8,
+                  },
+                  log: success
+                    ? "你锁住泊位，仓库里残存的热量片与氧罐让人几乎落泪。"
+                    : "对接臂在碰撞中折断，你只得割裂连接线撤离。",
+                  mindShock: !success,
+                };
+              },
+            },
+            {
+              key: "archive",
+              label: "连接数据库",
+              detail: "下载星港遗留的航行档案。",
+              resolve: () => ({
+                effects: { signal: 18, mind: 10 },
+                log: "你在断裂的网络里下载到一份星图。废弃的港口仿佛短暂苏醒。",
+                flags: { archiveLinked: true, awakenChance: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "drift",
+              label: "进入半休眠",
+              detail: "锁舱待机，降低消耗。",
+              resolve: () => ({
+                effects: { mind: 8, satiety: 1 },
+                log: "你们轮流进入休眠舱。梦里仍能听见星港的回声。",
+                flags: { rationTight: true },
+                preventMindDecay: true,
+              }),
+            },
+          ],
+        };
+      case 17:
+        if (flags.landedErevia) {
+          return {
+            title: "Day 17 · 极光心脏",
+            body: "极光像液体般穿过冰壳，脉冲让整座营地共振。",
+            options: [
+              {
+                key: "chorus",
+                label: "调谐晶体",
+                detail: "让信号与极光共鸣。",
+                resolve: (state) => {
+                  const scientist = hasCrewRole(state, "signal");
+                  return {
+                    effects: { signal: scientist ? 26 : 18, mind: 12 },
+                    log: scientist
+                      ? "Ilya 调整晶体角度，蓝白色的束光穿透云层直指星空。"
+                      : "你把晶体按进冰面，信标发出比以往更远的呼唤。",
+                    flags: { surfaceChorus: true, rescuePulse: true },
+                    preventMindDecay: true,
+                  };
+                },
+              },
+              {
+                key: "delve",
+                label: "拓展冰洞",
+                detail: "挖掘新的储藏室，搜寻可用矿脉。",
+                resolve: (state) => {
+                  const engineer = hasCrewRole(state, "repair");
+                  const success = Math.random() < (engineer ? 0.75 : 0.5);
+                  return {
+                    effects: {
+                      o2: -5,
+                      fuel: success ? 12 : 5,
+                      food: success ? 3 : 0,
+                      mind: success ? 10 : -6,
+                    },
+                    log: success
+                      ? "你们凿开冰层，发现一条被封存的补给管线。"
+                      : "墙体崩落，碎冰砸在护甲上。你只带回几块无用的矿渣。",
+                    flags: success ? { surfaceForge: true } : {},
+                    preventMindDecay: success,
+                    mindShock: !success,
+                  };
+                },
+              },
+              {
+                key: "vigil",
+                label: "守望极夜",
+                detail: "让每个人在极光下写下自己的期望。",
+                resolve: () => ({
+                  effects: { mind: 22 },
+                  log: "你们轮流写下愿望，纸张在极光中泛着蓝光。",
+                  flags: { crewBond: true, awakenChance: true },
+                  preventMindDecay: true,
+                }),
+              },
+            ],
+          };
+        }
+        return {
+          title: "Day 17 · 引力虹桥",
+          body: "一个引力涟漪在扫描图上划过，像一道通向未知的桥。",
+          options: [
+            {
+              key: "bridge",
+              label: "乘势转向",
+              detail: "调整航线，利用引力获得加速。",
+              resolve: (state) => ({
+                effects: { fuel: -4, signal: 18, mind: 8 },
+                log: hasCrewRole(state, "nav")
+                  ? "Maru 在控制台上快速连点，逃生舱沿着虹桥滑行。"
+                  : "你凭直觉调整舱体，感受到隐形的牵引力。",
+                flags: { vectorPlotted: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "rescue",
+              label: "拖带漂流舱",
+              detail: "分享口粮，换取新的同伴或讯息。",
+              resolve: (state) => {
+                const candidate = chooseCrew(state, ["ilya", "noor", "maru", "rae"]);
+                const recruitable = candidate && !getCrewById(state, candidate);
+                return {
+                  effects: { food: -2, mind: recruitable ? 16 : 10, signal: recruitable ? 14 : 8 },
+                  log: recruitable
+                    ? `${crewTemplates[candidate].name} 从漂流舱中走出，带来一串未加密的求救坐标。`
+                    : "你拖住一艘空荡的逃生舱。里面只有半张褪色的照片。",
+                  crewGain: recruitable ? [candidate] : undefined,
+                  flags: { convoyAllies: true },
+                  preventMindDecay: true,
+                };
+              },
+            },
+            {
+              key: "mirror",
+              label: "校准传感镜",
+              detail: "反射星光，放大信号强度。",
+              resolve: () => ({
+                effects: { signal: 16, mind: 6 },
+                log: "你调节舱壁外的反射片，星光沿着轨道照进天线。",
+                flags: { lighthouse: true },
+                preventMindDecay: true,
+              }),
+            },
+          ],
+        };
+      case 18:
+        if (flags.landedErevia) {
+          return {
+            title: "Day 18 · 新黎明",
+            body: "极夜边缘泛出一抹银光。你必须决定在这个冰封世界的归宿。",
+            options: [
+              {
+                key: "launch",
+                label: "启动升空程序",
+                detail: "聚焦所有燃料，尝试再次起飞。",
+                resolve: (state) => {
+                  const readyBonus = state.flags.launchReady ? 0.25 : 0;
+                  const forgeBonus = state.flags.surfaceForge ? 0.15 : 0;
+                  const baseChance = 0.45 + readyBonus + forgeBonus;
+                  const success = Math.random() < Math.min(0.95, baseChance);
+                  return {
+                    effects: { fuel: -12, o2: -6, mind: success ? 16 : -16, signal: success ? 20 : -6 },
+                    log: success
+                      ? "引擎喷出稳定蓝焰，冰屑像流星雨般坠落。你们冲破极夜。"
+                      : "喷嘴再次结霜，逃生舱在震动中坠回雪地。",
+                    flags: success ? { surfaceAscended: true } : { engineFrozen: true },
+                    preventMindDecay: success,
+                    mindShock: !success,
+                  };
+                },
+              },
+              {
+                key: "settle",
+                label: "建立极夜基地",
+                detail: "把营地正式改造成长期栖息地。",
+                resolve: (state) => {
+                  const crewCount = getRoster(state).length;
+                  return {
+                    effects: { mind: 24, signal: 8, satiety: 2 },
+                    log: crewCount
+                      ? "你们竖起合金骨架，挂上第一盏长明灯。这个名字叫‘霜辉基地’。"
+                      : "你独自竖起灯塔，把营地标记为未来的避难所。",
+                    flags: { surfaceColony: true, surfaceBeacon: true },
+                    preventMindDecay: true,
+                  };
+                },
+              },
+              {
+                key: "communion",
+                label: "融入极光",
+                detail: "在冰原上冥想，让意识与行星合一。",
+                resolve: () => ({
+                  effects: { mind: 30 },
+                  log: "你躺在冰面，极光在耳边低语。身体与星光的界线一点点消失。",
+                  flags: { surfaceAwaken: true, awakenChance: true },
+                  preventMindDecay: true,
+                }),
+              },
+            ],
+          };
+        }
+        return {
+          title: "Day 18 · 汲星仪式",
+          body: "求救信标与星海的噪声交织。你可以决定是呼唤救援，还是加入新的旅队。",
+          options: [
+            {
+              key: "harmonics",
+              label: "叠加星际谐波",
+              detail: "燃烧最后的燃料提升信号。",
+              resolve: () => ({
+                effects: { fuel: -6, signal: 24, mind: 10 },
+                log: "你让所有频段同步。逃生舱像一枚灯塔，贯穿黑暗。",
+                flags: { rescuePulse: true, lighthouse: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "caravan",
+              label: "加入星际商队",
+              detail: "分享补给，换取同行的资格。",
+              resolve: (state) => {
+                const roster = getRoster(state);
+                return {
+                  effects: { food: -3, mind: roster.length ? 18 : 12, signal: 12 },
+                  log: roster.length
+                    ? "你们把余粮分给商队。对方承诺带你们前往最近的定居点。"
+                    : "你递出求救日志，对方邀请你成为商队的导航记录员。",
+                  flags: { caravanAlliance: true },
+                  preventMindDecay: true,
+                };
+              },
+            },
+            {
+              key: "archive",
+              label: "上传记忆",
+              detail: "把全部经历备份到远端档案。",
+              resolve: () => ({
+                effects: { mind: 20, signal: 10 },
+                log: "你把日志、星图与声音全部上传。远端档案库回送了一句：‘欢迎归档者。’",
+                flags: { archiveLinked: true, awakenChance: true },
+                preventMindDecay: true,
+              }),
+            },
+          ],
+        };
       default:
         return null;
     }
@@ -2033,7 +2538,7 @@ const StarfallPage = {
       return;
     }
     res.day += 1;
-    if (res.day > 14) {
+    if (res.day > 18) {
       this.checkEnding();
       return;
     }
@@ -2071,7 +2576,7 @@ const StarfallPage = {
           codexSummary: "心智坠入虚空，没有人听见。",
         };
       }
-    } else if (r.day > 14) {
+    } else if (r.day > 18) {
       if (flags.surfaceAscended) {
         ending = {
           id: "erevia-ascent",
@@ -2079,6 +2584,14 @@ const StarfallPage = {
           body: "逃生舱冲出 Erevia 的冰层，极光在舷窗外拉出金色尾焰。你重新拾起星际航道。",
           codexTone: "hope",
           codexSummary: "从冰封行星起飞，带着晶体燃料返回星海。",
+        };
+      } else if (flags.surfaceColony) {
+        ending = {
+          id: "frosthaven",
+          title: "霜辉基地",
+          body: "你们把营地扩展成第一座极夜基地。灯塔在冰原上恒久燃烧，等待下一批漂泊者。",
+          codexTone: "hope",
+          codexSummary: "选择留在 Erevia，建立霜辉基地守护过路的幸存者。",
         };
       } else if (flags.surfaceBeacon && r.signal >= 60) {
         ending = {
@@ -2088,6 +2601,14 @@ const StarfallPage = {
           codexTone: "hope",
           codexSummary: "在行星表面点亮信标，引来救援。",
         };
+      } else if (flags.surfaceChorus && r.signal >= 80) {
+        ending = {
+          id: "aurora-chorus",
+          title: "极光合唱",
+          body: "冰原上的晶体与极光同步歌唱。你的信号化作一曲合唱，被整个星域记住。",
+          codexTone: "mystic",
+          codexSummary: "让 Erevia 的极光成为宇宙的共鸣，广播出新的坐标。",
+        };
       } else if (flags.surfaceAwaken) {
         ending = {
           id: "ice-awakening",
@@ -2096,7 +2617,23 @@ const StarfallPage = {
           codexTone: "mystic",
           codexSummary: "留在 Erevia，让意识成为冰原的一部分。",
         };
-      } else if (r.signal >= 70 || (flags.rescuePulse && r.signal >= 60)) {
+      } else if (flags.caravanAlliance) {
+        ending = {
+          id: "star-caravan",
+          title: "星际商队",
+          body: "商队的船帆在星光下展开。你把日志交给新的同伴，与他们一起驶向聚落的灯火。",
+          codexTone: "hope",
+          codexSummary: "加入星际商队，带着故事继续旅行。",
+        };
+      } else if (flags.archiveLinked && r.signal >= 50) {
+        ending = {
+          id: "stellar-archive",
+          title: "星海档案",
+          body: "远端档案库接入你的意识。你的记忆化作坐标，永远记录在星海中。",
+          codexTone: "mystic",
+          codexSummary: "把旅程上传到星际档案，与无数记忆并肩。",
+        };
+      } else if (r.signal >= 75 || (flags.rescuePulse && r.signal >= 65)) {
         ending = {
           id: "human-voice",
           title: "人类之声",
