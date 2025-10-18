@@ -2465,11 +2465,91 @@ const StarfallPage = {
     this.renderState();
   },
   getDayEvent(day) {
+    if (day <= 18) {
+      const scenario = this.getOrbitalScenario(day);
+      const event = this.buildOrbitalScenarioEvent(scenario, day);
+      if (event) {
+        return event;
+      }
+    }
+    return getExtendedEvent(this._state, day);
+  },
+  getOrbitalScenario(day) {
+    const state = this._state;
+    const flags = state.flags;
+    if (!flags.orbitalSchedule) {
+      flags.orbitalSchedule = {};
+    }
+    if (!flags.orbitalScenarioUses) {
+      flags.orbitalScenarioUses = {};
+    }
+    if (flags.orbitalSchedule[day]) {
+      return flags.orbitalSchedule[day];
+    }
+    const candidates = this.getOrbitalScenarioCandidates(day);
+    const uses = flags.orbitalScenarioUses;
+    const available = candidates.filter((id) => {
+      const count = uses[id] || 0;
+      return count === 0 || this.isScenarioRepeatable(id, count);
+    });
+    const pool = available.length ? available : candidates;
+    const pick = pool.length
+      ? pool[Math.floor(Math.random() * pool.length)]
+      : day;
+    flags.orbitalSchedule[day] = pick;
+    uses[pick] = (uses[pick] || 0) + 1;
+    flags.orbitalScenarioUses = uses;
+    return pick;
+  },
+  getOrbitalScenarioCandidates(day) {
+    const state = this._state;
+    const groups = [
+      { min: 1, max: 3, pool: [1, 2, 3, 4, 101] },
+      { min: 4, max: 6, pool: [3, 4, 5, 6, 7, 102] },
+      { min: 7, max: 9, pool: [6, 7, 8, 9, 10, 103] },
+      { min: 10, max: 12, pool: [8, 9, 10, 11, 12, 104] },
+      { min: 13, max: 18, pool: [10, 11, 12, 13, 14, 15, 16, 17, 18, 105] },
+    ];
+    const group = groups.find((g) => day >= g.min && day <= g.max) || groups[groups.length - 1];
+    const base = [day];
+    const pool = new Set([...base, ...group.pool]);
+    if (state.flags.surfaceAscended) {
+      pool.delete(8);
+    }
+    return Array.from(pool);
+  },
+  isScenarioRepeatable(id, count = 0) {
+    const state = this._state;
+    switch (id) {
+      case 8:
+        if (state.flags.landedErevia || state.flags.surfaceAscended) {
+          return false;
+        }
+        return count < 2;
+      case 101:
+      case 102:
+      case 103:
+      case 104:
+      case 105:
+        return count < 2;
+      default:
+        return false;
+    }
+  },
+  decorateDayEvent(event, day) {
+    if (!event) return event;
+    if (typeof event.title === "string") {
+      event.title = event.title.replace(/^Day \d+/, `Day ${day}`);
+    }
+    return event;
+  },
+  buildOrbitalScenarioEvent(scenario, day) {
     const state = this._state;
     const r = state.resources;
     const flags = state.flags;
     const hall = r.mind <= 50;
-    switch (day) {
+    const event = (() => {
+      switch (scenario) {
       case 1:
         return {
           title: "Day 1 · 寂静",
@@ -2596,6 +2676,106 @@ const StarfallPage = {
               : []),
           ],
         };
+      case 101: {
+        const sealName = getItemName("rationSeal");
+        const thrusterName = getItemName("thrusterKit");
+        const recyclerName = getItemName("o2Recycler");
+        const beaconName = getItemName("distressBeacon");
+        const patchName = getItemName("stasisPatch");
+        const harnessName = getItemName("grappleHarness");
+        const inventory = getInventory(state);
+        return {
+          title: "Day 2 · 工具盘点",
+          body:
+            inventory.length
+              ? "你整理逃生舱的工具架。每件在倒计时中抢到的设备都可能改变未来几天的走势。"
+              : "工具柜空空如也，你只能记录下想象中的策略。",
+          options: [
+            {
+              key: "seal",
+              label: `${sealName} · 压缩补给`,
+              detail: `需要 ${sealName}，重新压缩散落的口粮。`,
+              requires: ["rationSeal"],
+              resolve: () => ({
+                effects: { food: 7, satiety: 1, mind: 6 },
+                log: `${sealName} 的泵浦重新运转，每一份口粮被压缩成整齐的立方体。`,
+                flags: { rationRepacked: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "thruster",
+              label: `${thrusterName} · 校准喷口`,
+              detail: `需要 ${thrusterName}，调整推进器燃烧曲线。`,
+              requires: ["thrusterKit"],
+              resolve: () => ({
+                effects: { fuel: 6, mind: 4 },
+                log: `${thrusterName} 的稳定翼锁住喷流，燃料表微微回升。`,
+                flags: { thrusterTuned: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "cycle",
+              label: `${recyclerName} · 再生测试`,
+              detail: `需要 ${recyclerName}，循环舱内空气。`,
+              requires: ["o2Recycler"],
+              resolve: () => ({
+                effects: { o2: 12, mind: 4 },
+                log: `${recyclerName} 的风扇轻轻嗡鸣，霜雾在舱内化作水珠。`,
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "signal",
+              label: `${beaconName} · 调试频段`,
+              detail: `需要 ${beaconName}，测试其相位脉冲。`,
+              requires: ["distressBeacon"],
+              resolve: () => ({
+                effects: { signal: 20, mind: 4 },
+                log: `${beaconName} 吐出一串脉冲，逃生舱的仪表随之亮起蓝色波纹。`,
+                flags: { beaconPrimed: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "patch",
+              label: `${patchName} · 分装药剂`,
+              detail: `需要 ${patchName}，耗费稳态贴稳定神经。`,
+              requires: ["stasisPatch"],
+              resolve: () => ({
+                effects: { mind: 12, satiety: 1 },
+                log: `${patchName} 的药液在皮肤下蔓延，你的心跳重新找到节律。`,
+                itemsUse: ["stasisPatch"],
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "tether",
+              label: `${harnessName} · 固定外部残骸`,
+              detail: `需要 ${harnessName}，把船外漂浮的碎片固定成遮蔽。`,
+              requires: ["grappleHarness"],
+              resolve: () => ({
+                effects: { fuel: 4, mind: 5, signal: 4 },
+                log: `${harnessName} 锁住外壁的残骸，为天线提供了新的折射面。`,
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "catalog",
+              label: "记录缺口",
+              detail: inventory.length
+                ? "留下标注，提醒自己哪些工具还未校准。"
+                : "缺少任何工具，只能写下计划与想象。",
+              resolve: () => ({
+                effects: { mind: 4 },
+                log: "你把器材的编号一一记下。纸张的边角被汗水浸湿。",
+                preventMindDecay: true,
+              }),
+            },
+          ],
+        };
+      }
       case 3:
         if (flags.signalRoute) {
           return {
@@ -2904,6 +3084,83 @@ const StarfallPage = {
             },
           ],
         };
+      case 102: {
+        const patchName = getItemName("stasisPatch");
+        const thrusterName = getItemName("thrusterKit");
+        const harnessName = getItemName("grappleHarness");
+        const sealName = getItemName("rationSeal");
+        return {
+          title: "Day 6 · 舱壁裂痕",
+          body: "舱壁出现细密的裂缝，寒气与霜雾沿着缝隙爬入。每一种工具都可能成为救命的补丁。",
+          options: [
+            {
+              key: "patch",
+              label: `${patchName} · 热封裂缝`,
+              detail: `需要 ${patchName}，消耗稳态贴封堵裂痕。`,
+              requires: ["stasisPatch"],
+              resolve: () => ({
+                effects: { mind: 14, o2: 6 },
+                log: `${patchName} 的药剂在舱壁上化成透明的膜，裂缝被一层温热的光覆盖。`,
+                itemsUse: ["stasisPatch"],
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "thruster",
+              label: `${thrusterName} · 逆喷驱霜`,
+              detail: `需要 ${thrusterName}，倒灌热流融化冰霜。`,
+              requires: ["thrusterKit"],
+              resolve: () => ({
+                effects: { fuel: -4, mind: 10, signal: 6 },
+                log: `${thrusterName} 重新分流热量，喷口的余温烤干裂缝周围的霜层。`,
+                flags: { thrusterTuned: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "brace",
+              label: `${harnessName} · 牵缆加固`,
+              detail: `需要 ${harnessName}，从外壁钩住脱落的板件。`,
+              requires: ["grappleHarness"],
+              resolve: () => ({
+                effects: { mind: 6, signal: 4 },
+                log: `${harnessName} 的磁索绷紧，把松动的舷板重新拉回定位。`,
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "foam",
+              label: `${sealName} · 树脂填充`,
+              detail: `需要 ${sealName}，把口粮封装胶改造成临时填缝剂。`,
+              requires: ["rationSeal"],
+              resolve: () => ({
+                effects: { mind: 8, food: -1 },
+                log: `你把 ${sealName} 的树脂注入裂缝，牺牲了一份补给换来暂时的安稳。`,
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "note",
+              label: "记录形变",
+              detail: "测量裂缝并记录偏移，等待下一次检修窗口。",
+              resolve: () => ({
+                effects: { mind: -6, signal: 4 },
+                log: "你仔细记录裂缝的扩散速度，提醒自己必须尽快找到更彻底的修复方案。",
+              }),
+            },
+            {
+              key: "ignore",
+              label: "祈祷撑过", 
+              detail: "什么也不做，寄望结构还能支撑。",
+              resolve: () => ({
+                effects: { mind: -16 },
+                log: "你盯着裂缝听它发出细小的爆裂声。每一次脉动都像心脏被敲击。",
+                mindShock: true,
+              }),
+            },
+          ],
+        };
+      }
       case 7: {
         const lastLost = state.flags.lastLostCrew;
         const livingCrew = getRoster(state);
@@ -3276,6 +3533,73 @@ const StarfallPage = {
             },
           ],
         };
+      case 103: {
+        const harnessName = getItemName("grappleHarness");
+        const beaconName = getItemName("distressBeacon");
+        const recyclerName = getItemName("o2Recycler");
+        const sealName = getItemName("rationSeal");
+        return {
+          title: "Day 9 · 残骸磁场",
+          body: "救生舱穿过一片散落的残骸带。碎片上附着着未挥发的燃料与结霜的口粮包装。",
+          options: [
+            {
+              key: "tether",
+              label: `${harnessName} · 拖拽补给`,
+              detail: `需要 ${harnessName}，把最大的残骸锁进牵引索。`,
+              requires: ["grappleHarness"],
+              resolve: () => ({
+                effects: { fuel: 6, food: 6, mind: 6 },
+                log: `${harnessName} 钩住残骸，拖带的金属箱撞进舱门时发出让人安心的轰鸣。`,
+                flags: { salvageCache: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "pulse",
+              label: `${beaconName} · 信标探测`,
+              detail: `需要 ${beaconName}，放大脉冲扫描漂浮的电力节点。`,
+              requires: ["distressBeacon"],
+              resolve: () => ({
+                effects: { signal: 24, mind: 6 },
+                log: `${beaconName} 的相位波扫过残骸，一串旧时代的航迹信号被重新唤醒。`,
+                flags: { beaconNetwork: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "recycle",
+              label: `${recyclerName} · 抽取空气`,
+              detail: `需要 ${recyclerName}，从破损舱体抽出仍可呼吸的空气。`,
+              requires: ["o2Recycler"],
+              resolve: () => ({
+                effects: { o2: 10, mind: 4 },
+                log: `${recyclerName} 的过滤芯捕捉到残余的氧气，你感到胸腔终于充盈。`,
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "seal",
+              label: `${sealName} · 分装碎料`,
+              detail: `需要 ${sealName}，把残骸中的口粮重新封存。`,
+              requires: ["rationSeal"],
+              resolve: () => ({
+                effects: { food: 5, satiety: 1, mind: 4 },
+                log: `你用 ${sealName} 将散落的营养膏封成新的应急包。`,
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "observe",
+              label: "保持距离",
+              detail: "记录残骸分布，避免额外风险。",
+              resolve: () => ({
+                effects: { mind: -4, signal: 6 },
+                log: "你保持安全距离，记录残骸带的轨迹，以便之后的航路规划。",
+              }),
+            },
+          ],
+        };
+      }
       case 10:
         if (flags.landedErevia) {
           return {
@@ -3478,6 +3802,73 @@ const StarfallPage = {
             },
           ],
         };
+      case 104: {
+        const beaconName = getItemName("distressBeacon");
+        const thrusterName = getItemName("thrusterKit");
+        const sealName = getItemName("rationSeal");
+        const recyclerName = getItemName("o2Recycler");
+        return {
+          title: "Day 12 · 频段拼图",
+          body: "求救信号在噪声中断断续续。你可以利用手头的装备，把碎裂的讯息拼凑完整。",
+          options: [
+            {
+              key: "relay",
+              label: `${beaconName} · 同步脉冲`,
+              detail: `需要 ${beaconName}，对齐多组求救频段。`,
+              requires: ["distressBeacon"],
+              resolve: () => ({
+                effects: { signal: 26, mind: 6 },
+                log: `${beaconName} 投射出规则的波列，背景噪声像潮水一样退去。`,
+                flags: { beaconNetwork: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "trim",
+              label: `${thrusterName} · 维持轨道`,
+              detail: `需要 ${thrusterName}，修正姿态让天线对准讯号源。`,
+              requires: ["thrusterKit"],
+              resolve: () => ({
+                effects: { fuel: -3, mind: 6, signal: 12 },
+                log: `${thrusterName} 缓缓推动舱体，天线捕捉到一束聚焦的蓝光。`,
+                flags: { vectorPlotted: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "share",
+              label: `${sealName} · 以粮换讯`,
+              detail: `需要 ${sealName}，与另一艘漂流舱交换压缩口粮换取坐标。`,
+              requires: ["rationSeal"],
+              resolve: () => ({
+                effects: { food: -1, mind: 10, signal: 10 },
+                log: `你通过 ${sealName} 送去一包压缩口粮，对方回传了指向安全区的导航数据。`,
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "scrub",
+              label: `${recyclerName} · 净化噪点`,
+              detail: `需要 ${recyclerName}，借助滤芯吸收舱内电弧噪声。`,
+              requires: ["o2Recycler"],
+              resolve: () => ({
+                effects: { o2: 8, mind: 6, signal: 8 },
+                log: `${recyclerName} 的滤芯嗡鸣，电弧噪点被缓缓压低。`,
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "listen",
+              label: "静听回声",
+              detail: "关闭所有设备，记录最微弱的呼救。",
+              resolve: () => ({
+                effects: { mind: -4, signal: 6 },
+                log: "你静静聆听宇宙的呼吸，把模糊的讯号写进日志。",
+              }),
+            },
+          ],
+        };
+      }
       case 12:
         if (flags.landedErevia) {
           return {
@@ -3773,11 +4164,11 @@ const StarfallPage = {
         };
       case 15:
         if (flags.landedErevia) {
-          return {
-            title: "Day 15 · 冰下峡谷",
-            body: "营地周围的冰层被你们踏出折痕。裂缝深处传来缓慢的水声。",
-            options: [
-              {
+        return {
+          title: "Day 15 · 冰下峡谷",
+          body: "营地周围的冰层被你们踏出折痕。裂缝深处传来缓慢的水声。",
+          options: [
+            {
                 key: "river",
                 label: "开凿融水渠",
                 detail: "消耗氧气换取可饮用融水与地衣。",
@@ -3878,6 +4269,77 @@ const StarfallPage = {
             },
           ],
         };
+      case 105: {
+        const beaconName = getItemName("distressBeacon");
+        const harnessName = getItemName("grappleHarness");
+        const patchName = getItemName("stasisPatch");
+        const thrusterName = getItemName("thrusterKit");
+        const sealName = getItemName("rationSeal");
+        return {
+          title: "Day 15 · 道具救援",
+          body: "一组求救信号在极夜里闪烁。你可以用手头的装备搭建临时的救援走廊，也可以把物资留给自己。",
+          options: [
+            {
+              key: "corridor",
+              label: `${harnessName} + ${thrusterName} · 建立牵引通道`,
+              detail: `需要 ${harnessName} 与 ${thrusterName}，铺设牵索并调整推力引导幸存者。`,
+              requires: ["grappleHarness", "thrusterKit"],
+              resolve: () => ({
+                effects: { fuel: -3, signal: 18, mind: 8 },
+                log: `${harnessName} 的磁索与 ${thrusterName} 的反推引导逃生舱排队靠拢。你在黑暗中架起了一条安全通道。`,
+                flags: { convoyAllies: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "medic",
+              label: `${patchName} · 救治冻伤`,
+              detail: `需要 ${patchName}，消耗稳态贴救回被冰封的船员。`,
+              requires: ["stasisPatch"],
+              resolve: () => ({
+                effects: { mind: 16, food: -1 },
+                log: `${patchName} 的药剂在他们的血管里流动，冻僵的手指重新恢复颜色。`,
+                itemsUse: ["stasisPatch"],
+                flags: { crewBond: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "broadcast",
+              label: `${beaconName} · 指引航线`,
+              detail: `需要 ${beaconName}，为远方的漂流者标记路径。`,
+              requires: ["distressBeacon"],
+              resolve: () => ({
+                effects: { signal: 28, mind: 6 },
+                log: `${beaconName} 发出长脉冲，求救者的坐标一个接一个出现在屏幕上。`,
+                flags: { beaconNetwork: true },
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "trade",
+              label: `${sealName} · 交换口粮`,
+              detail: `需要 ${sealName}，与来客交换他们掌握的曲率通道。`,
+              requires: ["rationSeal"],
+              resolve: () => ({
+                effects: { food: -2, mind: 12, signal: 8 },
+                log: `你把 ${sealName} 打包的热量片递给求救者，对方共享了一条通往避风带的隐蔽航道。`,
+                preventMindDecay: true,
+              }),
+            },
+            {
+              key: "decline",
+              label: "关闭外舱",
+              detail: "保留资源，让他们自己寻找生路。",
+              resolve: () => ({
+                effects: { mind: -12 },
+                log: "你关闭外舱门，听见敲击声在舱壁外渐渐远去。",
+                mindShock: true,
+              }),
+            },
+          ],
+        };
+      }
       case 16:
         if (flags.landedErevia) {
           return {
@@ -4198,8 +4660,10 @@ const StarfallPage = {
           ],
         };
       default:
-        return getExtendedEvent(state, day);
-    }
+        return null;
+      }
+    })();
+    return this.decorateDayEvent(event, day);
   },
   handleChoice(key) {
     if (this._locked) return;
