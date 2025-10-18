@@ -2066,6 +2066,7 @@ const StarfallPage = {
     if (phase === "day" || phase === "ending") {
       details.day = resources.day || 0;
       details.signal = Math.round(resources.signal || 0);
+      details.score = Math.max(0, Math.round(this.calculateScore()));
     }
     return { activity: `game:starfall:${phase}`, details };
   },
@@ -2085,6 +2086,7 @@ const StarfallPage = {
           <aside class=\"starfall-side\">
             <section class=\"starfall-log\" id=\"starfall-log\" aria-live=\"polite\"></section>
             <section class=\"starfall-codex\" id=\"starfall-codex\"></section>
+            <section class=\"starfall-leaderboard\" id=\"starfall-leaderboard\"></section>
           </aside>
         </div>
         <div class=\"starfall-actions\">
@@ -2110,6 +2112,7 @@ const StarfallPage = {
       choices: document.getElementById("starfall-choices"),
       log: document.getElementById("starfall-log"),
       codex: document.getElementById("starfall-codex"),
+      leaderboard: document.getElementById("starfall-leaderboard"),
       restart: document.getElementById("starfall-restart"),
       audioToggle: document.getElementById("starfall-audio"),
     };
@@ -2124,11 +2127,16 @@ const StarfallPage = {
       onRestart: () => {
         this.initState();
         this.renderState();
+        this.refreshProfile();
+        this.refreshLeaderboard();
       },
       onToggleAudio: () => {
         this.toggleAudio();
       },
     };
+    this._leaderboard = [];
+    this._leaderboardSelf = null;
+    this._profile = null;
     this._els.choices.addEventListener("click", this._handlers.onChoice);
     this._els.restart.addEventListener("click", this._handlers.onRestart);
     if (this._els.audioToggle) {
@@ -2136,6 +2144,8 @@ const StarfallPage = {
     }
     this.initState();
     this.renderState();
+    this.refreshProfile();
+    this.refreshLeaderboard();
   },
   teardown() {
     if (this._els?.choices && this._handlers?.onChoice) {
@@ -2152,6 +2162,9 @@ const StarfallPage = {
     this._els = null;
     this._handlers = null;
     this._isAdmin = false;
+    this._leaderboard = [];
+    this._leaderboardSelf = null;
+    this._profile = null;
   },
   loadCodex() {
     if (typeof window === "undefined") return [];
@@ -2210,6 +2223,7 @@ const StarfallPage = {
         signal: 0,
         satiety: 2,
       },
+      score: 0,
       currentEnding: null,
       time: 60,
       flags: {},
@@ -4110,6 +4124,9 @@ const StarfallPage = {
   checkEnding() {
     const state = this._state;
     if (!state) return false;
+    if (state.phase === "ending" && state.currentEnding) {
+      return true;
+    }
     const r = state.resources;
     const flags = state.flags || {};
     let ending = null;
@@ -4460,6 +4477,7 @@ const StarfallPage = {
       options: [],
     };
     this.renderState();
+    this.submitRunResult(ending);
     return true;
   },
   pushLog(text, type = "story") {
@@ -4480,6 +4498,7 @@ const StarfallPage = {
     this.renderChoices();
     this.renderLog();
     this.renderCodex();
+    this.renderLeaderboard();
     this.renderAudio();
   },
   ensureAudioContext() {
@@ -4550,35 +4569,35 @@ const StarfallPage = {
     switch (mode) {
       case "countdown":
         return {
-          gain: 0.24,
-          attack: 0.8,
-          release: 0.6,
+          gain: 0.28,
+          attack: 0.55,
+          release: 0.7,
           layers: [
-            { type: "sawtooth", freq: 180, level: 0.26, lfo: { freq: 0.8, depth: 28 } },
-            { type: "square", freq: 96, level: 0.16, lfo: { freq: 0.4, depth: 18 } },
-            { type: "triangle", freq: 48, level: 0.12, lfo: { freq: 0.18, depth: 10 } },
+            { type: "sawtooth", freq: 76, level: 0.24, lfo: { freq: 0.9, depth: 14, target: "gain" } },
+            { type: "square", freq: 48, level: 0.18, lfo: { freq: 0.42, depth: 10 } },
+            { type: "triangle", freq: 28, level: 0.14, lfo: { freq: 0.16, depth: 6 } },
           ],
         };
       case "day":
         return {
-          gain: 0.2,
+          gain: 0.22,
           attack: 1.2,
-          release: 0.9,
+          release: 1.0,
           layers: [
-            { type: "triangle", freq: 82, level: 0.2, lfo: { freq: 0.07, depth: 12 } },
-            { type: "sine", freq: 38, level: 0.13, lfo: { freq: 0.03, depth: 6 } },
-            { type: "sawtooth", freq: 150, level: 0.1, detune: 5, lfo: { freq: 0.1, depth: 16 } },
+            { type: "sine", freq: 36, level: 0.2, lfo: { freq: 0.05, depth: 5 } },
+            { type: "triangle", freq: 62, level: 0.16, lfo: { freq: 0.08, depth: 8 } },
+            { type: "sawtooth", freq: 94, level: 0.12, detune: -5, lfo: { freq: 0.12, depth: 12 } },
           ],
         };
       case "ending-positive":
         return {
-          gain: 0.23,
+          gain: 0.24,
           attack: 1.1,
-          release: 1.2,
+          release: 1.3,
           layers: [
-            { type: "triangle", freq: 144, level: 0.24, lfo: { freq: 0.12, depth: 18 } },
-            { type: "sine", freq: 72, level: 0.16, lfo: { freq: 0.05, depth: 0.05, target: "gain" } },
-            { type: "sawtooth", freq: 216, level: 0.12, detune: 6, lfo: { freq: 0.18, depth: 24 } },
+            { type: "triangle", freq: 96, level: 0.22, lfo: { freq: 0.11, depth: 14 } },
+            { type: "sine", freq: 48, level: 0.18, lfo: { freq: 0.06, depth: 0.08, target: "gain" } },
+            { type: "sine", freq: 144, level: 0.1, detune: 3, lfo: { freq: 0.16, depth: 18 } },
           ],
         };
       case "ending-mystic":
@@ -4587,42 +4606,43 @@ const StarfallPage = {
           attack: 1.4,
           release: 1.3,
           layers: [
-            { type: "sine", freq: 128, level: 0.18, lfo: { freq: 0.09, depth: 22 } },
-            { type: "triangle", freq: 256, level: 0.14, lfo: { freq: 0.16, depth: 28 } },
-            { type: "sine", freq: 48, level: 0.1, lfo: { freq: 0.04, depth: 9 } },
+            { type: "sine", freq: 64, level: 0.18, lfo: { freq: 0.1, depth: 16 } },
+            { type: "triangle", freq: 128, level: 0.14, lfo: { freq: 0.14, depth: 18 } },
+            { type: "sine", freq: 24, level: 0.12, lfo: { freq: 0.05, depth: 7 } },
           ],
         };
       case "ending-negative":
         return {
-          gain: 0.18,
+          gain: 0.19,
           attack: 1.5,
           release: 1.4,
           layers: [
-            { type: "sawtooth", freq: 38, level: 0.2, lfo: { freq: 0.02, depth: 6 } },
-            { type: "triangle", freq: 68, level: 0.14, lfo: { freq: 0.05, depth: 10 } },
-            { type: "square", freq: 22, level: 0.1, lfo: { freq: 0.015, depth: 4 } },
+            { type: "square", freq: 28, level: 0.22, lfo: { freq: 0.02, depth: 6 } },
+            { type: "triangle", freq: 44, level: 0.16, lfo: { freq: 0.05, depth: 8 } },
+            { type: "sawtooth", freq: 18, level: 0.12, lfo: { freq: 0.015, depth: 5 } },
           ],
         };
       case "ending-neutral":
         return {
-          gain: 0.2,
+          gain: 0.21,
           attack: 1.3,
           release: 1.0,
           layers: [
-            { type: "triangle", freq: 104, level: 0.2, lfo: { freq: 0.1, depth: 16 } },
-            { type: "sine", freq: 58, level: 0.15, lfo: { freq: 0.05, depth: 9 } },
-            { type: "sawtooth", freq: 174, level: 0.12, lfo: { freq: 0.14, depth: 20 } },
+            { type: "triangle", freq: 80, level: 0.2, lfo: { freq: 0.1, depth: 12 } },
+            { type: "sine", freq: 40, level: 0.16, lfo: { freq: 0.06, depth: 7 } },
+            { type: "sawtooth", freq: 110, level: 0.12, lfo: { freq: 0.14, depth: 16 } },
           ],
         };
       case "prelude":
       default:
         return {
-          gain: 0.17,
-          attack: 1.5,
-          release: 1.0,
+          gain: 0.18,
+          attack: 1.6,
+          release: 1.1,
           layers: [
-            { type: "sine", freq: 54, level: 0.18, lfo: { freq: 0.05, depth: 8 } },
-            { type: "triangle", freq: 112, level: 0.14, lfo: { freq: 0.08, depth: 12 } },
+            { type: "sine", freq: 32, level: 0.2, lfo: { freq: 0.04, depth: 6 } },
+            { type: "triangle", freq: 58, level: 0.16, lfo: { freq: 0.08, depth: 10, target: "gain" } },
+            { type: "sine", freq: 18, level: 0.12, lfo: { freq: 0.02, depth: 4 } },
           ],
         };
     }
@@ -4806,13 +4826,13 @@ const StarfallPage = {
     const ctx = this._audio.ctx;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    const base = type === "confirm" ? 620 : type === "warning" ? 200 : 420;
-    osc.type = type === "warning" ? "sawtooth" : "sine";
+    const base = type === "confirm" ? 360 : type === "warning" ? 160 : 280;
+    osc.type = type === "warning" ? "triangle" : "sine";
     osc.frequency.setValueAtTime(base, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(base / 2, ctx.currentTime + 0.25);
+    osc.frequency.exponentialRampToValueAtTime(base / 1.6, ctx.currentTime + 0.25);
     gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.28, ctx.currentTime + 0.02);
-    gain.gain.setTargetAtTime(0, ctx.currentTime + 0.2, 0.08);
+    gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + 0.02);
+    gain.gain.setTargetAtTime(0, ctx.currentTime + 0.2, 0.12);
     osc.connect(gain);
     gain.connect(this._audio.sfxGain);
     osc.start();
@@ -4825,9 +4845,220 @@ const StarfallPage = {
     this._els.audioToggle.textContent = enabled ? "🔊 音景开启" : "🔇 音景关闭";
     this._els.audioToggle.setAttribute("aria-pressed", enabled ? "true" : "false");
   },
+  formatScore(value) {
+    if (!Number.isFinite(value)) return "0";
+    const rounded = Math.round(value);
+    try {
+      return rounded.toLocaleString("zh-CN");
+    } catch (_) {
+      return String(rounded);
+    }
+  },
+  calculateScore(state = this._state, ending = null) {
+    if (!state) return 0;
+    const res = state.resources || {};
+    let day = Math.max(0, Math.round(res.day || 0));
+    if (day <= 0 && state.phase && state.phase !== "intro") {
+      day = state.phase === "countdown" ? 0 : 1;
+    }
+    const roster = getRoster(state);
+    const flags = state.flags || {};
+    const fuel = Math.max(0, Number(res.fuel || 0));
+    const food = Math.max(0, Number(res.food || 0));
+    const o2 = Math.max(0, Number(res.o2 || 0));
+    const signal = Math.max(0, Number(res.signal || 0));
+    const mind = Math.max(0, Number(res.mind || 0));
+    const satiety = Math.max(0, Number(res.satiety || 0));
+    const crewCount = roster.length;
+    const finalEnding = ending || state.currentEnding || null;
+    const dayScore = day * 140;
+    const longHaulBonus = Math.max(0, day - 50) * 24;
+    const resourceScore = fuel * 2.8 + o2 * 2.5 + signal * 2.2 + food * 1.7;
+    const mindScore = mind * 1.35;
+    const crewScore =
+      crewCount * 220 +
+      (flags.crewBond ? 45 : 0) +
+      (flags.caravanAlliance ? 80 : 0) +
+      (flags.legendColony ? 70 : 0);
+    const satietyScore = satiety * 45;
+    let milestoneBonus = 0;
+    if (flags.legendFinal) milestoneBonus += 600;
+    if (flags.surfaceColony) milestoneBonus += 260;
+    if (flags.surfaceBeacon) milestoneBonus += 220;
+    if (flags.surfaceChorus) milestoneBonus += 260;
+    if (flags.surfaceAwaken) milestoneBonus += 240;
+    if (flags.surfaceAscended) milestoneBonus += 240;
+    if (flags.vectorPlotted) milestoneBonus += 180;
+    if (flags.archiveLinked) milestoneBonus += 210;
+    if (flags.legendVoyage) milestoneBonus += 260;
+    if (flags.legendRescue) milestoneBonus += 240;
+    if (flags.legendCaravan) milestoneBonus += 240;
+    if (flags.legendArchive) milestoneBonus += 240;
+    if (flags.legendWayfinder) milestoneBonus += 240;
+    if (flags.surfaceBeacon && signal >= 60) milestoneBonus += 120;
+    const toneMap = { hope: 900, mystic: 820, neutral: 680, dark: 420 };
+    const toneKey = finalEnding?.codexTone || "neutral";
+    const endingBonus = finalEnding ? toneMap[toneKey] || 620 : 0;
+    const darkPenalty = finalEnding && toneKey === "dark" ? 180 : 0;
+    const total =
+      dayScore +
+      longHaulBonus +
+      resourceScore +
+      mindScore +
+      crewScore +
+      satietyScore +
+      milestoneBonus +
+      endingBonus -
+      darkPenalty;
+    return Math.max(0, Math.round(total));
+  },
+  async refreshProfile() {
+    if (typeof API === "undefined" || !API.token) {
+      this.renderStats();
+      this.renderLeaderboard();
+      return;
+    }
+    try {
+      const profile = await API.starfallProfile();
+      if (profile && typeof profile === "object") {
+        this._profile = profile;
+        this.renderStats();
+        this.renderLeaderboard();
+      }
+    } catch (err) {
+      /* ignore */
+    }
+  },
+  async refreshLeaderboard(limit = 12) {
+    if (typeof API === "undefined" || !API.token) {
+      this._leaderboard = [];
+      this._leaderboardSelf = null;
+      this.renderLeaderboard();
+      return;
+    }
+    try {
+      const board = await API.starfallLeaderboard(limit);
+      if (board && typeof board === "object") {
+        this._leaderboard = Array.isArray(board.entries) ? board.entries : [];
+        if (board.self && typeof board.self === "object") {
+          this._leaderboardSelf = board.self;
+          this._profile = { ...(this._profile || {}), ...board.self };
+        } else {
+          this._leaderboardSelf = null;
+        }
+        this.renderLeaderboard();
+        this.renderStats();
+      }
+    } catch (err) {
+      this._leaderboard = [];
+      this._leaderboardSelf = null;
+      this.renderLeaderboard();
+    }
+  },
+  async submitRunResult(ending = null) {
+    if (typeof API === "undefined" || !API.token) return;
+    const state = this._state;
+    if (!state) return;
+    const score = this.calculateScore(state, ending);
+    state.score = score;
+    const res = state.resources || {};
+    let day = Math.max(0, Math.round(res.day || 0));
+    if (day <= 0 && state.phase && state.phase !== "intro") {
+      day = state.phase === "countdown" ? 0 : 1;
+    }
+    try {
+      const resp = await API.starfallSubmit({
+        score,
+        day,
+        ending_id: ending?.id || "",
+        ending_title: ending?.title || "",
+        ending_tone: ending?.codexTone || "",
+      });
+      if (resp && typeof resp === "object") {
+        if (resp.profile && typeof resp.profile === "object") {
+          this._profile = { ...(this._profile || {}), ...resp.profile };
+        }
+        if (resp.leaderboard && typeof resp.leaderboard === "object") {
+          this._leaderboard = Array.isArray(resp.leaderboard.entries)
+            ? resp.leaderboard.entries
+            : this._leaderboard;
+          if (resp.leaderboard.self && typeof resp.leaderboard.self === "object") {
+            this._leaderboardSelf = resp.leaderboard.self;
+            this._profile = { ...(this._profile || {}), ...resp.leaderboard.self };
+          }
+        } else if (typeof resp.best_score === "number") {
+          this._profile = { ...(this._profile || {}), ...resp };
+        }
+        this.renderStats();
+        this.renderLeaderboard();
+      }
+    } catch (err) {
+      this.pushLog(`排行榜同步失败：${(err && err.message) || err}`, "error");
+    }
+  },
+  renderLeaderboard() {
+    if (!this._els?.leaderboard) return;
+    const hasApi = typeof API !== "undefined";
+    if (!hasApi || !API.token) {
+      this._els.leaderboard.innerHTML = '<div class="starfall-leaderboard__card"><div class="starfall-leaderboard__title">积分排行榜</div><p class="starfall-leaderboard__empty">登录后可记录得分并查看排行榜。</p></div>';
+      return;
+    }
+    const entries = Array.isArray(this._leaderboard) ? this._leaderboard : [];
+    const profile = this._profile || {};
+    if (!entries.length) {
+      this._els.leaderboard.innerHTML = '<div class="starfall-leaderboard__card"><div class="starfall-leaderboard__title">积分排行榜</div><p class="starfall-leaderboard__empty">暂无排行数据，完成一局旅程后刷新。</p></div>';
+      return;
+    }
+    const selfRank = Number.isFinite(profile.rank) ? Number(profile.rank) : null;
+    const header = selfRank && selfRank > 0
+      ? `<div class="starfall-leaderboard__self">当前排名：#${selfRank} · 最佳日数 ${Math.max(0, profile.best_day || 0)}</div>`
+      : "";
+    const rows = entries
+      .map((entry, idx) => {
+        const rank = typeof entry.rank === "number" ? entry.rank : idx + 1;
+        const isSelf = profile && entry.user_id != null && profile.user_id === entry.user_id;
+        const name = escapeHtml(entry.username || "未知旅人");
+        const score = this.formatScore(entry.score || 0);
+        const day = Math.max(0, entry.day || 0);
+        const ending = entry.ending_title ? `<span class="ending">${escapeHtml(entry.ending_title)}</span>` : "";
+        return `
+          <li class="${isSelf ? "is-self" : ""}">
+            <span class="rank">#${rank}</span>
+            <span class="name">${name}</span>
+            <span class="score">${score}</span>
+            <span class="day">Day ${day}</span>
+            ${ending}
+          </li>
+        `;
+      })
+      .join("");
+    this._els.leaderboard.innerHTML = `
+      <div class="starfall-leaderboard__card">
+        <div class="starfall-leaderboard__title">积分排行榜</div>
+        ${header}
+        <ol class="starfall-leaderboard__list">${rows}</ol>
+      </div>
+    `;
+  },
   renderStats() {
     if (!this._els?.stats || !this._state) return;
     const { phase, resources, time } = this._state;
+    const profile = this._profile || {};
+    const bestScoreRaw = Number.isFinite(profile.best_score)
+      ? profile.best_score
+      : Number.isFinite(profile.bestScore)
+      ? profile.bestScore
+      : 0;
+    const bestDay = Number.isFinite(profile.best_day)
+      ? profile.best_day
+      : Number.isFinite(profile.bestDay)
+      ? profile.bestDay
+      : 0;
+    const rankLabel = Number.isFinite(profile.rank) && profile.rank > 0
+      ? `#${profile.rank}`
+      : "未上榜";
+    const score = this.calculateScore();
+    this._state.score = score;
     const build = (label, value, cls = "") => `
       <div class="starfall-stat ${cls}">
         <div class="starfall-stat__label">${escapeHtml(label)}</div>
@@ -4835,7 +5066,12 @@ const StarfallPage = {
       </div>
     `;
     if (phase === "intro") {
-      this._els.stats.innerHTML = build("状态", "等待启动");
+      this._els.stats.innerHTML = [
+        build("状态", "等待启动"),
+        build("最佳分数", this.formatScore(bestScoreRaw)),
+        build("最长日数", Math.max(0, bestDay || 0)),
+        build("排名", rankLabel),
+      ].join("");
       return;
     }
     if (phase === "countdown") {
@@ -4848,6 +5084,10 @@ const StarfallPage = {
         build("心智", Math.round(res.mind)),
         build("人员", res.crew),
         build("信号", Math.round(res.signal)),
+        build("当前分数", this.formatScore(score)),
+        build("最佳分数", this.formatScore(bestScoreRaw)),
+        build("最长日数", Math.max(0, bestDay || 0)),
+        build("排名", rankLabel),
       ].join("");
       return;
     }
@@ -4863,6 +5103,10 @@ const StarfallPage = {
       build("信号", Math.round(res.signal)),
       build("饱腹", hungerState, res.satiety <= 0 ? "is-warning" : ""),
       build("同伴", crewListLabel(this._state)),
+      build("当前分数", this.formatScore(score)),
+      build("最佳分数", this.formatScore(bestScoreRaw)),
+      build("最长日数", Math.max(0, bestDay || 0)),
+      build("排名", rankLabel),
     ];
     this._els.stats.innerHTML = items.join("");
   },

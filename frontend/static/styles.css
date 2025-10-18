@@ -1024,7 +1024,7 @@ h3 + .muted.small { margin-top:-6px; }
 .starfall-layout { display:grid; gap:16px; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); align-items:stretch; flex:1; min-height:0; }
 .starfall-main,.starfall-side { display:grid; gap:14px; min-height:0; }
 .starfall-main { grid-template-rows:auto minmax(0,1fr) minmax(0,220px); }
-.starfall-side { grid-template-rows:minmax(0,1fr) minmax(0,1fr); }
+.starfall-side { grid-template-rows:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); }
 .starfall-stats { display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); }
 .starfall-stat { padding:12px 14px; border-radius:14px; background: linear-gradient(155deg, rgba(40,58,110,0.85), rgba(18,30,56,0.85)); border:1px solid rgba(148,197,255,0.32); box-shadow: 0 14px 32px rgba(6,12,28,0.5); text-shadow: 0 0 10px rgba(82,156,255,0.28); }
 .starfall-stat.is-warning { border-color: rgba(251,191,36,0.75); box-shadow: 0 0 0 1px rgba(251,191,36,0.35) inset, 0 16px 28px rgba(151,101,19,0.32); }
@@ -1062,6 +1062,20 @@ h3 + .muted.small { margin-top:-6px; }
 .starfall-codex__item--neutral { border-color: rgba(148,163,184,0.3); box-shadow: inset 0 0 14px rgba(88,102,126,0.2); }
 .starfall-codex__name { margin: 0 0 6px; font-size: 15px; font-weight: 600; color: #f6fbff; }
 .starfall-codex__summary { margin: 0; font-size: 13px; color: #c6d7ff; line-height: 1.6; }
+.starfall-leaderboard { background: linear-gradient(160deg, rgba(18,30,60,0.85), rgba(8,14,30,0.88)); border: 1px solid rgba(108,170,255,0.3); border-radius: 18px; padding:16px 18px; box-shadow: 0 20px 38px rgba(6,12,26,0.48); overflow-y:auto; min-height:0; display:flex; flex-direction:column; }
+.starfall-leaderboard__card { display:flex; flex-direction:column; gap:10px; }
+.starfall-leaderboard__title { margin:0; font-size:18px; letter-spacing:0.08em; text-transform:uppercase; color:#f1f7ff; text-shadow:0 0 12px rgba(148,207,255,0.45); }
+.starfall-leaderboard__self { font-size:13px; color:#9cc9ff; background:rgba(24,42,76,0.6); padding:6px 10px; border-radius:10px; border:1px solid rgba(104,174,255,0.32); }
+.starfall-leaderboard__list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.starfall-leaderboard__list li { display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center; padding:8px 10px; border-radius:10px; background:rgba(14,24,46,0.78); border:1px solid rgba(96,156,255,0.26); color:#dce7ff; font-size:13px; }
+.starfall-leaderboard__list li .rank { font-weight:700; color:#7dd3fc; }
+.starfall-leaderboard__list li .name { font-weight:600; }
+.starfall-leaderboard__list li .score { font-weight:700; color:#fde68a; }
+.starfall-leaderboard__list li .day { font-size:12px; color:#9fb4ff; }
+.starfall-leaderboard__list li .ending { justify-self:end; font-size:11px; color:#c3d5ff; background:rgba(36,54,96,0.6); padding:2px 6px; border-radius:8px; }
+.starfall-leaderboard__list li.is-self { background:rgba(59,130,246,0.22); border-color:rgba(96,165,250,0.6); box-shadow:0 0 0 1px rgba(96,165,250,0.4), 0 12px 28px rgba(32,64,120,0.45); }
+.starfall-leaderboard__list li.is-self .name { color:#f8fbff; }
+.starfall-leaderboard__empty { font-size:13px; color:#9fb4ff; text-align:center; padding:18px 0 8px; }
 .starfall-actions { display:flex; justify-content:flex-end; }
 .starfall-start { width: 100%; }
 @media (max-width: 1200px) {
@@ -1071,11 +1085,12 @@ h3 + .muted.small { margin-top:-6px; }
   .starfall-layout { grid-template-columns:1fr; }
   .starfall-card--layout { min-height:0; }
   .starfall-main { grid-template-rows:auto minmax(0,1fr) minmax(0,1fr); }
-  .starfall-side { grid-template-rows:minmax(0,240px) minmax(0,1fr); }
+  .starfall-side { grid-template-rows:minmax(0,220px) minmax(0,220px) minmax(0,1fr); }
 }
 @media (max-width: 720px) {
   .starfall-card--layout { padding:18px 16px; }
-  .starfall-side { grid-template-rows:minmax(0,220px) minmax(0,220px); }
+  .starfall-side { grid-template-rows:minmax(0,200px) minmax(0,200px) minmax(0,200px); }
   .starfall-log,
-  .starfall-codex { max-height:220px; }
+  .starfall-codex,
+  .starfall-leaderboard { max-height:200px; }
 }
