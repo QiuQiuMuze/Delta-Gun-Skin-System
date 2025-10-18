@@ -220,6 +220,7 @@ const Pages = {
   shop: ShopPage,
   gacha: GachaPage,
   cookie: CookieFactoryPage,
+  starfall: StarfallPage,
   cultivation: CultivationPage,
   friends: FriendsPage,
   inventory: InventoryPage,
