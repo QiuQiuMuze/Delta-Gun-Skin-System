@@ -163,6 +163,7 @@ const Pages = {
       const skinSell = renderList(mail?.skin?.sell || [], "sell");
       return `<div class="card"><h2>我的信息</h2>
         <div class="grid cols-3">
+          <div class="kv"><div class="k">用户ID</div><div class="v">${d.user_id}</div></div>
           <div class="kv"><div class="k">用户名</div><div class="v">${d.username}</div></div>
           <div class="kv"><div class="k">手机号</div><div class="v">${d.phone}</div></div>
           <div class="kv"><div class="k">三角币</div><div class="v">${d.coins}</div></div>
@@ -220,6 +221,7 @@ const Pages = {
   gacha: GachaPage,
   cookie: CookieFactoryPage,
   cultivation: CultivationPage,
+  friends: FriendsPage,
   inventory: InventoryPage,
   craft: CraftPage,
   market: MarketPage,
