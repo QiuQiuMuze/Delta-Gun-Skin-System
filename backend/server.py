@@ -254,6 +254,21 @@ class CultivationLeaderboardEntry(Base):
     updated_at = Column(Integer, default=lambda: int(time.time()))
 
 
+class StarfallLeaderboardEntry(Base):
+    __tablename__ = "starfall_leaderboard"
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    username = Column(String, nullable=False)
+    best_score = Column(Integer, default=0)
+    best_day = Column(Integer, default=0)
+    best_ending_id = Column(String, default="")
+    best_ending_title = Column(String, default="")
+    last_score = Column(Integer, default=0)
+    last_day = Column(Integer, default=0)
+    last_ending_id = Column(String, default="")
+    last_ending_title = Column(String, default="")
+    updated_at = Column(Integer, default=lambda: int(time.time()))
+
+
 def ensure_friendship_pair(db: Session, user_id: int, friend_id: int) -> None:
     if not user_id or not friend_id or user_id == friend_id:
         return
@@ -637,6 +652,14 @@ class CookieActIn(BaseModel):
     amount: Optional[int] = 1
     building: Optional[str] = None
     mini: Optional[str] = None
+
+
+class StarfallRunIn(BaseModel):
+    score: int
+    day: int
+    ending_id: Optional[str] = None
+    ending_title: Optional[str] = None
+    ending_tone: Optional[str] = None
 
 
 class CultivationBeginIn(BaseModel):
@@ -8119,6 +8142,119 @@ def update_cultivation_leaderboard(db: Session, user: User, score: int) -> None:
     db.flush()
 
 
+def _starfall_rank(db: Session, score: int, updated_at: int) -> int:
+    better = (
+        db.query(func.count(StarfallLeaderboardEntry.user_id))
+        .filter(
+            (StarfallLeaderboardEntry.best_score > score)
+            | (
+                (StarfallLeaderboardEntry.best_score == score)
+                & (StarfallLeaderboardEntry.updated_at < updated_at)
+            )
+        )
+        .scalar()
+    )
+    return int(better or 0) + 1
+
+
+def serialize_starfall_entry(entry: Optional[StarfallLeaderboardEntry], db: Session) -> Dict[str, Any]:
+    if not entry:
+        return {
+            "user_id": None,
+            "username": None,
+            "best_score": 0,
+            "best_day": 0,
+            "best_ending_id": "",
+            "best_ending_title": "",
+            "last_score": 0,
+            "last_day": 0,
+            "last_ending_id": "",
+            "last_ending_title": "",
+            "rank": None,
+        }
+    rank = _starfall_rank(
+        db,
+        int(entry.best_score or 0),
+        int(entry.updated_at or 0),
+    )
+    return {
+        "user_id": int(entry.user_id or 0),
+        "username": entry.username,
+        "best_score": int(entry.best_score or 0),
+        "best_day": int(entry.best_day or 0),
+        "best_ending_id": entry.best_ending_id or "",
+        "best_ending_title": entry.best_ending_title or "",
+        "last_score": int(entry.last_score or 0),
+        "last_day": int(entry.last_day or 0),
+        "last_ending_id": entry.last_ending_id or "",
+        "last_ending_title": entry.last_ending_title or "",
+        "rank": rank,
+    }
+
+
+def record_starfall_run(
+    db: Session,
+    user: User,
+    score: int,
+    day: int,
+    ending_id: Optional[str],
+    ending_title: Optional[str],
+) -> StarfallLeaderboardEntry:
+    entry = db.query(StarfallLeaderboardEntry).filter_by(user_id=int(user.id)).first()
+    now = int(time.time())
+    if not entry:
+        entry = StarfallLeaderboardEntry(user_id=int(user.id), username=user.username)
+        db.add(entry)
+    entry.username = user.username
+    safe_score = max(0, int(score or 0))
+    safe_day = max(0, int(day or 0))
+    entry.last_score = safe_score
+    entry.last_day = safe_day
+    entry.last_ending_id = (ending_id or "").strip()[:64]
+    entry.last_ending_title = (ending_title or "").strip()[:128]
+    if safe_score > int(entry.best_score or 0):
+        entry.best_score = safe_score
+        entry.best_day = safe_day
+        entry.best_ending_id = entry.last_ending_id
+        entry.best_ending_title = entry.last_ending_title
+    elif safe_score == int(entry.best_score or 0) and safe_day > int(entry.best_day or 0):
+        entry.best_day = safe_day
+        if entry.last_ending_id:
+            entry.best_ending_id = entry.last_ending_id
+        if entry.last_ending_title:
+            entry.best_ending_title = entry.last_ending_title
+    entry.updated_at = now
+    db.flush()
+    return entry
+
+
+def starfall_leaderboard_payload(db: Session, limit: int = 20) -> Dict[str, Any]:
+    rows = (
+        db.query(StarfallLeaderboardEntry)
+        .order_by(
+            StarfallLeaderboardEntry.best_score.desc(),
+            StarfallLeaderboardEntry.updated_at.asc(),
+            StarfallLeaderboardEntry.user_id.asc(),
+        )
+        .limit(max(1, int(limit or 0)))
+        .all()
+    )
+    entries = []
+    for idx, row in enumerate(rows, start=1):
+        entries.append(
+            {
+                "rank": idx,
+                "user_id": int(row.user_id or 0),
+                "username": row.username,
+                "score": int(row.best_score or 0),
+                "day": int(row.best_day or 0),
+                "ending_id": row.best_ending_id or "",
+                "ending_title": row.best_ending_title or "",
+            }
+        )
+    return {"entries": entries, "generated_at": int(time.time())}
+
+
 def _cultivation_finalize(
     db: Session,
     profile: CookieFactoryProfile,
@@ -10220,8 +10356,47 @@ def cultivation_leaderboard(
                 "updated_at": int(row.updated_at or 0),
                 "is_self": bool(user.id == row.user_id) if user else False,
             }
-        )
+    )
     return {"entries": entries, "generated_at": int(time.time())}
+
+
+@app.get("/starfall/profile")
+def starfall_profile(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    entry = db.query(StarfallLeaderboardEntry).filter_by(user_id=int(user.id)).first()
+    return serialize_starfall_entry(entry, db)
+
+
+@app.get("/starfall/leaderboard")
+def starfall_leaderboard(
+    limit: int = Query(20, ge=1, le=100),
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    board = starfall_leaderboard_payload(db, limit)
+    mine = db.query(StarfallLeaderboardEntry).filter_by(user_id=int(user.id)).first()
+    board["self"] = serialize_starfall_entry(mine, db)
+    return board
+
+
+@app.post("/starfall/run")
+def starfall_run(
+    payload: StarfallRunIn,
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    entry = record_starfall_run(
+        db,
+        user,
+        int(payload.score or 0),
+        int(payload.day or 0),
+        payload.ending_id,
+        payload.ending_title,
+    )
+    db.commit()
+    profile = serialize_starfall_entry(entry, db)
+    board = starfall_leaderboard_payload(db)
+    board["self"] = profile
+    return {"profile": profile, "leaderboard": board}
 
 
 @app.post("/cultivation/refresh")
