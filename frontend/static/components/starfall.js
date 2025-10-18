@@ -427,8 +427,25 @@ const StarfallData = (() => {
   return {
     countdownEvents,
     randomInt,
+    crewTemplates,
+    getRoster,
+    hasCrewRole,
+    getCrewById,
+    pickCrewForLoss,
+    crewListLabel,
+    chooseCrew,
   };
 })();
+
+const {
+  crewTemplates,
+  getRoster,
+  hasCrewRole,
+  getCrewById,
+  pickCrewForLoss,
+  crewListLabel,
+  chooseCrew,
+} = StarfallData;
 
 const StarfallPage = {
   _state: null,
