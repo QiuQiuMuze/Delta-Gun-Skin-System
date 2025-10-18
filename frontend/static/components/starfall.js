@@ -2101,9 +2101,8 @@ const StarfallPage = {
       enabled: false,
       userMuted: false,
       currentMode: null,
+      currentPreset: null,
       pendingMode: "prelude",
-      bgmNodes: [],
-      release: 0.7,
     };
     this._isAdmin = (typeof API !== "undefined") && !!(API._me && API._me.is_admin);
     this._els = {
@@ -2133,14 +2132,25 @@ const StarfallPage = {
       onToggleAudio: () => {
         this.toggleAudio();
       },
+      onToggleLeaderboard: (ev) => {
+        const btn = ev.target.closest('[data-role="starfall-leaderboard-toggle"]');
+        if (!btn) return;
+        ev.preventDefault();
+        this._showLeaderboard = !this._showLeaderboard;
+        this.renderLeaderboard();
+      },
     };
     this._leaderboard = [];
     this._leaderboardSelf = null;
     this._profile = null;
+    this._showLeaderboard = false;
     this._els.choices.addEventListener("click", this._handlers.onChoice);
     this._els.restart.addEventListener("click", this._handlers.onRestart);
     if (this._els.audioToggle) {
       this._els.audioToggle.addEventListener("click", this._handlers.onToggleAudio);
+    }
+    if (this._els.leaderboard) {
+      this._els.leaderboard.addEventListener("click", this._handlers.onToggleLeaderboard);
     }
     this.initState();
     this.renderState();
@@ -2156,6 +2166,9 @@ const StarfallPage = {
     }
     if (this._els?.audioToggle && this._handlers?.onToggleAudio) {
       this._els.audioToggle.removeEventListener("click", this._handlers.onToggleAudio);
+    }
+    if (this._els?.leaderboard && this._handlers?.onToggleLeaderboard) {
+      this._els.leaderboard.removeEventListener("click", this._handlers.onToggleLeaderboard);
     }
     this.disableAudio(false, true);
     this._state = null;
@@ -4501,45 +4514,23 @@ const StarfallPage = {
     this.renderLeaderboard();
     this.renderAudio();
   },
-  ensureAudioContext() {
-    if (typeof window === "undefined") return false;
-    const AudioCtor = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtor) return false;
+  ensureAudioEngine() {
     if (!this._audio) {
       this._audio = {
         enabled: false,
         userMuted: false,
         currentMode: null,
+        currentPreset: null,
         pendingMode: this.determineBgmMode(),
-        bgmNodes: [],
-        release: 0.7,
       };
-    } else {
-      if (!Array.isArray(this._audio.bgmNodes)) {
-        this._audio.bgmNodes = [];
-      }
-      if (typeof this._audio.pendingMode !== "string") {
-        this._audio.pendingMode = this.determineBgmMode();
-      }
     }
-    if (!this._audio.ctx) {
-      const ctx = new AudioCtor();
-      const masterGain = ctx.createGain();
-      masterGain.gain.value = 0.5;
-      masterGain.connect(ctx.destination);
-      const bgmGain = ctx.createGain();
-      bgmGain.gain.value = 0;
-      bgmGain.connect(masterGain);
-      const sfxGain = ctx.createGain();
-      sfxGain.gain.value = 0.7;
-      sfxGain.connect(masterGain);
-      this._audio.ctx = ctx;
-      this._audio.masterGain = masterGain;
-      this._audio.bgmGain = bgmGain;
-      this._audio.sfxGain = sfxGain;
+    if (typeof window === "undefined" || !window.AudioEngine) {
+      return false;
     }
-    if (this._audio.ctx.state === "suspended") {
-      this._audio.ctx.resume();
+    try {
+      window.AudioEngine.ensure?.();
+    } catch (_) {
+      return false;
     }
     return true;
   },
@@ -4565,86 +4556,24 @@ const StarfallPage = {
         return "day";
     }
   },
-  _getBgmConfig(mode) {
+  resolveBgmPreset(mode) {
     switch (mode) {
       case "countdown":
-        return {
-          gain: 0.28,
-          attack: 0.55,
-          release: 0.7,
-          layers: [
-            { type: "sawtooth", freq: 76, level: 0.24, lfo: { freq: 0.9, depth: 14, target: "gain" } },
-            { type: "square", freq: 48, level: 0.18, lfo: { freq: 0.42, depth: 10 } },
-            { type: "triangle", freq: 28, level: 0.14, lfo: { freq: 0.16, depth: 6 } },
-          ],
-        };
-      case "day":
-        return {
-          gain: 0.22,
-          attack: 1.2,
-          release: 1.0,
-          layers: [
-            { type: "sine", freq: 36, level: 0.2, lfo: { freq: 0.05, depth: 5 } },
-            { type: "triangle", freq: 62, level: 0.16, lfo: { freq: 0.08, depth: 8 } },
-            { type: "sawtooth", freq: 94, level: 0.12, detune: -5, lfo: { freq: 0.12, depth: 12 } },
-          ],
-        };
+        return "starfall-countdown";
       case "ending-positive":
-        return {
-          gain: 0.24,
-          attack: 1.1,
-          release: 1.3,
-          layers: [
-            { type: "triangle", freq: 96, level: 0.22, lfo: { freq: 0.11, depth: 14 } },
-            { type: "sine", freq: 48, level: 0.18, lfo: { freq: 0.06, depth: 0.08, target: "gain" } },
-            { type: "sine", freq: 144, level: 0.1, detune: 3, lfo: { freq: 0.16, depth: 18 } },
-          ],
-        };
+        return "starfall-hope";
       case "ending-mystic":
-        return {
-          gain: 0.22,
-          attack: 1.4,
-          release: 1.3,
-          layers: [
-            { type: "sine", freq: 64, level: 0.18, lfo: { freq: 0.1, depth: 16 } },
-            { type: "triangle", freq: 128, level: 0.14, lfo: { freq: 0.14, depth: 18 } },
-            { type: "sine", freq: 24, level: 0.12, lfo: { freq: 0.05, depth: 7 } },
-          ],
-        };
+        return "starfall-mystic";
       case "ending-negative":
-        return {
-          gain: 0.19,
-          attack: 1.5,
-          release: 1.4,
-          layers: [
-            { type: "square", freq: 28, level: 0.22, lfo: { freq: 0.02, depth: 6 } },
-            { type: "triangle", freq: 44, level: 0.16, lfo: { freq: 0.05, depth: 8 } },
-            { type: "sawtooth", freq: 18, level: 0.12, lfo: { freq: 0.015, depth: 5 } },
-          ],
-        };
+        return "starfall-void";
       case "ending-neutral":
-        return {
-          gain: 0.21,
-          attack: 1.3,
-          release: 1.0,
-          layers: [
-            { type: "triangle", freq: 80, level: 0.2, lfo: { freq: 0.1, depth: 12 } },
-            { type: "sine", freq: 40, level: 0.16, lfo: { freq: 0.06, depth: 7 } },
-            { type: "sawtooth", freq: 110, level: 0.12, lfo: { freq: 0.14, depth: 16 } },
-          ],
-        };
+        return "starfall-neutral";
+      case "day":
+      case "interlude":
+        return "starfall-deep";
       case "prelude":
       default:
-        return {
-          gain: 0.18,
-          attack: 1.6,
-          release: 1.1,
-          layers: [
-            { type: "sine", freq: 32, level: 0.2, lfo: { freq: 0.04, depth: 6 } },
-            { type: "triangle", freq: 58, level: 0.16, lfo: { freq: 0.08, depth: 10, target: "gain" } },
-            { type: "sine", freq: 18, level: 0.12, lfo: { freq: 0.02, depth: 4 } },
-          ],
-        };
+        return "starfall-prelude";
     }
   },
   setBgmMode(mode) {
@@ -4653,24 +4582,25 @@ const StarfallPage = {
         enabled: false,
         userMuted: false,
         currentMode: null,
-        pendingMode: mode || this.determineBgmMode(),
-        bgmNodes: [],
-        release: 0.7,
+        currentPreset: null,
+        pendingMode: this.determineBgmMode(),
       };
     }
     const target = mode || this.determineBgmMode();
+    const preset = this.resolveBgmPreset(target);
     this._audio.pendingMode = target;
-    if (!this._audio.enabled) {
+    if (!this._audio.enabled || !preset) {
       return;
     }
-    if (
-      this._audio.currentMode === target &&
-      Array.isArray(this._audio.bgmNodes) &&
-      this._audio.bgmNodes.length
-    ) {
+    if (!this.ensureAudioEngine()) {
       return;
     }
-    this.startBgm(target);
+    if (this._audio.currentMode === target && this._audio.currentPreset === preset) {
+      return;
+    }
+    window.AudioEngine?.playPreset?.("starfall", preset);
+    this._audio.currentMode = target;
+    this._audio.currentPreset = preset;
   },
   syncAudioState() {
     if (!this._audio) {
@@ -4678,9 +4608,8 @@ const StarfallPage = {
         enabled: false,
         userMuted: false,
         currentMode: null,
+        currentPreset: null,
         pendingMode: this.determineBgmMode(),
-        bgmNodes: [],
-        release: 0.7,
       };
     }
     const mode = this.determineBgmMode();
@@ -4689,93 +4618,8 @@ const StarfallPage = {
       this.setBgmMode(mode);
     }
   },
-  startBgm(mode = null) {
-    if (!this.ensureAudioContext()) return;
-    if (!this._audio) return;
-    const ctx = this._audio.ctx;
-    const target = mode || this._audio.pendingMode || this.determineBgmMode();
-    const config = this._getBgmConfig(target);
-    if (!config) return;
-    this.stopBgm(true);
-    const nodes = [];
-    const gainNode = this._audio.bgmGain;
-    const now = ctx.currentTime;
-    gainNode.gain.cancelScheduledValues(now);
-    gainNode.gain.setValueAtTime(0.0001, now);
-    (config.layers || []).forEach((layer) => {
-      const osc = ctx.createOscillator();
-      osc.type = layer.type || "sine";
-      osc.frequency.value = layer.freq || 110;
-      if (typeof layer.detune === "number") {
-        osc.detune.value = layer.detune;
-      }
-      const gain = ctx.createGain();
-      const level = typeof layer.level === "number" ? layer.level : 0.18;
-      gain.gain.value = level;
-      osc.connect(gain);
-      gain.connect(gainNode);
-      if (layer.lfo) {
-        const lfo = ctx.createOscillator();
-        lfo.type = layer.lfo.type || "sine";
-        lfo.frequency.value = layer.lfo.freq || 0.2;
-        const lfoGain = ctx.createGain();
-        lfoGain.gain.value = layer.lfo.depth || 6;
-        lfo.connect(lfoGain);
-        if (layer.lfo.target === "gain") {
-          lfoGain.connect(gain.gain);
-        } else {
-          lfoGain.connect(osc.frequency);
-        }
-        lfo.start();
-        nodes.push(lfo, lfoGain);
-      }
-      osc.start();
-      nodes.push(osc, gain);
-    });
-    gainNode.gain.setTargetAtTime(config.gain ?? 0.2, now, config.attack ?? 1.2);
-    this._audio.bgmNodes = nodes;
-    this._audio.currentMode = target;
-    this._audio.release = config.release ?? 0.8;
-  },
-  stopBgm(immediate = false) {
-    if (!this._audio?.bgmGain) return;
-    const ctx = this._audio.ctx;
-    const nodes = Array.isArray(this._audio.bgmNodes) ? this._audio.bgmNodes : [];
-    const release = immediate ? 0.05 : (this._audio.release || 0.6);
-    if (ctx) {
-      const now = ctx.currentTime;
-      this._audio.bgmGain.gain.cancelScheduledValues(now);
-      if (immediate) {
-        this._audio.bgmGain.gain.setValueAtTime(0.0001, now);
-      } else {
-        const current = Math.max(0.0001, this._audio.bgmGain.gain.value || 0.0001);
-        this._audio.bgmGain.gain.setValueAtTime(current, now);
-        this._audio.bgmGain.gain.setTargetAtTime(0.0001, now, release);
-      }
-    }
-    nodes.forEach((node) => {
-      if (!node) return;
-      try {
-        if (typeof node.stop === "function") {
-          const stopAt = ctx ? ctx.currentTime + (immediate ? 0.05 : release + 0.1) : undefined;
-          node.stop(stopAt);
-        }
-      } catch (_) {
-        /* ignore */
-      }
-      try {
-        if (typeof node.disconnect === "function") {
-          node.disconnect();
-        }
-      } catch (_) {
-        /* ignore */
-      }
-    });
-    this._audio.bgmNodes = [];
-    this._audio.currentMode = null;
-  },
   enableAudio(auto = false) {
-    if (!this.ensureAudioContext()) return;
+    if (!this.ensureAudioEngine()) return;
     if (!this._audio) return;
     if (this._audio.enabled) return;
     this._audio.enabled = true;
@@ -4799,8 +4643,9 @@ const StarfallPage = {
     if (fromUser) {
       this._audio.userMuted = true;
     }
-    this.stopBgm(!!force);
+    window.AudioEngine?.stopChannel?.("starfall", !!force);
     this._audio.currentMode = null;
+    this._audio.currentPreset = null;
     this.renderAudio();
   },
   toggleAudio() {
@@ -4809,9 +4654,8 @@ const StarfallPage = {
         enabled: false,
         userMuted: false,
         currentMode: null,
+        currentPreset: null,
         pendingMode: this.determineBgmMode(),
-        bgmNodes: [],
-        release: 0.7,
       };
     }
     if (this._audio.enabled) {
@@ -4822,21 +4666,10 @@ const StarfallPage = {
   },
   playSfx(type = "select") {
     if (!this._audio?.enabled) return;
-    if (!this.ensureAudioContext()) return;
-    const ctx = this._audio.ctx;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const base = type === "confirm" ? 360 : type === "warning" ? 160 : 280;
-    osc.type = type === "warning" ? "triangle" : "sine";
-    osc.frequency.setValueAtTime(base, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(base / 1.6, ctx.currentTime + 0.25);
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + 0.02);
-    gain.gain.setTargetAtTime(0, ctx.currentTime + 0.2, 0.12);
-    osc.connect(gain);
-    gain.connect(this._audio.sfxGain);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.4);
+    if (!this.ensureAudioEngine()) return;
+    const key = type === "confirm" ? "refresh-complete" : type === "warning" ? "refresh" : "ui-tap";
+    const opts = type === "warning" ? { playbackRate: 0.85 } : type === "confirm" ? { playbackRate: 1.05 } : {};
+    window.AudioEngine?.playSfx?.(key, opts);
   },
   renderAudio() {
     if (!this._els?.audioToggle) return;
@@ -4998,45 +4831,70 @@ const StarfallPage = {
   },
   renderLeaderboard() {
     if (!this._els?.leaderboard) return;
-    const hasApi = typeof API !== "undefined";
-    if (!hasApi || !API.token) {
-      this._els.leaderboard.innerHTML = '<div class="starfall-leaderboard__card"><div class="starfall-leaderboard__title">积分排行榜</div><p class="starfall-leaderboard__empty">登录后可记录得分并查看排行榜。</p></div>';
+    const hasApi = typeof API !== "undefined" && !!API.token;
+    if (!hasApi) {
+      this._els.leaderboard.innerHTML = `
+        <div class="starfall-leaderboard__card">
+          <div class="starfall-leaderboard__header">
+            <div class="starfall-leaderboard__title">积分排行榜</div>
+          </div>
+          <p class="starfall-leaderboard__empty">登录后可记录得分并查看排行榜。</p>
+        </div>
+      `;
       return;
     }
-    const entries = Array.isArray(this._leaderboard) ? this._leaderboard : [];
     const profile = this._profile || {};
-    if (!entries.length) {
-      this._els.leaderboard.innerHTML = '<div class="starfall-leaderboard__card"><div class="starfall-leaderboard__title">积分排行榜</div><p class="starfall-leaderboard__empty">暂无排行数据，完成一局旅程后刷新。</p></div>';
-      return;
-    }
-    const selfRank = Number.isFinite(profile.rank) ? Number(profile.rank) : null;
-    const header = selfRank && selfRank > 0
-      ? `<div class="starfall-leaderboard__self">当前排名：#${selfRank} · 最佳日数 ${Math.max(0, profile.best_day || 0)}</div>`
+    const entries = Array.isArray(this._leaderboard) ? this._leaderboard : [];
+    const toggleLabel = this._showLeaderboard ? "隐藏积分排行榜" : "查看积分排行榜";
+    const bestScoreRaw = Number.isFinite(profile.best_score)
+      ? profile.best_score
+      : Number.isFinite(profile.bestScore)
+      ? profile.bestScore
+      : 0;
+    const bestScore = this.formatScore(bestScoreRaw);
+    const bestDay = Math.max(0, Number.isFinite(profile.best_day) ? profile.best_day : Number(profile.bestDay) || 0);
+    const personal = `<div class="starfall-leaderboard__personal">最佳成绩：${bestScore} 分 · 最远 Day ${bestDay}</div>`;
+    const rankLine = Number.isFinite(profile.rank) && Number(profile.rank) > 0
+      ? `<div class="starfall-leaderboard__self">当前排名：#${Number(profile.rank)} · 最佳日数 ${bestDay}</div>`
       : "";
-    const rows = entries
-      .map((entry, idx) => {
-        const rank = typeof entry.rank === "number" ? entry.rank : idx + 1;
-        const isSelf = profile && entry.user_id != null && profile.user_id === entry.user_id;
-        const name = escapeHtml(entry.username || "未知旅人");
-        const score = this.formatScore(entry.score || 0);
-        const day = Math.max(0, entry.day || 0);
-        const ending = entry.ending_title ? `<span class="ending">${escapeHtml(entry.ending_title)}</span>` : "";
-        return `
-          <li class="${isSelf ? "is-self" : ""}">
-            <span class="rank">#${rank}</span>
-            <span class="name">${name}</span>
-            <span class="score">${score}</span>
-            <span class="day">Day ${day}</span>
-            ${ending}
-          </li>
-        `;
-      })
-      .join("");
+    let body = "";
+    if (!this._showLeaderboard) {
+      body = '<p class="starfall-leaderboard__hint">点击查看排行榜，了解其他旅程的轨迹。</p>';
+    } else if (!entries.length) {
+      body = '<p class="starfall-leaderboard__empty">暂无排行数据，完成一局旅程后刷新。</p>';
+    } else {
+      const rows = entries
+        .map((entry, idx) => {
+          if (!entry) return "";
+          const rank = typeof entry.rank === "number" ? entry.rank : idx + 1;
+          const isSelf = profile && entry.user_id != null && profile.user_id === entry.user_id;
+          const name = escapeHtml(entry.username || "未知旅人");
+          const score = this.formatScore(entry.score || 0);
+          const day = Math.max(0, entry.day || 0);
+          const ending = entry.ending_title ? `<span class="ending">${escapeHtml(entry.ending_title)}</span>` : "";
+          return `
+            <li class="${isSelf ? "is-self" : ""}">
+              <span class="rank">#${rank}</span>
+              <span class="name">${name}</span>
+              <span class="score">${score}</span>
+              <span class="day">Day ${day}</span>
+              ${ending}
+            </li>
+          `;
+        })
+        .filter(Boolean)
+        .join("");
+      body = `<ol class="starfall-leaderboard__list">${rows}</ol>`;
+    }
     this._els.leaderboard.innerHTML = `
       <div class="starfall-leaderboard__card">
-        <div class="starfall-leaderboard__title">积分排行榜</div>
-        ${header}
-        <ol class="starfall-leaderboard__list">${rows}</ol>
+        <div class="starfall-leaderboard__header">
+          <div class="starfall-leaderboard__title">积分排行榜</div>
+          <button class="btn btn-mini" data-role="starfall-leaderboard-toggle">${toggleLabel}</button>
+        </div>
+        ${rankLine || ""}
+        ${personal}
+        ${body}
       </div>
     `;
   },

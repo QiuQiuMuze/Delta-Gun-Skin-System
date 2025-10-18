@@ -1064,8 +1064,11 @@ h3 + .muted.small { margin-top:-6px; }
 .starfall-codex__summary { margin: 0; font-size: 13px; color: #c6d7ff; line-height: 1.6; }
 .starfall-leaderboard { background: linear-gradient(160deg, rgba(18,30,60,0.85), rgba(8,14,30,0.88)); border: 1px solid rgba(108,170,255,0.3); border-radius: 18px; padding:16px 18px; box-shadow: 0 20px 38px rgba(6,12,26,0.48); overflow-y:auto; min-height:0; display:flex; flex-direction:column; }
 .starfall-leaderboard__card { display:flex; flex-direction:column; gap:10px; }
+.starfall-leaderboard__header { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.starfall-leaderboard__header .btn { flex-shrink:0; }
 .starfall-leaderboard__title { margin:0; font-size:18px; letter-spacing:0.08em; text-transform:uppercase; color:#f1f7ff; text-shadow:0 0 12px rgba(148,207,255,0.45); }
 .starfall-leaderboard__self { font-size:13px; color:#9cc9ff; background:rgba(24,42,76,0.6); padding:6px 10px; border-radius:10px; border:1px solid rgba(104,174,255,0.32); }
+.starfall-leaderboard__personal { font-size:12px; color:#bcd9ff; background:rgba(20,34,68,0.55); padding:6px 10px; border-radius:10px; border:1px solid rgba(104,174,255,0.18); }
 .starfall-leaderboard__list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
 .starfall-leaderboard__list li { display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center; padding:8px 10px; border-radius:10px; background:rgba(14,24,46,0.78); border:1px solid rgba(96,156,255,0.26); color:#dce7ff; font-size:13px; }
 .starfall-leaderboard__list li .rank { font-weight:700; color:#7dd3fc; }
@@ -1076,6 +1079,7 @@ h3 + .muted.small { margin-top:-6px; }
 .starfall-leaderboard__list li.is-self { background:rgba(59,130,246,0.22); border-color:rgba(96,165,250,0.6); box-shadow:0 0 0 1px rgba(96,165,250,0.4), 0 12px 28px rgba(32,64,120,0.45); }
 .starfall-leaderboard__list li.is-self .name { color:#f8fbff; }
 .starfall-leaderboard__empty { font-size:13px; color:#9fb4ff; text-align:center; padding:18px 0 8px; }
+.starfall-leaderboard__hint { font-size:13px; color:#9fb4ff; text-align:center; padding:16px 0 6px; }
 .starfall-actions { display:flex; justify-content:flex-end; }
 .starfall-start { width: 100%; }
 @media (max-width: 1200px) {
