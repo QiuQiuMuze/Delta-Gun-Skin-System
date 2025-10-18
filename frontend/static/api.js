@@ -193,6 +193,13 @@ const API = {
   },
   friendsSendMessage: (friendId, message) =>
     API.json(`/friends/message/${friendId}`, "POST", { message }),
+  friendsRespond: (requestId, action) =>
+    API.json("/friends/respond", "POST", { request_id: requestId, action }),
+  friendsCancelRequest: (requestId) =>
+    API.json(`/friends/request/${requestId}`, "DELETE"),
+  friendsRemove: (friendId) => API.json(`/friends/${friendId}`, "DELETE"),
+  friendsBlock: (targetId) => API.json("/friends/block", "POST", { target_id: targetId }),
+  friendsUnblock: (targetId) => API.json("/friends/unblock", "POST", { target_id: targetId }),
 
   // ---- Market ----
   marketBrowse: (params = {}) => {
@@ -282,6 +289,13 @@ const API = {
 
   adminDeductFiat: (username, amount_fiat) =>
     API.json("/admin/deduct-fiat", "POST", { username, amount_fiat }),
+  adminPasswordRequest: (target_id) =>
+    API.json("/admin/user-password/request", "POST", { target_id }),
+  adminPasswordConfirm: (target_id, code, new_password = null) => {
+    const payload = { target_id, code };
+    if (new_password) payload.new_password = new_password;
+    return API.json("/admin/user-password/confirm", "POST", payload);
+  },
   // 删号：请求验证码 & 确认删除
   adminDeleteUserRequest: (target_username) =>
     API.json("/admin/delete-user/request", "POST", { target_username }),
