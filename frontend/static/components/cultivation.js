@@ -1,7 +1,8 @@
 const CultivationPage = {
   _root: null,
   _state: null,
-   _leaderboard: [],
+  _leaderboard: [],
+  _showLeaderboard: false,
   _selection: { talents: new Set(), allocations: {}, originId: null, sectId: null, masterId: null },
   _lastEventId: null,
   _endingPlayed: false,
@@ -335,6 +336,7 @@ const CultivationPage = {
     this._endingPlayed = false;
     this._lastTalentRoll = null;
     this._leaderboard = [];
+    this._showLeaderboard = false;
     await this.refresh();
   },
   presence() {
@@ -469,12 +471,16 @@ const CultivationPage = {
     const historyList = Array.isArray(state.history) && state.history.length
       ? state.history.slice().reverse().map(item => `<li><span class="label">${escapeHtml(item.stage || '')}</span><span class="meta">${fmtInt(item.score || 0)} 分 · ${fmtInt(item.age || 0)} 岁</span></li>`).join('')
       : '<li class="muted">暂无历史记录</li>';
-    const leaderboardBlock = this.renderLeaderboard(this._leaderboard);
+    const leaderboardToggle = `<button class="btn btn-mini" id="cultivation-leaderboard-toggle">${this._showLeaderboard ? '隐藏积分排行榜' : '查看积分排行榜'}</button>`;
+    const leaderboardBlock = this._showLeaderboard ? this.renderLeaderboard(this._leaderboard) : '';
     let body = `
       <div class="cultivation-summary">
         <div class="cultivation-summary__header">
-          <div class="cultivation-summary__title">修仙历练</div>
-          <div class="cultivation-summary__stats">🏆 最高 ${bestScore} 分 · 累计 ${playCount} 次</div>
+          <div>
+            <div class="cultivation-summary__title">修仙历练</div>
+            <div class="cultivation-summary__stats">🏆 最高 ${bestScore} 分 · 累计 ${playCount} 次</div>
+          </div>
+          <div class="cultivation-summary__header-actions">${leaderboardToggle}</div>
         </div>
         ${lastSummary}
         ${this.renderRewardNotice(last?.reward, 'summary')}
@@ -493,6 +499,14 @@ const CultivationPage = {
       body += '<div class="cultivation-empty">暂无可用内容。</div>';
     }
     this._root.innerHTML = `<div class="cultivation-container">${body}</div>`;
+    const toggleBtn = this._root.querySelector('#cultivation-leaderboard-toggle');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        this._showLeaderboard = !this._showLeaderboard;
+        this.renderStatus();
+      });
+    }
     if (state.run && !state.run.finished) {
       this.bindRun(state.run);
     } else if (state.lobby) {
