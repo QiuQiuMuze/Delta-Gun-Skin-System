@@ -2081,6 +2081,7 @@ const StarfallPage = {
           <div class=\"starfall-main\">
             <section class=\"starfall-stats\" id=\"starfall-stats\"></section>
             <section class=\"starfall-story\" id=\"starfall-story\"></section>
+            <section class=\"starfall-outcome is-hidden\" id=\"starfall-outcome\"></section>
             <section class=\"starfall-choices\" id=\"starfall-choices\"></section>
           </div>
           <aside class=\"starfall-side\">
@@ -2114,6 +2115,7 @@ const StarfallPage = {
       leaderboard: document.getElementById("starfall-leaderboard"),
       restart: document.getElementById("starfall-restart"),
       audioToggle: document.getElementById("starfall-audio"),
+      outcome: document.getElementById("starfall-outcome"),
     };
     this._handlers = {
       onChoice: (e) => {
@@ -4509,6 +4511,7 @@ const StarfallPage = {
     this.renderStats();
     this.renderStory();
     this.renderChoices();
+    this.renderOutcome();
     this.renderLog();
     this.renderCodex();
     this.renderLeaderboard();
@@ -5328,6 +5331,112 @@ const StarfallPage = {
       <h3 class="starfall-codex__title">结局图鉴</h3>
       <div class="starfall-codex__grid">${items}</div>
     `;
+  },
+  renderOutcome() {
+    if (!this._els?.outcome || !this._state) return;
+    const { phase, currentEnding } = this._state;
+    if (phase !== "ending" || !currentEnding) {
+      this._els.outcome.classList.add("is-hidden");
+      this._els.outcome.innerHTML = "";
+      return;
+    }
+    this._els.outcome.classList.remove("is-hidden");
+    const score = this.formatScore(this.calculateScore(this._state, currentEnding));
+    const summary = escapeHtml(currentEnding.codexSummary || currentEnding.body || "");
+    const hints = this.buildEndingInsights(currentEnding);
+    const hintItems = hints.length
+      ? `<ul class="starfall-outcome__tips">${hints
+          .map((hint) => `<li>${escapeHtml(hint)}</li>`)
+          .join("")}</ul>`
+      : '<p class="starfall-outcome__empty">旅程会继续延伸。尝试不同的抉择，探索更多结局。</p>';
+    this._els.outcome.innerHTML = `
+      <div class="starfall-outcome__card">
+        <div class="starfall-outcome__section">
+          <h3 class="starfall-outcome__title">结局摘要</h3>
+          <p class="starfall-outcome__summary">${summary}</p>
+          <div class="starfall-outcome__meta">最终得分：<strong>${score}</strong></div>
+        </div>
+        <div class="starfall-outcome__section">
+          <h3 class="starfall-outcome__title">下一次的灵感</h3>
+          ${hintItems}
+        </div>
+      </div>
+    `;
+  },
+  buildEndingInsights(ending) {
+    if (!ending) return [];
+    const id = ending.id || "";
+    const hints = [];
+    const push = (...args) => {
+      args.forEach((text) => {
+        if (text) hints.push(text);
+      });
+    };
+    switch (id) {
+      case "cold-silence":
+        push(
+          "让燃料、氧气与食物保持正值；进入行星表面的事件能提供补给。",
+          "信号超过 60% 后有机会触发救援或灯塔结局。"
+        );
+        break;
+      case "mind-fracture":
+        push(
+          "密切关注心智值，利用陪伴事件或记录梦境来稳定心智。",
+          "饱腹状态越好，心智衰减越慢；节奏地喂食同伴能减少崩溃风险。"
+        );
+        break;
+      case "adrift":
+        push(
+          "尝试把信号累积到 75 以上，或在 Erevia 上建造灯塔。",
+          "与商队或档案事件建立联系，会解锁全新的结局路线。"
+        );
+        break;
+      case "ice-warden":
+        push(
+          "继续扩建地面设施，完成晶体和灯塔项目可以改变结局。",
+          "若想重返星海，保留足够燃料并处理引擎结冰事件。"
+        );
+        break;
+      case "ice-awakening":
+      case "star-awakening":
+        push(
+          "记录梦境与极光事件能引导觉醒；保持高信号可以解锁希望结局。",
+          "救下更多同伴，或与商队结盟，能避免独自化作星海。"
+        );
+        break;
+      case "frozen-orbit":
+        push(
+          "及时修理推进器或寻找地热燃料，避免引擎被冰封。",
+          "行星探索中的加热与熔解步骤会提供解冻机会。"
+        );
+        break;
+      case "solitary-drift":
+        push(
+          "救援同伴并维持关系可以开启团队结局。",
+          "星际商队与档案线索需要积极的呼叫与交易。"
+        );
+        break;
+      case "human-voice":
+        push(
+          "继续延长航程至 75 天以上，有机会触发更大的灯塔或舰队结局。",
+          "尝试在 Erevia 上完成建造项目，探索更深入的终局路线。"
+        );
+        break;
+      case "frosthaven":
+      case "frost-citadel":
+        push(
+          "完成灯塔或救援网络计划可以吸引更多旅人。",
+          "若想离开行星，确保燃料与信号都达到高值，并关注舰队事件。"
+        );
+        break;
+      default:
+        push(
+          "不同的倒计时选择会影响中后期事件，尝试保留更多专业船员。",
+          "长程旅途中维持信号、饱腹与心智的平衡，可开启隐藏的终局。"
+        );
+        break;
+    }
+    return hints.slice(0, 4);
   },
 };
 
