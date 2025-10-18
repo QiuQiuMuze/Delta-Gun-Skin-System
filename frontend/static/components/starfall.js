@@ -2106,6 +2106,9 @@ const StarfallPage = {
       pendingMode: "prelude",
     };
     this._isAdmin = (typeof API !== "undefined") && !!(API._me && API._me.is_admin);
+    const feature = (typeof API !== "undefined" && API._features) ? (API._features.starfall || {}) : {};
+    this._feature = feature;
+    this._locked = !this._isAdmin && !feature.available;
     this._els = {
       stats: document.getElementById("starfall-stats"),
       story: document.getElementById("starfall-story"),
@@ -2126,6 +2129,7 @@ const StarfallPage = {
         this.handleChoice(key);
       },
       onRestart: () => {
+        if (this._locked) return;
         this.initState();
         this.renderState();
         this.refreshProfile();
@@ -2153,6 +2157,11 @@ const StarfallPage = {
     }
     if (this._els.leaderboard) {
       this._els.leaderboard.addEventListener("click", this._handlers.onToggleLeaderboard);
+    }
+    if (this._locked) {
+      this.renderLocked();
+      this.disableAudio(false, true);
+      return;
     }
     this.initState();
     this.renderState();
@@ -3931,6 +3940,7 @@ const StarfallPage = {
     }
   },
   handleChoice(key) {
+    if (this._locked) return;
     if (!this._state) return;
     if (this._state.phase === "intro") {
       this.startCountdown();
@@ -4505,6 +4515,10 @@ const StarfallPage = {
     this.renderLog();
   },
   renderState() {
+    if (this._locked) {
+      this.renderLocked();
+      return;
+    }
     if (typeof API !== "undefined") {
       this._isAdmin = !!(API._me && API._me.is_admin);
     }
@@ -4516,6 +4530,56 @@ const StarfallPage = {
     this.renderCodex();
     this.renderLeaderboard();
     this.renderAudio();
+  },
+  renderLocked() {
+    if (!this._els) return;
+    if (this._els.stats) {
+      this._els.stats.innerHTML = `
+        <div class="starfall-stat">
+          <div class="starfall-stat__label">状态</div>
+          <div class="starfall-stat__value">暂未开放</div>
+        </div>
+      `;
+    }
+    if (this._els.story) {
+      this._els.story.innerHTML = `
+        <h3 class="starfall-story__title">静候信号</h3>
+        <p class="starfall-story__body">管理员尚未开放《星际余生》。当功能开放后，你即可在这里开始 60 秒的逃生倒计时。</p>
+      `;
+    }
+    if (this._els.choices) {
+      this._els.choices.innerHTML = '<p class="muted">请联系管理员或等待公告，星际旅程即将启程。</p>';
+    }
+    if (this._els.outcome) {
+      this._els.outcome.classList.add("is-hidden");
+      this._els.outcome.innerHTML = "";
+    }
+    if (this._els.log) {
+      this._els.log.innerHTML = '<p class="starfall-log__item starfall-log__item--system">系统：功能暂未开放。</p>';
+    }
+    if (this._els.codex) {
+      this._els.codex.innerHTML = `
+        <h3 class="starfall-codex__title">结局图鉴</h3>
+        <p class="starfall-codex__empty">功能关闭中，尚无可展示的结局。</p>
+      `;
+    }
+    if (this._els.leaderboard) {
+      this._els.leaderboard.innerHTML = `
+        <div class="starfall-leaderboard__card">
+          <div class="starfall-leaderboard__header">
+            <div class="starfall-leaderboard__title">积分排行榜</div>
+          </div>
+          <p class="starfall-leaderboard__empty">星际余生关闭时无法查看排行。</p>
+        </div>
+      `;
+    }
+    if (this._els.restart) {
+      this._els.restart.disabled = true;
+    }
+    if (this._els.audioToggle) {
+      this._els.audioToggle.disabled = true;
+      this._els.audioToggle.textContent = "🔇 音景关闭";
+    }
   },
   ensureAudioEngine() {
     if (!this._audio) {
@@ -4622,6 +4686,7 @@ const StarfallPage = {
     }
   },
   enableAudio(auto = false) {
+    if (this._locked) return;
     if (!this.ensureAudioEngine()) return;
     if (!this._audio) return;
     if (this._audio.enabled) return;
@@ -4652,6 +4717,7 @@ const StarfallPage = {
     this.renderAudio();
   },
   toggleAudio() {
+    if (this._locked) return;
     if (!this._audio) {
       this._audio = {
         enabled: false,
@@ -4675,6 +4741,13 @@ const StarfallPage = {
     window.AudioEngine?.playSfx?.(key, opts);
   },
   renderAudio() {
+    if (this._locked) {
+      if (this._els?.audioToggle) {
+        this._els.audioToggle.textContent = "🔇 音景关闭";
+        this._els.audioToggle.setAttribute("aria-pressed", "false");
+      }
+      return;
+    }
     if (!this._els?.audioToggle) return;
     this.syncAudioState();
     const enabled = this._audio?.enabled;
@@ -4749,6 +4822,10 @@ const StarfallPage = {
     return Math.max(0, Math.round(total));
   },
   async refreshProfile() {
+    if (this._locked) {
+      this.renderLocked();
+      return;
+    }
     if (typeof API === "undefined" || !API.token) {
       this.renderStats();
       this.renderLeaderboard();
@@ -4766,6 +4843,10 @@ const StarfallPage = {
     }
   },
   async refreshLeaderboard(limit = 12) {
+    if (this._locked) {
+      this.renderLocked();
+      return;
+    }
     if (typeof API === "undefined" || !API.token) {
       this._leaderboard = [];
       this._leaderboardSelf = null;
@@ -4833,6 +4914,7 @@ const StarfallPage = {
     }
   },
   renderLeaderboard() {
+    if (this._locked) return;
     if (!this._els?.leaderboard) return;
     const hasApi = typeof API !== "undefined" && !!API.token;
     if (!hasApi) {
@@ -4902,6 +4984,7 @@ const StarfallPage = {
     `;
   },
   renderStats() {
+    if (this._locked) return;
     if (!this._els?.stats || !this._state) return;
     const { phase, resources, time } = this._state;
     const profile = this._profile || {};
@@ -4972,6 +5055,7 @@ const StarfallPage = {
     this._els.stats.innerHTML = items.join("");
   },
   renderStory() {
+    if (this._locked) return;
     if (!this._els?.story || !this._state) return;
     const story = this._state.pendingStory;
     if (!story) {
@@ -4989,6 +5073,7 @@ const StarfallPage = {
     `;
   },
   renderChoices() {
+    if (this._locked) return;
     if (!this._els?.choices || !this._state) return;
     const { phase, pendingStory } = this._state;
     if (phase === "intro") {
@@ -5287,6 +5372,7 @@ const StarfallPage = {
     return `${str}%`;
   },
   renderLog() {
+    if (this._locked) return;
     if (!this._els?.log || !this._state) return;
     const frag = this._state.log
       .slice()
@@ -5296,6 +5382,7 @@ const StarfallPage = {
     this._els.log.innerHTML = frag || '<p class="muted">等待你的第一条记录。</p>';
   },
   renderCodex() {
+    if (this._locked) return;
     if (!this._els?.codex || !this._state) return;
     const list = Array.isArray(this._state.codex) ? this._state.codex : [];
     const badge = (tone) => {
@@ -5333,6 +5420,7 @@ const StarfallPage = {
     `;
   },
   renderOutcome() {
+    if (this._locked) return;
     if (!this._els?.outcome || !this._state) return;
     const { phase, currentEnding } = this._state;
     if (phase !== "ending" || !currentEnding) {

@@ -1972,6 +1972,7 @@ def ensure_visual(inv: Inventory, skin: Optional[Skin] = None) -> Dict[str, obje
 # ------------------ Cookie Factory Mini-game ------------------
 COOKIE_FACTORY_SETTING_KEY = "cookie_factory_enabled"
 COOKIE_CULTIVATION_SETTING_KEY = "cookie_cultivation_enabled"
+STARFALL_SETTING_KEY = "starfall_enabled"
 COOKIE_WEEKLY_CAP = 100
 COOKIE_DELTA_BONUS = 0.05
 COOKIE_DELTA_BONUS_CAP = 1.25
@@ -6122,6 +6123,23 @@ def set_cookie_cultivation_enabled(db: Session, enabled: bool) -> None:
     db.flush()
 
 
+def starfall_game_enabled(db: Session) -> bool:
+    row = db.query(SystemSetting).filter_by(key=STARFALL_SETTING_KEY).first()
+    if not row:
+        return True
+    return str(row.value) != "0"
+
+
+def set_starfall_game_enabled(db: Session, enabled: bool) -> None:
+    value = "1" if enabled else "0"
+    row = db.query(SystemSetting).filter_by(key=STARFALL_SETTING_KEY).first()
+    if row:
+        row.value = value
+    else:
+        db.add(SystemSetting(key=STARFALL_SETTING_KEY, value=value))
+    db.flush()
+
+
 def cookie_week_start(ts: Optional[int] = None) -> int:
     if ts is None:
         ts = int(time.time())
@@ -8192,6 +8210,14 @@ def serialize_starfall_entry(entry: Optional[StarfallLeaderboardEntry], db: Sess
     }
 
 
+def ensure_starfall_enabled(db: Session, user: User) -> None:
+    if starfall_game_enabled(db):
+        return
+    if getattr(user, "is_admin", False):
+        return
+    raise HTTPException(403, "星际余生暂未开放")
+
+
 def record_starfall_run(
     db: Session,
     user: User,
@@ -9540,6 +9566,7 @@ def me(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
         phone = ""
     cookie_enabled = cookie_factory_enabled(db)
     cultivation_enabled = cookie_cultivation_enabled(db)
+    starfall_enabled = starfall_game_enabled(db)
     brick_detail = brick_balance_detail(db, user.id)
     pity_detail = season_pity_detail(db, user.id)
     return {
@@ -9559,6 +9586,10 @@ def me(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
             "cultivation": {
                 "enabled": bool(cultivation_enabled),
                 "available": bool(cultivation_enabled or getattr(user, "is_admin", False)),
+            },
+            "starfall": {
+                "enabled": bool(starfall_enabled),
+                "available": bool(starfall_enabled or getattr(user, "is_admin", False)),
             },
         },
     }
@@ -10362,6 +10393,7 @@ def cultivation_leaderboard(
 
 @app.get("/starfall/profile")
 def starfall_profile(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    ensure_starfall_enabled(db, user)
     entry = db.query(StarfallLeaderboardEntry).filter_by(user_id=int(user.id)).first()
     return serialize_starfall_entry(entry, db)
 
@@ -10372,6 +10404,7 @@ def starfall_leaderboard(
     user: User = Depends(user_from_token),
     db: Session = Depends(get_db),
 ):
+    ensure_starfall_enabled(db, user)
     board = starfall_leaderboard_payload(db, limit)
     mine = db.query(StarfallLeaderboardEntry).filter_by(user_id=int(user.id)).first()
     board["self"] = serialize_starfall_entry(mine, db)
@@ -10384,6 +10417,7 @@ def starfall_run(
     user: User = Depends(user_from_token),
     db: Session = Depends(get_db),
 ):
+    ensure_starfall_enabled(db, user)
     entry = record_starfall_run(
         db,
         user,
@@ -10619,10 +10653,14 @@ def admin_cookie_factory_status(user: User = Depends(user_from_token), db: Sessi
         raise HTTPException(403, "需要管理员权限")
     enabled = cookie_factory_enabled(db)
     cultivation_enabled = cookie_cultivation_enabled(db)
+    starfall_enabled = starfall_game_enabled(db)
     cultivation_runs, cultivation_best = cookie_cultivation_admin_stats(db)
     total_profiles = db.query(CookieFactoryProfile).count()
     total_bricks = db.query(func.coalesce(func.sum(CookieFactoryProfile.total_bricks_earned), 0)).scalar()
     total_bricks = int(total_bricks or 0)
+    starfall_players = db.query(func.count(StarfallLeaderboardEntry.user_id)).scalar() or 0
+    starfall_best_score = db.query(func.coalesce(func.max(StarfallLeaderboardEntry.best_score), 0)).scalar()
+    starfall_best_day = db.query(func.coalesce(func.max(StarfallLeaderboardEntry.best_day), 0)).scalar()
     return {
         "enabled": bool(enabled),
         "profiles": total_profiles,
@@ -10630,6 +10668,10 @@ def admin_cookie_factory_status(user: User = Depends(user_from_token), db: Sessi
         "cultivation_enabled": bool(cultivation_enabled),
         "cultivation_runs": int(cultivation_runs),
         "cultivation_best": int(cultivation_best),
+        "starfall_enabled": bool(starfall_enabled),
+        "starfall_players": int(starfall_players),
+        "starfall_best_score": int(starfall_best_score or 0),
+        "starfall_best_day": int(starfall_best_day or 0),
     }
 
 
@@ -10649,6 +10691,16 @@ def admin_cookie_cultivation_toggle(payload: Dict[str, Any], user: User = Depend
         raise HTTPException(403, "需要管理员权限")
     desired = bool((payload or {}).get("enabled", False))
     set_cookie_cultivation_enabled(db, desired)
+    db.commit()
+    return {"enabled": desired}
+
+
+@app.post("/admin/starfall/toggle")
+def admin_starfall_toggle(payload: Dict[str, Any], user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(403, "需要管理员权限")
+    desired = bool((payload or {}).get("enabled", False))
+    set_starfall_game_enabled(db, desired)
     db.commit()
     return {"enabled": desired}
 
