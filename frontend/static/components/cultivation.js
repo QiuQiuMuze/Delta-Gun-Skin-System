@@ -1,6 +1,8 @@
 const CultivationPage = {
   _root: null,
   _state: null,
+  _leaderboard: [],
+  _showLeaderboard: false,
   _selection: { talents: new Set(), allocations: {}, originId: null, sectId: null, masterId: null },
   _lastEventId: null,
   _endingPlayed: false,
@@ -333,6 +335,8 @@ const CultivationPage = {
     this._lastEventId = null;
     this._endingPlayed = false;
     this._lastTalentRoll = null;
+    this._leaderboard = [];
+    this._showLeaderboard = false;
     await this.refresh();
   },
   presence() {
@@ -358,11 +362,15 @@ const CultivationPage = {
     if (!this._root) return;
     this._loading = true;
     try {
-      const data = await API.cultivationStatus();
+      const [data, board] = await Promise.all([
+        API.cultivationStatus(),
+        API.cultivationLeaderboard().catch(() => ({ entries: [] })),
+      ]);
       if (data && data.lobby) {
         data.lobby = { ...data.lobby, talents: this.normalizeTalents(data.lobby.talents, data.lobby.talent_rarities) };
       }
       this._state = data || {};
+      this._leaderboard = Array.isArray(board?.entries) ? board.entries : [];
       this.resetSelection();
       this.renderStatus();
       window.PresenceTracker?.updateDetails?.(this.presence());
@@ -463,11 +471,16 @@ const CultivationPage = {
     const historyList = Array.isArray(state.history) && state.history.length
       ? state.history.slice().reverse().map(item => `<li><span class="label">${escapeHtml(item.stage || '')}</span><span class="meta">${fmtInt(item.score || 0)} 分 · ${fmtInt(item.age || 0)} 岁</span></li>`).join('')
       : '<li class="muted">暂无历史记录</li>';
+    const leaderboardToggle = `<button class="btn btn-mini" id="cultivation-leaderboard-toggle">${this._showLeaderboard ? '隐藏积分排行榜' : '查看积分排行榜'}</button>`;
+    const leaderboardBlock = this._showLeaderboard ? this.renderLeaderboard(this._leaderboard) : '';
     let body = `
       <div class="cultivation-summary">
         <div class="cultivation-summary__header">
-          <div class="cultivation-summary__title">修仙历练</div>
-          <div class="cultivation-summary__stats">🏆 最高 ${bestScore} 分 · 累计 ${playCount} 次</div>
+          <div>
+            <div class="cultivation-summary__title">修仙历练</div>
+            <div class="cultivation-summary__stats">🏆 最高 ${bestScore} 分 · 累计 ${playCount} 次</div>
+          </div>
+          <div class="cultivation-summary__header-actions">${leaderboardToggle}</div>
         </div>
         ${lastSummary}
         ${this.renderRewardNotice(last?.reward, 'summary')}
@@ -476,6 +489,7 @@ const CultivationPage = {
           <ul>${historyList}</ul>
         </div>
       </div>
+      ${leaderboardBlock}
     `;
     if (state.run && !state.run.finished) {
       body += this.renderRun(state.run);
@@ -485,12 +499,37 @@ const CultivationPage = {
       body += '<div class="cultivation-empty">暂无可用内容。</div>';
     }
     this._root.innerHTML = `<div class="cultivation-container">${body}</div>`;
+    const toggleBtn = this._root.querySelector('#cultivation-leaderboard-toggle');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        this._showLeaderboard = !this._showLeaderboard;
+        this.renderStatus();
+      });
+    }
     if (state.run && !state.run.finished) {
       this.bindRun(state.run);
     } else if (state.lobby) {
       this.bindLobby(state.lobby);
     }
     window.AudioEngine?.decorateArea?.(this._root);
+  },
+  renderLeaderboard(entries) {
+    const list = Array.isArray(entries) ? entries : [];
+    const meId = API._me?.user_id != null ? Number(API._me.user_id) : null;
+    if (!list.length) {
+      return `<div class="cultivation-leaderboard-card"><div class="cultivation-leaderboard__title">积分排行榜</div><div class="cultivation-leaderboard__empty">暂无排行数据，快去历练刷新成绩吧。</div></div>`;
+    }
+    const rows = list.map(entry => {
+      if (!entry) return '';
+      const rank = Number(entry.rank || 0) || list.indexOf(entry) + 1;
+      const score = this.fmtInt(entry.best_score || entry.score || 0);
+      const name = escapeHtml(entry.username || '神秘修士');
+      const isSelf = meId != null && Number(entry.user_id) === meId;
+      const cls = isSelf ? ' class="is-self"' : '';
+      return `<li${cls}><span class="rank">#${rank}</span><span class="name">${name}</span><span class="score">${score}</span></li>`;
+    }).filter(Boolean).join('');
+    return `<div class="cultivation-leaderboard-card"><div class="cultivation-leaderboard__title">积分排行榜</div><ol>${rows}</ol></div>`;
   },
   renderRun(run) {
     const healthPct = Math.max(0, Math.min(100, Math.round((run.health / Math.max(run.max_health || 1, 1)) * 100)));
