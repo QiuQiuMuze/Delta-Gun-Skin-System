@@ -25,23 +25,94 @@ const StarfallData = (() => {
           label: "冲向物资舱",
           detail: "把能抱的口粮塞进袋子。",
           resolve(state) {
-            return {
-              log: "你抱起两箱冻干口粮，冰冷的金属边割破手套。",
-              effects: { food: 8, mind: -2 },
-              itemsGain: ["rationSeal"],
-            };
+            const roster = getRoster(state);
+            const hunger = (state.resources.food || 0) < 18;
+            return chooseOutcome(
+              state,
+              [
+                {
+                  weight: hunger ? 2.4 : 1.2,
+                  outcome: {
+                    log: "你抱起两箱冻干口粮，背带被拉得发痛，但饥饿感被稍稍压下。",
+                    effects: { food: 12, mind: roster.length ? -1 : -3 },
+                    itemsGain: ["rationSeal"],
+                  },
+                },
+                {
+                  when: (s) => hasCrewRole(s, "care"),
+                  weight: 1.3,
+                  outcome: (s) => {
+                    const medic = getCrewById(s, "noor");
+                    const name = medic?.name || "医师";
+                    return {
+                      log: `${name} 把散落的营养包封装成整齐的日配，你们分到的份量更多了。`,
+                      effects: { food: 10, mind: 6, o2: 4 },
+                      itemsGain: ["rationSeal"],
+                    };
+                  },
+                },
+                {
+                  weight: 1,
+                  outcome: {
+                    log: "你拖拽着装满物资的货箱，还顺手扯下一个紧急燃料袋。",
+                    effects: { food: 8, fuel: 4, mind: -2 },
+                    itemsGain: ["rationSeal"],
+                  },
+                },
+              ],
+              {
+                log: "你抱起两箱冻干口粮，冰冷的金属边割破手套。",
+                effects: { food: 8, mind: -2 },
+                itemsGain: ["rationSeal"],
+              }
+            );
           },
         },
         {
           key: "bridge",
           label: "跑向飞行甲板",
           detail: "抢回足够的燃料。",
-          resolve() {
-            return {
-              log: "你撬开储油柜，把剩下的两桶推进背带里。",
-              effects: { fuel: 12 },
-              itemsGain: ["thrusterKit"],
-            };
+          resolve(state) {
+            const fuelLow = (state.resources.fuel || 0) < 40;
+            return chooseOutcome(
+              state,
+              [
+                {
+                  weight: fuelLow ? 2.2 : 1.2,
+                  outcome: {
+                    log: "你撬开储油柜，把剩下的两桶推进背带里。燃料的味道让你头晕。",
+                    effects: { fuel: 16 },
+                    itemsGain: ["thrusterKit"],
+                  },
+                },
+                {
+                  weight: 1,
+                  outcome: {
+                    log: "你抬走燃料桶，还顺手抱起一组备用推进剂，手腕被冻得发麻。",
+                    effects: { fuel: 12, o2: 4 },
+                    itemsGain: ["thrusterKit"],
+                  },
+                },
+                {
+                  when: (s) => hasCrewRole(s, "repair"),
+                  weight: 1.1,
+                  outcome: (s) => {
+                    const engineer = getCrewById(s, "rae");
+                    const name = engineer?.name || "工程师";
+                    return {
+                      log: `${name} 把稳定器拎给你，你们在火花中拖回额外的推进芯。`,
+                      effects: { fuel: 14, mind: 4 },
+                      itemsGain: ["thrusterKit"],
+                    };
+                  },
+                },
+              ],
+              {
+                log: "你撬开储油柜，把剩下的两桶推进背带里。",
+                effects: { fuel: 12 },
+                itemsGain: ["thrusterKit"],
+              }
+            );
           },
         },
         {
@@ -49,39 +120,146 @@ const StarfallData = (() => {
           label: "原地搜索信号模块",
           detail: "拆下一块完整的通讯芯片。",
           resolve(state) {
-            const bonus = state.flags.consoleDamaged ? 10 : 18;
-            return {
-              log: "你拔出一块闪着余温的信号芯片。希望它还能接通宇宙。",
-              effects: { signal: bonus },
-              flags: { signalChip: true },
-              itemsGain: ["distressBeacon"],
-            };
+            const consoleDamaged = state.flags.consoleDamaged;
+            return chooseOutcome(
+              state,
+              [
+                {
+                  weight: consoleDamaged ? 1.4 : 1,
+                  outcome: {
+                    log: "你在火花中摸到一块完好的信号芯片，表面还残留着热度。",
+                    effects: { signal: consoleDamaged ? 14 : 20, mind: 2 },
+                    flags: { signalChip: true },
+                    itemsGain: ["distressBeacon"],
+                  },
+                },
+                {
+                  weight: 1,
+                  outcome: {
+                    log: "你拆下两片芯片，合成一个临时的增强器。",
+                    effects: { signal: consoleDamaged ? 16 : 22, fuel: -2 },
+                    flags: { signalChip: true },
+                    itemsGain: ["distressBeacon"],
+                  },
+                },
+                {
+                  when: (s) => hasCrewRole(s, "signal"),
+                  weight: 1.3,
+                  outcome: (s) => {
+                    const officer = getCrewById(s, "ilya");
+                    const name = officer?.name || "科学官";
+                    return {
+                      log: `${name} 调整频率，你们把芯片和应急天线对接，信号强度暴涨。`,
+                      effects: { signal: consoleDamaged ? 18 : 26, mind: 6 },
+                      flags: { signalChip: true },
+                      itemsGain: ["distressBeacon"],
+                    };
+                  },
+                },
+              ],
+              {
+                log: "你拔出一块闪着余温的信号芯片。希望它还能接通宇宙。",
+                effects: { signal: consoleDamaged ? 10 : 18 },
+                flags: { signalChip: true },
+                itemsGain: ["distressBeacon"],
+              }
+            );
           },
         },
         {
           key: "medkit",
           label: "扛走医疗箱",
           detail: "抓起绷带与止痛剂。",
-          resolve() {
-            return {
-              log: "你踢开药柜，拖出一只半融化的医疗箱。里面还有几枚注射剂。",
-              effects: { food: 2, mind: 6, o2: 4 },
-              flags: { medkit: true },
-              itemsGain: ["stasisPatch"],
-            };
+          resolve(state) {
+            const crewCount = getRoster(state).length;
+            return chooseOutcome(
+              state,
+              [
+                {
+                  weight: crewCount ? 1.6 : 1.1,
+                  outcome: {
+                    log: "你踢开药柜，拖出一只半融化的医疗箱。里面还有几枚注射剂。",
+                    effects: { food: 2, mind: 8, o2: 6 },
+                    flags: { medkit: true },
+                    itemsGain: ["stasisPatch"],
+                  },
+                },
+                {
+                  weight: 1,
+                  outcome: {
+                    log: "医疗箱里还有紧急供氧器和保温毯，你把它们塞进背包。",
+                    effects: { o2: 10, mind: 4, fuel: 2 },
+                    flags: { medkit: true },
+                    itemsGain: ["stasisPatch"],
+                  },
+                },
+                {
+                  when: (s) => hasCrewRole(s, "care"),
+                  weight: 1.4,
+                  outcome: (s) => {
+                    const medic = getCrewById(s, "noor");
+                    const name = medic?.name || "医师";
+                    return {
+                      log: `${name} 迅速调制镇静剂和高热量汤剂，你们的心跳稳定下来。`,
+                      effects: { food: 4, mind: 12, o2: 6 },
+                      flags: { medkit: true },
+                      itemsGain: ["stasisPatch"],
+                    };
+                  },
+                },
+              ],
+              {
+                log: "你踢开药柜，拖出一只半融化的医疗箱。里面还有几枚注射剂。",
+                effects: { food: 2, mind: 6, o2: 4 },
+                flags: { medkit: true },
+                itemsGain: ["stasisPatch"],
+              }
+            );
           },
         },
         {
           key: "drone",
           label: "启动维修无人机",
           detail: "让它跟随逃生舱。",
-          resolve() {
-            return {
-              log: "你拍醒一台维护无人机，它的光学镜片快速聚焦到你身上。",
-              effects: { fuel: 4, signal: 6 },
-              flags: { supportDrone: true },
-              itemsGain: ["grappleHarness"],
-            };
+          resolve(state) {
+            const crewCount = getRoster(state).length;
+            return chooseOutcome(
+              state,
+              [
+                {
+                  weight: crewCount ? 1.4 : 1,
+                  outcome: {
+                    log: "你拍醒一台维护无人机，它的光学镜片快速聚焦到你身上。",
+                    effects: { fuel: 4, signal: 8 },
+                    flags: { supportDrone: true },
+                    itemsGain: ["grappleHarness"],
+                  },
+                },
+                {
+                  weight: 1,
+                  outcome: {
+                    log: "无人机启动过载模式，帮你拖出一箱备用燃料。",
+                    effects: { fuel: 8, signal: 6 },
+                    flags: { supportDrone: true },
+                    itemsGain: ["grappleHarness"],
+                  },
+                },
+                {
+                  outcome: {
+                    log: "无人机扫描到舱壁裂缝，自动喷涂密封剂并投射照明。",
+                    effects: { signal: 10, mind: 4 },
+                    flags: { supportDrone: true },
+                    itemsGain: ["grappleHarness"],
+                  },
+                },
+              ],
+              {
+                log: "你拍醒一台维护无人机，它的光学镜片快速聚焦到你身上。",
+                effects: { fuel: 4, signal: 6 },
+                flags: { supportDrone: true },
+                itemsGain: ["grappleHarness"],
+              }
+            );
           },
         },
       ],
@@ -167,23 +345,79 @@ const StarfallData = (() => {
           key: "grab",
           label: "拾取",
           detail: "抱起罐子塞进袋里。",
-          resolve() {
-            return {
-              log: "你扛起氧气罐，阀门蹭出刺耳的金属声。",
-              effects: { o2: 12, mind: -2 },
-            };
+          resolve(state) {
+            const lowO2 = (state.resources.o2 || 0) < 40;
+            return chooseOutcome(
+              state,
+              [
+                {
+                  weight: lowO2 ? 2 : 1.2,
+                  outcome: {
+                    log: "你扛起氧气罐，阀门蹭出刺耳的金属声。",
+                    effects: { o2: 14, mind: -1 },
+                  },
+                },
+                {
+                  weight: 1,
+                  outcome: {
+                    log: "你把氧气罐固定在背后，还顺手抓了几袋冷冻口粮。",
+                    effects: { o2: 10, food: 4, mind: -2 },
+                  },
+                },
+                {
+                  when: (s) => hasCrewRole(s, "care"),
+                  weight: 1.1,
+                  outcome: {
+                    log: "医师迅速调试阀门，让罐内气体稳定释放。",
+                    effects: { o2: 12, mind: 4 },
+                  },
+                },
+              ],
+              {
+                log: "你扛起氧气罐，阀门蹭出刺耳的金属声。",
+                effects: { o2: 12, mind: -2 },
+              }
+            );
           },
         },
         {
           key: "dash",
           label: "冲刺前进",
           detail: "绕过罐体，直接冲向舱门。",
-          resolve() {
-            return {
-              log: "你跨过氧气罐，沿着火花滑行。每一步都像踩在爆炸的边缘。",
-              effects: { time: 5, mind: -2 },
-              flags: { sprintFocus: true },
-            };
+          resolve(state) {
+            return chooseOutcome(
+              state,
+              [
+                {
+                  weight: 1.4,
+                  outcome: {
+                    log: "你跨过氧气罐，沿着火花滑行。每一步都像踩在爆炸的边缘。",
+                    effects: { time: 5, mind: -2 },
+                    flags: { sprintFocus: true },
+                  },
+                },
+                {
+                  weight: 1,
+                  outcome: {
+                    log: "你腾空跃过残骸，还顺势踢向阀门，让泄露的氧气推你一把。",
+                    effects: { time: 6, mind: -1, o2: -2 },
+                    flags: { sprintFocus: true },
+                  },
+                },
+                {
+                  outcome: {
+                    log: "你冲刺的同时抓起一把备用零件，准备稍后修复舱门。",
+                    effects: { time: 4, fuel: 2, mind: -3 },
+                    flags: { sprintFocus: true },
+                  },
+                },
+              ],
+              {
+                log: "你跨过氧气罐，沿着火花滑行。每一步都像踩在爆炸的边缘。",
+                effects: { time: 5, mind: -2 },
+                flags: { sprintFocus: true },
+              }
+            );
           },
         },
         {
@@ -192,11 +426,39 @@ const StarfallData = (() => {
           detail: "利用挂带让罐体随你滑行。",
           resolve(state) {
             const bonus = state.flags.supportDrone ? 6 : 3;
-            return {
-              log: "你把挂带勾在罐阀上，让它跟着你滑向舱门。",
-              effects: { o2: 8 + bonus, time: -1 },
-              itemsGain: ["o2Recycler"],
-            };
+            return chooseOutcome(
+              state,
+              [
+                {
+                  weight: state.flags.supportDrone ? 1.4 : 1.1,
+                  outcome: {
+                    log: "你把挂带勾在罐阀上，让它跟着你滑向舱门。",
+                    effects: { o2: 8 + bonus, time: -1 },
+                    itemsGain: ["o2Recycler"],
+                  },
+                },
+                {
+                  weight: 1,
+                  outcome: {
+                    log: "你顺手用挂带固定住阀门泄露口，减少了浪费。",
+                    effects: { o2: 10 + bonus, mind: 2 },
+                    itemsGain: ["o2Recycler"],
+                  },
+                },
+                {
+                  outcome: {
+                    log: "氧气罐被固定在舱壁，你从罐底拆下一组备用过滤芯。",
+                    effects: { o2: 6 + bonus, food: 2, signal: 4 },
+                    itemsGain: ["o2Recycler"],
+                  },
+                },
+              ],
+              {
+                log: "你把挂带勾在罐阀上，让它跟着你滑向舱门。",
+                effects: { o2: 8 + bonus, time: -1 },
+                itemsGain: ["o2Recycler"],
+              }
+            );
           },
         },
         {
@@ -226,34 +488,114 @@ const StarfallData = (() => {
           key: "cell",
           label: "取能量电池",
           detail: "从火焰里抢回最后一颗核心。",
-          resolve() {
-            return {
-              log: "你把手伸进火光，灼烧感透过手套。电池还温热。",
-              effects: { fuel: 10, mind: -6 },
-            };
+          resolve(state) {
+            return chooseOutcome(
+              state,
+              [
+                {
+                  weight: 1.4,
+                  outcome: {
+                    log: "你把手伸进火光，灼烧感透过手套。电池还温热。",
+                    effects: { fuel: 12, mind: -5 },
+                  },
+                },
+                {
+                  weight: 1,
+                  outcome: {
+                    log: "你抢回两颗电池，其中一颗裂开，溢出蓝色光辉。",
+                    effects: { fuel: 10, signal: 6, mind: -6 },
+                  },
+                },
+                {
+                  when: (s) => hasCrewRole(s, "repair"),
+                  weight: 1.1,
+                  outcome: {
+                    log: "工程师将散热片压在电池上，帮你保住更多能量。",
+                    effects: { fuel: 14, mind: -3 },
+                  },
+                },
+              ],
+              {
+                log: "你把手伸进火光，灼烧感透过手套。电池还温热。",
+                effects: { fuel: 10, mind: -6 },
+              }
+            );
           },
         },
         {
           key: "avoid",
           label: "避开",
           detail: "绕开火场，保护自己。",
-          resolve() {
-            return {
-              log: "你沿着舷窗奔跑，告诉自己不要回头。燃烧声在身后渐远。",
-              effects: { mind: 6 },
-            };
+          resolve(state) {
+            return chooseOutcome(
+              state,
+              [
+                {
+                  weight: 1.2,
+                  outcome: {
+                    log: "你沿着舷窗奔跑，告诉自己不要回头。燃烧声在身后渐远。",
+                    effects: { mind: 6 },
+                  },
+                },
+                {
+                  weight: 1,
+                  outcome: {
+                    log: "你避开火舌的同时捡到一只备用急救包。",
+                    effects: { mind: 5, food: 2, o2: 2 },
+                  },
+                },
+                {
+                  outcome: {
+                    log: "你绕路时顺手封住一个裂口，舱内空气稳定下来。",
+                    effects: { mind: 4, signal: 4 },
+                  },
+                },
+              ],
+              {
+                log: "你沿着舷窗奔跑，告诉自己不要回头。燃烧声在身后渐远。",
+                effects: { mind: 6 },
+              }
+            );
           },
         },
         {
           key: "vent",
           label: "排气灭火",
           detail: "打开外阀，让火焰瞬间熄灭。",
-          resolve() {
-            return {
-              log: "你猛地扳下排气阀。火焰被真空吞没，你的耳朵一阵轰鸣。",
-              effects: { o2: -6, fuel: 6, mind: 2 },
-              flags: { rapidVent: true },
-            };
+          resolve(state) {
+            return chooseOutcome(
+              state,
+              [
+                {
+                  weight: 1.2,
+                  outcome: {
+                    log: "你猛地扳下排气阀。火焰被真空吞没，你的耳朵一阵轰鸣。",
+                    effects: { o2: -6, fuel: 8, mind: 2 },
+                    flags: { rapidVent: true },
+                  },
+                },
+                {
+                  weight: 1,
+                  outcome: {
+                    log: "你在排气前把舱门半掩，保存了一部分氧气。",
+                    effects: { o2: -3, fuel: 6, mind: 4 },
+                    flags: { rapidVent: true },
+                  },
+                },
+                {
+                  outcome: {
+                    log: "排气后，你趁势拆下燃烧的导线，避免了更大的爆炸。",
+                    effects: { fuel: 7, signal: 4 },
+                    flags: { rapidVent: true },
+                  },
+                },
+              ],
+              {
+                log: "你猛地扳下排气阀。火焰被真空吞没，你的耳朵一阵轰鸣。",
+                effects: { o2: -6, fuel: 6, mind: 2 },
+                flags: { rapidVent: true },
+              }
+            );
           },
         },
         {
@@ -263,13 +605,45 @@ const StarfallData = (() => {
           resolve(state) {
             const engineer = hasCrewRole(state, "repair");
             const helper = engineer ? getCrewById(state, "rae")?.name || "工程师" : null;
-            return {
-              log: engineer
-                ? `${helper} 与你合力拆下烧红的导轨。她说这些金属还能救你们一次。`
-                : "你徒手拉扯烫手的导轨，终于在报警声中取下一段完好的金属。",
-              effects: { fuel: 6, mind: engineer ? 6 : -2, signal: engineer ? 4 : 0 },
-              flags: { spareRails: true },
-            };
+            return chooseOutcome(
+              state,
+              [
+                {
+                  weight: engineer ? 1.4 : 1,
+                  outcome: {
+                    log: engineer
+                      ? `${helper} 与你合力拆下烧红的导轨。她说这些金属还能救你们一次。`
+                      : "你徒手拉扯烫手的导轨，终于在报警声中取下一段完好的金属。",
+                    effects: { fuel: 6, mind: engineer ? 6 : -2, signal: engineer ? 4 : 0 },
+                    flags: { spareRails: true },
+                  },
+                },
+                {
+                  weight: 1,
+                  outcome: {
+                    log: engineer
+                      ? `${helper} 找到隐藏的储能线圈，你们额外收集到一组备用模块。`
+                      : "你把导轨拆成几段，塞进包里准备慢慢修复。",
+                    effects: { fuel: 8, mind: engineer ? 8 : -1, signal: 4 },
+                    flags: { spareRails: true },
+                  },
+                },
+                {
+                  outcome: {
+                    log: "你把导轨卸下后顺便拧下几块散热板，准备加强推进器。",
+                    effects: { fuel: 6, mind: 2, food: 2 },
+                    flags: { spareRails: true },
+                  },
+                },
+              ],
+              {
+                log: engineer
+                  ? `${helper} 与你合力拆下烧红的导轨。她说这些金属还能救你们一次。`
+                  : "你徒手拉扯烫手的导轨，终于在报警声中取下一段完好的金属。",
+                effects: { fuel: 6, mind: engineer ? 6 : -2, signal: engineer ? 4 : 0 },
+                flags: { spareRails: true },
+              }
+            );
           },
         },
       ],
@@ -2161,9 +2535,61 @@ const StarfallData = (() => {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
+  function chooseOutcome(state, specs, fallback = null) {
+    const buildEntry = (entry) => {
+      if (!entry) return null;
+      if (typeof entry === "function") {
+        return buildEntry(entry(state));
+      }
+      const condition = typeof entry.when === "function" ? entry.when : null;
+      if (condition && !condition(state)) {
+        return null;
+      }
+      const weightRaw = entry.weight == null ? 1 : Number(entry.weight);
+      const weight = Number.isFinite(weightRaw) && weightRaw > 0 ? weightRaw : 0;
+      if (!weight) {
+        return null;
+      }
+      const payload = entry.outcome != null ? entry.outcome : entry;
+      const outcome = typeof payload === "function" ? payload(state) : payload;
+      if (!outcome || typeof outcome !== "object") {
+        return null;
+      }
+      return { weight, outcome };
+    };
+
+    const pool = Array.isArray(specs)
+      ? specs
+          .map((spec) => buildEntry(spec))
+          .filter((item) => item && item.weight > 0)
+      : [];
+
+    if (!pool.length) {
+      if (fallback) {
+        const built = buildEntry(fallback);
+        if (built) {
+          return { ...built.outcome };
+        }
+      }
+      return {};
+    }
+
+    const total = pool.reduce((sum, item) => sum + item.weight, 0);
+    let roll = Math.random() * total;
+    for (const item of pool) {
+      roll -= item.weight;
+      if (roll <= 0) {
+        return { ...item.outcome };
+      }
+    }
+    const last = pool[pool.length - 1];
+    return last ? { ...last.outcome } : {};
+  }
+
   return {
     countdownEvents,
     randomInt,
+    chooseOutcome,
     crewTemplates,
     getRoster,
     hasCrewRole,
@@ -2206,6 +2632,7 @@ const {
   addItem: addInventoryItem,
   removeItem: removeInventoryItem,
   getItemName,
+  chooseOutcome,
 } = StarfallData;
 
 const StarfallPage = {
@@ -2372,6 +2799,67 @@ const StarfallPage = {
       /* ignore */
     }
   },
+  loadHistory() {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem('starfall-history');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      const normalized = parsed
+        .filter((entry) => entry && typeof entry === 'object')
+        .map((entry) => ({
+          score: Number.isFinite(entry.score) ? Number(entry.score) : Number(entry.best_score) || 0,
+          day: Number(entry.day) || 0,
+          ending_id: typeof entry.ending_id === 'string' ? entry.ending_id : '',
+          ending_title: typeof entry.ending_title === 'string' ? entry.ending_title : '',
+          timestamp: Number(entry.timestamp) || 0,
+        }));
+      normalized.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (b.day !== a.day) return b.day - a.day;
+        return b.timestamp - a.timestamp;
+      });
+      return normalized.slice(0, 5);
+    } catch (err) {
+      return [];
+    }
+  },
+  persistHistory(list = []) {
+    if (typeof window === "undefined") return;
+    try {
+      const trimmed = Array.isArray(list) ? list.slice(0, 5) : [];
+      window.localStorage.setItem('starfall-history', JSON.stringify(trimmed));
+    } catch (err) {
+      /* ignore */
+    }
+  },
+  recordHistory(ending) {
+    if (!this._state) return;
+    const state = this._state;
+    const score = this.calculateScore(state, ending);
+    const res = state.resources || {};
+    let day = Math.max(0, Math.round(res.day || 0));
+    if (day <= 0 && state.phase && state.phase !== "intro") {
+      day = state.phase === "countdown" ? 0 : 1;
+    }
+    const entry = {
+      score,
+      day,
+      ending_id: ending?.id || "",
+      ending_title: ending?.title || "",
+      timestamp: Math.floor(Date.now() / 1000),
+    };
+    const history = Array.isArray(state.history) ? [...state.history] : [];
+    history.push(entry);
+    history.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.day !== a.day) return b.day - a.day;
+      return b.timestamp - a.timestamp;
+    });
+    state.history = history.slice(0, 5);
+    this.persistHistory(state.history);
+  },
   unlockEnding(ending) {
     if (!ending || !ending.id) return;
     if (!this._state) return;
@@ -2408,6 +2896,7 @@ const StarfallPage = {
       flags: { inventory: [] },
       log: [],
       codex: this.loadCodex(),
+      history: this.loadHistory(),
       pendingStory: {
         title: "逃离 Ecliptica",
         body: "飞船内爆计时开始。你还有 60 秒。",
@@ -5313,6 +5802,7 @@ const StarfallPage = {
       body: ending.body,
       options: [],
     };
+    this.recordHistory(ending);
     this.renderState();
     this.submitRunResult(ending);
     return true;

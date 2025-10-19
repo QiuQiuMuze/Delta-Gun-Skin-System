@@ -8393,8 +8393,16 @@ def _cultivation_finalize(
     }
     node["last_result"] = last_result
     history = node.get("history") if isinstance(node.get("history"), list) else []
-    history.append(last_result)
-    node["history"] = history[-10:]
+    merged_history = list(history)
+    merged_history.append(last_result)
+    merged_history.sort(
+        key=lambda entry: (
+            int(entry.get("score") or 0),
+            int(entry.get("timestamp") or 0),
+        ),
+        reverse=True,
+    )
+    node["history"] = merged_history[:5]
     node.pop("active_run", None)
     node.pop("lobby", None)
     state[COOKIE_CULTIVATION_KEY] = node
