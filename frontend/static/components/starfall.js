@@ -2607,6 +2607,41 @@ const StarfallData = (() => {
   };
 })();
 
+const StarfallStorage = {
+  load() {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem("starfall-run-state");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      return parsed;
+    } catch (_) {
+      return null;
+    }
+  },
+  save(snapshot) {
+    if (typeof window === "undefined") return;
+    try {
+      if (!snapshot) {
+        window.localStorage.removeItem("starfall-run-state");
+        return;
+      }
+      window.localStorage.setItem("starfall-run-state", JSON.stringify(snapshot));
+    } catch (_) {
+      /* ignore */
+    }
+  },
+  clear() {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.removeItem("starfall-run-state");
+    } catch (_) {
+      /* ignore */
+    }
+  },
+};
+
 const EFFECT_LABELS = {
   fuel: "燃料",
   food: "食物",
@@ -2639,6 +2674,8 @@ const StarfallPage = {
   _state: null,
   _els: null,
   _handlers: null,
+  _restoring: false,
+  _restoringMeta: null,
   presence() {
     if (!this._state) {
       return { activity: "game:starfall" };
@@ -2745,7 +2782,10 @@ const StarfallPage = {
       this.disableAudio(false, true);
       return;
     }
-    this.initState();
+    const restored = this.restorePersistedState();
+    if (!restored) {
+      this.initState();
+    }
     this.renderState();
     this.refreshProfile();
     this.refreshLeaderboard();
@@ -2763,6 +2803,7 @@ const StarfallPage = {
     if (this._els?.leaderboard && this._handlers?.onToggleLeaderboard) {
       this._els.leaderboard.removeEventListener("click", this._handlers.onToggleLeaderboard);
     }
+    this.persistState();
     this.disableAudio(false, true);
     this._state = null;
     this._els = null;
@@ -2771,6 +2812,103 @@ const StarfallPage = {
     this._leaderboard = [];
     this._leaderboardSelf = null;
     this._profile = null;
+  },
+  snapshotState() {
+    if (!this._state || this._locked) return null;
+    const raw = this._state;
+    const log = Array.isArray(raw.log) ? raw.log.slice(-160) : [];
+    const base = {
+      ...raw,
+      pendingStory: null,
+      log,
+    };
+    return {
+      version: 1,
+      state: JSON.parse(JSON.stringify(base)),
+      pendingActive: !!raw.pendingStory,
+      timestamp: Date.now(),
+    };
+  },
+  persistState() {
+    if (this._restoring || this._locked) return;
+    const snapshot = this.snapshotState();
+    if (snapshot) {
+      StarfallStorage.save(snapshot);
+    } else {
+      StarfallStorage.clear();
+    }
+  },
+  restorePersistedState() {
+    const saved = StarfallStorage.load();
+    if (!saved || !saved.state) return false;
+    this._restoring = true;
+    const state = saved.state;
+    if (!state || typeof state !== "object") {
+      this._restoring = false;
+      return false;
+    }
+    if (!Array.isArray(state.log)) state.log = [];
+    if (!state.flags || typeof state.flags !== "object") state.flags = {};
+    if (!state.resources || typeof state.resources !== "object") state.resources = {};
+    if (!Array.isArray(state.codex)) state.codex = this.loadCodex();
+    if (!Array.isArray(state.history)) state.history = this.loadHistory();
+    this._state = state;
+    this._restoringMeta = { pendingActive: !!saved.pendingActive };
+    this.rebuildPendingStoryAfterRestore();
+    this._restoringMeta = null;
+    this._restoring = false;
+    return true;
+  },
+  rebuildPendingStoryAfterRestore() {
+    if (!this._state) return;
+    const pendingActive = this._restoringMeta?.pendingActive;
+    if (!pendingActive) {
+      this._state.pendingStory = null;
+      return;
+    }
+    const phase = this._state.phase;
+    if (phase === "intro") {
+      this._state.pendingStory = {
+        title: "逃离 Ecliptica",
+        body: "飞船内爆计时开始。你还有 60 秒。",
+      };
+      return;
+    }
+    if (phase === "countdown") {
+      const index = Math.max(0, Math.min(Number(this._state.countdownIndex) || 0, StarfallData.countdownEvents.length - 1));
+      const event = StarfallData.countdownEvents[index];
+      if (event) {
+        this._state.pendingStory = {
+          title: `${event.time} 秒 · ${event.title}`,
+          body: event.description,
+          options: event.options,
+          countdown: true,
+        };
+      } else {
+        this._state.pendingStory = null;
+      }
+      return;
+    }
+    if (phase === "interlude") {
+      this._state.pendingStory = null;
+      return;
+    }
+    if (phase === "day") {
+      const day = Math.max(1, Math.round(this._state.resources?.day || 1));
+      const event = this.getDayEvent(day);
+      this._state.pendingStory = event || null;
+      return;
+    }
+    if (phase === "ending" && this._state.currentEnding) {
+      const ending = this._state.currentEnding;
+      this._state.pendingStory = {
+        title: `结局 · ${ending.title}`,
+        body: ending.body,
+        options: [],
+      };
+      return;
+    }
+    this._state.pendingStory = null;
   },
   loadCodex() {
     if (typeof window === "undefined") return [];
@@ -5832,6 +5970,7 @@ const StarfallPage = {
     this.renderCodex();
     this.renderLeaderboard();
     this.renderAudio();
+    if (!this._restoring) this.persistState();
   },
   renderLocked() {
     if (!this._els) return;
