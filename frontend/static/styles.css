@@ -1146,6 +1146,10 @@ h3 + .muted.small { margin-top:-6px; }
 .hl-hp { color: #ff9fa6; font-weight: 600; }
 .hl-energy { color: #8ee7ff; font-weight: 600; }
 .hl-corrupt { color: #ffbe6b; font-weight: 600; }
+.hl-heroism { color: #ffe8a6; font-weight: 600; }
+.dungeon-guide { position: relative; overflow: hidden; }
+.dungeon-guide::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 20% 0%, rgba(92,132,208,0.22), rgba(32,46,78,0)); opacity: 0.8; pointer-events: none; }
+.dungeon-guide > * { position: relative; }
 
 .dungeon-room__title { font-size: 18px; margin-bottom: 8px; color: #f4f8ff; }
 .dungeon-room p { margin: 4px 0; }
@@ -1157,6 +1161,7 @@ h3 + .muted.small { margin-top:-6px; }
 
 .dungeon-commands { background: rgba(10,16,28,0.88); border: 1px solid rgba(70,96,150,0.35); border-radius: 16px; padding: 16px; box-shadow: inset 0 0 0 1px rgba(50,70,110,0.25); }
 .command-group { display: flex; flex-direction: column; gap: 12px; }
+.command-title { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #7fa4dd; margin-top: 2px; }
 .command-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .dungeon-commands button { background: linear-gradient(140deg, rgba(34,52,92,0.92), rgba(22,30,52,0.92)); border: 1px solid rgba(88,118,178,0.5); color: #dce6ff; padding: 8px 16px; border-radius: 12px; cursor: pointer; font-size: 14px; box-shadow: 0 8px 22px rgba(10,16,32,0.45); transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
 .dungeon-commands button:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(12,20,44,0.55); border-color: rgba(140,180,255,0.85); }
@@ -1173,6 +1178,12 @@ h3 + .muted.small { margin-top:-6px; }
 .log-entry.buff { color: #a7f6ff; }
 .log-entry.title { color: #f5f9ff; font-weight: 600; letter-spacing: 0.08em; }
 .log-entry.announce { color: #ffeab0; font-weight: 700; }
+.guide-stage { font-size: 13px; color: #f4f8ff; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.guide-steps { display: flex; flex-direction: column; gap: 10px; }
+.guide-step { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: linear-gradient(150deg, rgba(28,40,70,0.65), rgba(18,26,44,0.6)); border: 1px solid rgba(90,118,182,0.35); box-shadow: inset 0 0 0 1px rgba(40,56,96,0.25); }
+.guide-icon { width: 26px; height: 26px; border-radius: 10px; background: rgba(122,160,242,0.25); display: flex; align-items: center; justify-content: center; font-size: 14px; color: #f8fbff; }
+.guide-text { color: #d7e3ff; font-size: 13px; line-height: 1.4; }
+.guide-highlight { margin-top: 12px; padding: 10px 12px; border-radius: 12px; border-left: 3px solid rgba(255,214,102,0.8); background: rgba(255,214,102,0.15); color: #ffefc1; font-size: 13px; }
 
 .panel-title { font-size: 14px; color: #9fb7e4; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 8px; }
 .dungeon-panel ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
