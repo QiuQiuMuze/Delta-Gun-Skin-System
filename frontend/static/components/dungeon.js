@@ -77,7 +77,7 @@ const DungeonData = (() => {
     swordsman: {
       id: "swordsman",
       name: "剑士",
-      passive: "稳固：defend会获得1层护甲",
+      passive: "稳固：防御会获得1层护甲",
       passiveId: "steadfast",
       baseStats: { maxHP: 42, maxEnergy: 5, attack: 6, defense: 2 },
       startingSkill: "shield_bash",
@@ -113,7 +113,7 @@ const DungeonData = (() => {
     hunter: {
       id: "hunter",
       name: "猎人",
-      passive: "追踪：inspect揭示额外1词缀",
+      passive: "追踪：调查揭示额外1词缀",
       passiveId: "tracker",
       baseStats: { maxHP: 40, maxEnergy: 6, attack: 5, defense: 2 },
       startingSkill: "hunter_net",
@@ -549,7 +549,7 @@ class DungeonGame {
       <div class="dungeon-intro">
         <div class="dungeon-intro__head">
           <h2>〈史莱姆古井〉探险</h2>
-          <p>三分钟一战、十分钟一层、三十分钟一卷。选择一个职业，准备下井。</p>
+          <p>选择一个职业，准备下井。</p>
         </div>
         <div class="dungeon-class-list">${cards}</div>
         <div class="dungeon-intro__meta">
