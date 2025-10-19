@@ -33,6 +33,17 @@ const AdminPage = {
         <div class="muted" id="starfall-toggle-desc">加载中...</div>
       </div>
 
+      <div class="card">
+        <h3>古井探险调试</h3>
+        <div class="input-row">
+          <label><input type="checkbox" id="dungeon-toggle-game"/> 对玩家开放古井探险</label>
+        </div>
+        <div class="input-row">
+          <label><input type="checkbox" id="dungeon-toggle-invincible"/> 启用无敌测试模式</label>
+        </div>
+        <div class="muted" id="dungeon-toggle-desc">加载中...</div>
+      </div>
+
       <div class="card admin-presence">
         <div class="admin-presence__head">
           <h3>在线玩家概览</h3>
@@ -165,6 +176,9 @@ const AdminPage = {
     const cultivationDesc = byId("cultivation-toggle-desc");
     const starfallSwitch = byId("starfall-toggle");
     const starfallDesc = byId("starfall-toggle-desc");
+    const dungeonGameToggle = byId('dungeon-toggle-game');
+    const dungeonInvToggle = byId('dungeon-toggle-invincible');
+    const dungeonToggleDesc = byId('dungeon-toggle-desc');
     modeDesc.textContent = "加载中...";
     if (cookieDesc) cookieDesc.textContent = "加载中...";
 
@@ -231,6 +245,35 @@ const AdminPage = {
       starfallDesc.innerHTML = enabled
         ? `星际余生已开放，记录玩家 <b>${players}</b> 位 · 最高分 <b>${bestScore}</b> · 最长旅程 Day <b>${bestDay}</b>`
         : `关闭状态，普通玩家无法进入星际余生页面。`;
+    };
+
+    const loadDungeonSettings = () => {
+      const stored = DungeonStorage.loadAdminSettings();
+      const gameEnabled = stored.gameEnabled !== false;
+      const invincible = !!stored.invincible;
+      if (dungeonGameToggle) dungeonGameToggle.checked = gameEnabled;
+      if (dungeonInvToggle) dungeonInvToggle.checked = invincible;
+      if (dungeonToggleDesc) {
+        dungeonToggleDesc.textContent = `${gameEnabled ? '入口开放' : '入口关闭'} ｜ ${invincible ? '无敌模式' : '正常模式'}`;
+      }
+    };
+
+    const persistDungeonSettings = () => {
+      if (!dungeonGameToggle || !dungeonInvToggle) return;
+      const payload = {
+        gameEnabled: !!dungeonGameToggle.checked,
+        invincible: !!dungeonInvToggle.checked,
+      };
+      DungeonStorage.saveAdminSettings(payload);
+      API._features = {
+        ...(API._features || {}),
+        dungeon: {
+          available: payload.gameEnabled,
+          enabled: payload.gameEnabled,
+        },
+      };
+      if (typeof renderNav === 'function') renderNav();
+      loadDungeonSettings();
     };
 
     const loadCookie = async () => {
@@ -319,6 +362,9 @@ const AdminPage = {
     }
 
     await loadCookie();
+    loadDungeonSettings();
+    if (dungeonGameToggle) dungeonGameToggle.onchange = persistDungeonSettings;
+    if (dungeonInvToggle) dungeonInvToggle.onchange = persistDungeonSettings;
 
     const presenceBox = byId("presence-list");
     const presenceMeta = byId("presence-meta");
