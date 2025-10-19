@@ -186,6 +186,28 @@ const DungeonStorage = {
       // ignore
     }
   },
+  loadAdminSettings() {
+    if (typeof window === 'undefined') return {};
+    try {
+      const raw = window.localStorage.getItem('dungeon-admin-settings');
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (err) {
+      return {};
+    }
+  },
+  saveAdminSettings(settings) {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem('dungeon-admin-settings', JSON.stringify(settings || {}));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('dungeon-admin-updated', { detail: settings || {} }));
+      }
+    } catch (err) {
+      // ignore
+    }
+  },
 };
 
 class DungeonRng {
@@ -218,14 +240,27 @@ class DungeonRng {
 class DungeonGame {
   constructor(root) {
     this.root = root;
-    this.state = { phase: "intro" };
+    this.state = { phase: "intro", overlay: null };
     this.logEntries = [];
-    this.admin = { gameEnabled: true, invincible: false };
+    this._tutorialTimer = null;
+    const storedAdmin = DungeonStorage.loadAdminSettings();
+    this.admin = { gameEnabled: true, invincible: false, ...storedAdmin };
     this.scores = DungeonStorage.loadScores();
+    this._handleAdminBroadcast = (event) => {
+      if (!event?.detail) return;
+      this.applyAdminSettings(event.detail);
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('dungeon-admin-updated', this._handleAdminBroadcast);
+    }
     this.renderIntro();
   }
 
   destroy() {
+    if (typeof window !== 'undefined' && this._handleAdminBroadcast) {
+      window.removeEventListener('dungeon-admin-updated', this._handleAdminBroadcast);
+    }
+    this.clearTutorialTimer();
     this.root.innerHTML = "";
   }
 
@@ -250,6 +285,7 @@ class DungeonGame {
           <div>提示：首层前两场战斗必掉职业相关装备。</div>
           <div class="dungeon-seed">本周种子：<span id="dungeon-seed"></span></div>
         </div>
+        ${this.admin.gameEnabled ? '' : '<div class="dungeon-maintenance">古井入口暂时关闭，请等待管理员重新开启。</div>'}
       </div>
     `;
     const seed = Math.abs(Math.floor(Date.now() / 604800000));
@@ -258,9 +294,22 @@ class DungeonGame {
     this.root.querySelectorAll('.dungeon-class').forEach(node => {
       node.addEventListener('click', () => {
         const clsId = node.dataset.class;
+        if (!this.admin.gameEnabled) {
+          alert('古井入口正在维护，请稍后再尝试。');
+          return;
+        }
         this.startRun(clsId, seed);
       });
     });
+  }
+
+  applyAdminSettings(settings = {}) {
+    this.admin = { ...this.admin, ...settings };
+    if (this.state.phase === 'intro') {
+      this.renderIntro();
+    } else {
+      this.updateAll();
+    }
   }
 
   startRun(classId, seed) {
@@ -305,14 +354,16 @@ class DungeonGame {
       floors: this.generateFloors(),
       corruption: 0,
       maxCorruption: 10,
-      campUsed: {},
+      currency: 120,
       history: [],
       heroicPromise: 0,
       score: 0,
       startTime: Date.now(),
       timeHourglassUsed: false,
     };
-    this.tutorial = { stage: 'explore', seen: new Set() };
+    this.clearTutorialTimer();
+    this.tutorial = { stage: 'explore', seen: new Set(), actions: 0, expiresAt: Date.now() + 120000, hidden: false };
+    this.scheduleTutorialTimeout();
     this.state.phase = "explore";
     this.renderLayout();
     this.enterFloor(0);
@@ -402,18 +453,18 @@ class DungeonGame {
           <div class="dungeon-panel" id="dungeon-panel-status"></div>
           <div class="dungeon-panel" id="dungeon-panel-room"></div>
           <div class="dungeon-commands" id="dungeon-commands"></div>
-          <div class="dungeon-panel dungeon-guide" id="dungeon-panel-guide"></div>
-          <div class="dungeon-log" id="dungeon-log"></div>
         </div>
         <div class="dungeon-right">
-          <div class="dungeon-panel dungeon-admin" id="dungeon-panel-admin"></div>
-          <div class="dungeon-panel dungeon-progress" id="dungeon-panel-progress"></div>
-          <div class="dungeon-panel" id="dungeon-panel-score"></div>
           <div class="dungeon-panel" id="dungeon-panel-inventory"></div>
-          <div class="dungeon-panel" id="dungeon-panel-bestiary"></div>
-          <div class="dungeon-panel" id="dungeon-panel-relics"></div>
+          <div class="dungeon-panel" id="dungeon-panel-log">
+            <div class="panel-title">冒险回声</div>
+            <div class="dungeon-log" id="dungeon-log"></div>
+          </div>
+          <div class="dungeon-panel" id="dungeon-panel-score"></div>
+          <div class="dungeon-panel dungeon-guide" id="dungeon-panel-guide"></div>
         </div>
       </div>
+      <div class="dungeon-overlay is-hidden" id="dungeon-overlay"></div>
     `;
     this.updateAll();
   }
@@ -423,13 +474,10 @@ class DungeonGame {
     this.renderRoom();
     this.renderCommands();
     this.renderInventory();
-    this.renderBestiary();
-    this.renderRelics();
-    this.renderGuide();
-    this.renderAdminPanel();
-    this.renderProgress();
     this.renderScoreboard();
+    this.renderGuide();
     this.renderLog();
+    this.renderOverlay();
   }
 
   get currentFloor() {
@@ -453,6 +501,7 @@ class DungeonGame {
     startCell.revealed = true;
     startCell.resolved = true;
     this.run.currentRoom = startCell;
+    this.closeOverlay();
     this.addLog(`【第${index + 1}层：${floor.name}】${floor.ambience}`, "announce");
     this.state.phase = 'explore';
     this.tutorial.stage = 'explore';
@@ -492,6 +541,12 @@ class DungeonGame {
       return;
     }
     if (cell.type === "event") {
+      if (cell.resolved) {
+        this.addLog('这个房间的事件已经平息。', 'info');
+        this.state.phase = 'explore';
+        this.updateAll();
+        return;
+      }
       this.addLog(`〈${DungeonData.events[cell.eventId]?.name || "未知事件"}〉`, "title");
       this.state.phase = 'event';
       this.tutorial.stage = 'event';
@@ -499,6 +554,7 @@ class DungeonGame {
       return;
     }
     if (cell.type === 'merchant') {
+      this.ensureMerchantStock(cell);
       this.addLog(`〈行商的帐篷〉潮湿的纸币不收——灵魂碎片另当别论。`, 'title');
       this.state.phase = 'merchant';
       this.tutorial.stage = 'merchant';
@@ -506,6 +562,12 @@ class DungeonGame {
       return;
     }
     if (cell.type === 'camp') {
+      if (cell.resolved) {
+        this.addLog('营地火堆只剩灰烬，已无法停留。', 'info');
+        this.state.phase = 'explore';
+        this.updateAll();
+        return;
+      }
       this.addLog(`〈潮湿营地〉火光驱散了寒意，但腐蚀条在抖动。`, 'title');
       this.state.phase = 'camp';
       this.tutorial.stage = 'camp';
@@ -513,6 +575,12 @@ class DungeonGame {
       return;
     }
     if (cell.type === 'treasure') {
+      if (cell.resolved) {
+        this.addLog('秘藏已被取走，只剩空匣。', 'info');
+        this.state.phase = 'explore';
+        this.updateAll();
+        return;
+      }
       this.resolveTreasure(cell);
       return;
     }
@@ -555,6 +623,8 @@ class DungeonGame {
     player.heroism += 1;
     this.addLog(`秘藏赐予勇气，勇气提升至 ${player.heroism}。`, 'goal');
     scoreGain += 50;
+    this.run.currency = this.ensureCurrency() + 60;
+    this.addLog('灵魂碎片 +60。', 'score');
     rewards.forEach(text => this.addLog(`获得：${text}`, 'good'));
     cell.resolved = true;
     cell.revealed = true;
@@ -592,6 +662,10 @@ class DungeonGame {
     }
     this.state.phase = "combat";
     this.tutorial.stage = 'combat';
+    if (this.corruptionTier() >= 3) {
+      this.applyStatus(this.run.player, 'corrupt', 1, 3);
+      this.addLog('腐蚀在战斗伊始暴走，你身披【腐化】。', 'warn');
+    }
     if (enemy.tier === 'normal' && this.run.player.flags?.mirrorPenalty && this.rng.random() < 0.5) {
       this.run.player.armor = Math.max(0, this.run.player.armor - 1);
       this.addLog('无面誓印嗡鸣，你的护甲被抽走一层。', 'warn');
@@ -607,9 +681,13 @@ class DungeonGame {
     const cell = this.currentCell;
     const coord = floor?.position ? `${floor.position.x + 1},${floor.position.y + 1}` : '-';
     const cellLabel = cell ? this.cellTypeLabel(cell, { reveal: true }) : '未知';
+    const tier = this.corruptionTier();
+    const tierLabel = this.corruptionStateLabel();
+    const badge = `<span class="status-badge tier-${tier}">${tierLabel}</span>`;
+    const currency = this.ensureCurrency();
     node.innerHTML = `
-      <div class="dungeon-status-line">【等级】${p.level} 【HP】<span class="hl-hp">${p.hp}/${p.maxHP}</span> 【能量】<span class="hl-energy">${p.energy}/${p.maxEnergy}</span> 【腐蚀】<span class="hl-corrupt">${this.run.corruption}/${this.run.maxCorruption}</span></div>
-      <div class="dungeon-status-line">【职业】${p.name} 【被动】${this.describePassive()} 【背包】${p.inventory.map(item => `${item.name}${item.charges > 1 ? `x${item.charges}` : ""}`).join("、") || "无"}</div>
+      <div class="dungeon-status-line">【等级】${p.level} 【HP】<span class="hl-hp">${p.hp}/${p.maxHP}</span> 【能量】<span class="hl-energy">${p.energy}/${p.maxEnergy}</span> 【腐蚀】<span class="hl-corrupt">${this.run.corruption}/${this.run.maxCorruption}</span>${badge}</div>
+      <div class="dungeon-status-line">【职业】${p.name} 【被动】${this.describePassive()} 【货币】<span class="hl-coin">${currency}</span></div>
       <div class="dungeon-status-line">【所在】${floor?.name || "未知"} · ${cellLabel} ｜ 坐标 (${coord}) 【连胜】${p.streak} 【勇气】<span class="hl-heroism">${p.heroism}</span> 【积分】<span class="hl-score">${this.run.score || 0}</span></div>
     `;
   }
@@ -702,7 +780,10 @@ class DungeonGame {
   renderCooldowns() {
     const cds = Object.entries(this.run.player.cooldowns || {})
       .filter(([, v]) => v > 0)
-      .map(([id, v]) => `${DungeonData.skills[id]?.name || id}(${v})`);
+      .map(([id, v]) => {
+        if (id === '__heal') return `治疗(${v})`;
+        return `${DungeonData.skills[id]?.name || id}(${v})`;
+      });
     if (!cds.length) return "";
     return ` | 冷却: ${cds.join("、")}`;
   }
@@ -795,7 +876,7 @@ class DungeonGame {
       body = this.exploreCommands();
     }
     const preview = this.renderScenePreview();
-    node.innerHTML = `<div class="command-board">${preview}<div class="command-stack">${body}</div></div>`;
+    node.innerHTML = `<div class="command-board"><div class="command-preview">${preview}</div><div class="command-stack">${body}</div></div>`;
     node.querySelectorAll('button[data-cmd]').forEach(btn => {
       btn.addEventListener('click', () => {
         const cmd = btn.dataset.cmd;
@@ -805,24 +886,42 @@ class DungeonGame {
   }
 
   combatCommands() {
-    const skillButtons = this.availableSkills().map(skill => `<button data-cmd="skill" data-arg="${skill.id}">${skill.name}</button>`).join("");
-    const itemButtons = this.run.player.inventory.filter(item => !item.slot).map((item, idx) => `<button data-cmd="item" data-arg="${idx}">${item.name}</button>`).join("");
+    const player = this.run.player;
+    const healCd = player.cooldowns.__heal || 0;
+    const healDisabled = player.energy < 1 || healCd > 0;
+    const healTip = healCd > 0 ? `治疗冷却中（${healCd}回合）` : '消耗1点能量并进入2回合冷却，恢复生命。';
+    const baseButtons = `
+      <button data-cmd="attack" title="普通攻击：根据攻击力造成伤害。">攻击</button>
+      <button data-cmd="defend" title="防御：获得守备，剑士额外获得护甲。">防御</button>
+      <button data-cmd="heal" title="${healTip}" ${healDisabled ? 'disabled' : ''}>治疗</button>
+      <button data-cmd="run" title="撤退：尝试离开战斗，部分道具可确保成功。">撤退</button>
+    `;
+    const tacticButtons = `
+      <button data-cmd="inspect" title="侦察敌人的词缀与弱点。">侦察</button>
+      <button data-cmd="mark" title="标记目标，使其额外受伤。">标记</button>
+      <button data-cmd="taunt" title="挑衅敌人，吸引火力。">挑衅</button>
+      <button data-cmd="log" title="查看完整战斗记录。">战斗记录</button>
+    `;
+    const skillButtons = this.availableSkills().map(skill => {
+      const cooldown = player.cooldowns[skill.id] || 0;
+      const disabled = cooldown > 0 || player.energy < skill.cost;
+      const label = `${skill.name}${cooldown > 0 ? `(${cooldown})` : ''}`;
+      const tip = `${skill.description || ''}（冷却${skill.cooldown}，耗能${skill.cost}）`;
+      return `<button data-cmd="skill" data-arg="${skill.id}" title="${tip}" ${disabled ? 'disabled' : ''}>${label}</button>`;
+    }).join("");
+    const consumables = this.run.player.inventory
+      .map((item, idx) => ({ item, idx }))
+      .filter(entry => !entry.item.slot && entry.item.charges > 0);
+    const itemButtons = consumables.map(({ item, idx }) => {
+      const tip = item.description || '';
+      return `<button data-cmd="item" data-arg="${idx}" title="${tip}">${item.name}${item.charges > 1 ? `(${item.charges})` : ''}</button>`;
+    }).join("");
     return `
       <div class="command-group">
         <div class="command-title">基础动作</div>
-        <div class="command-row">
-          <button data-cmd="attack">攻击</button>
-          <button data-cmd="defend">防御</button>
-          <button data-cmd="heal">治疗</button>
-          <button data-cmd="run">撤退</button>
-        </div>
+        <div class="command-row">${baseButtons}</div>
         <div class="command-title">战术指令</div>
-        <div class="command-row">
-          <button data-cmd="inspect">侦察</button>
-          <button data-cmd="mark">标记</button>
-          <button data-cmd="taunt">挑衅</button>
-          <button data-cmd="log">战斗记录</button>
-        </div>
+        <div class="command-row">${tacticButtons}</div>
         <div class="command-title">职业技能</div>
         <div class="command-row">
           ${skillButtons || '<span class="muted">无可用技能</span>'}
@@ -844,17 +943,17 @@ class DungeonGame {
 
   exploreCommands() {
     const moves = this.availableMoves();
-    const moveButtons = moves.map(move => `<button data-cmd="move" data-arg="${move.dir}">${move.label}</button>`).join('');
+    const moveButtons = moves.map(move => `<button data-cmd="move" data-arg="${move.dir}" title="前往：${this.cellPreview(move.cell)}">${move.label}</button>`).join('');
     return `
       <div class="command-group">
         <div class="command-title">移动</div>
         <div class="command-row">${moveButtons || '<span class="muted">四面都是坚固石壁</span>'}</div>
         <div class="command-title">准备</div>
         <div class="command-row">
-          <button data-cmd="rest">原地整备</button>
-          <button data-cmd="inventory">查看背包</button>
-          <button data-cmd="map">查看地图</button>
-          <button data-cmd="leave">撤离</button>
+          <button data-cmd="rest" title="恢复生命但腐蚀上升。">原地整备</button>
+          <button data-cmd="inventory" title="打开背包界面。">查看背包</button>
+          <button data-cmd="map" title="查看关卡地图。">查看地图</button>
+          <button data-cmd="leave" title="立即撤离并保留本层战利品。">撤离</button>
         </div>
         <div class="command-title">情报</div>
         <div class="command-row">
@@ -933,9 +1032,9 @@ class DungeonGame {
       <div class="command-group">
         <div class="command-title">行商服务</div>
         <div class="command-row">
-          <button data-cmd="merchant-buy">购入补给</button>
-          <button data-cmd="merchant-relic">探查遗物</button>
-          <button data-cmd="merchant-leave">告辞离开</button>
+          <button data-cmd="merchant-buy" title="查看并购买消耗品与装备。">购入补给</button>
+          <button data-cmd="merchant-relic" title="以灵魂碎片兑换稀有遗物。">探查遗物</button>
+          <button data-cmd="merchant-leave" title="离开行商帐篷，返回探索。">告辞离开</button>
         </div>
       </div>
     `;
@@ -946,10 +1045,10 @@ class DungeonGame {
       <div class="command-group">
         <div class="command-title">营地选择</div>
         <div class="command-row">
-          <button data-cmd="camp-rest">扎营休息</button>
-          <button data-cmd="camp-prepare">整理装备</button>
-          <button data-cmd="camp-pray">祷告净化</button>
-          <button data-cmd="camp-leave">继续前进</button>
+          <button data-cmd="camp-rest" title="大量恢复生命，腐蚀+2。">扎营休息</button>
+          <button data-cmd="camp-prepare" title="重置技能冷却，腐蚀+2。">整理装备</button>
+          <button data-cmd="camp-pray" title="净化负面状态，腐蚀+2。">祷告净化</button>
+          <button data-cmd="camp-leave" title="离开营地，保留决策机会。">继续前进</button>
         </div>
       </div>
     `;
@@ -960,36 +1059,11 @@ class DungeonGame {
       <div class="command-group">
         <div class="command-title">楼梯间</div>
         <div class="command-row">
-          <button data-cmd="go-down">继续下行</button>
-          <button data-cmd="leave">撤离</button>
+          <button data-cmd="go-down" title="前往下一层，难度将提升。">继续下行</button>
+          <button data-cmd="leave" title="结束冒险并保留战利品。">撤离</button>
         </div>
       </div>
     `;
-  }
-
-  renderAdminPanel() {
-    const node = this.root.querySelector('#dungeon-panel-admin');
-    if (!node) return;
-    node.innerHTML = `
-      <div class="panel-title">管理员调试</div>
-      <div class="admin-switches">
-        <label class="admin-toggle"><input type="checkbox" data-admin="game" ${this.admin.gameEnabled ? 'checked' : ''}/> 游戏开放</label>
-        <label class="admin-toggle"><input type="checkbox" data-admin="invincible" ${this.admin.invincible ? 'checked' : ''}/> 无敌模式</label>
-      </div>
-      <div class="admin-status">状态：<span class="${this.admin.gameEnabled ? 'hl-good' : 'hl-warn'}">${this.admin.gameEnabled ? '入口开放' : '维护关闭'}</span> ｜ <span class="${this.admin.invincible ? 'hl-heroism' : 'hl-info'}">${this.admin.invincible ? '无敌' : '正常'}</span></div>
-    `;
-    node.querySelectorAll('input[data-admin]').forEach(input => {
-      input.addEventListener('change', () => {
-        if (input.dataset.admin === 'game') {
-          this.admin.gameEnabled = input.checked;
-          this.addLog(this.admin.gameEnabled ? '管理员重新开启了古井入口。' : '管理员暂时关闭了古井入口。', this.admin.gameEnabled ? 'info' : 'announce');
-        } else if (input.dataset.admin === 'invincible') {
-          this.admin.invincible = input.checked;
-          this.addLog(this.admin.invincible ? '无敌模式已启用，伤害将被忽略。' : '无敌模式关闭，战斗恢复正常。', this.admin.invincible ? 'good' : 'info');
-        }
-        this.updateAll();
-      });
-    });
   }
 
   renderScoreboard() {
@@ -1047,34 +1121,437 @@ class DungeonGame {
   renderInventory() {
     const node = this.root.querySelector('#dungeon-panel-inventory');
     if (!node) return;
-    const items = this.run.player.inventory.map((item, idx) => {
-      const tags = [];
-      if (item.slot) tags.push(`<span class="item-tag rarity-${item.rarity || 'common'}">${item.slot}</span>`);
-      if (item.equipped) tags.push('<span class="item-tag equipped">已装备</span>');
-      if (item.effect?.imbue === 'ember') tags.push('<span class="item-tag ember">余烬</span>');
-      const actions = [];
-      if (item.slot) actions.push(`<button data-inv-action="equip" data-idx="${idx}">装备</button>`);
-      if (this.canUseItemOutsideCombat(item)) actions.push(`<button data-inv-action="use" data-idx="${idx}">使用</button>`);
-      return `
-        <li>
-          <div class="item-line"><span class="item-name">${item.name}${item.charges > 1 ? ` ×${item.charges}` : ''}</span>${tags.join('')}</div>
-          <div class="muted">${item.description || ''}</div>
-          ${actions.length ? `<div class="item-actions">${actions.join('')}</div>` : ''}
-        </li>
-      `;
-    }).join('');
-    const equips = Object.entries(this.run.player.equipment).map(([slot, item]) => `<li>${slot}：${item?.name || "无"}</li>`).join('');
     node.innerHTML = `
       <div class="panel-title">背包</div>
-      <ul>${items || '<li class="muted">空空如也</li>'}</ul>
-      <div class="panel-title">装备</div>
-      <ul>${equips || '<li class="muted">未装备</li>'}</ul>
+      ${this.inventoryMarkup({ mode: 'panel' })}
     `;
-    node.querySelectorAll('button[data-inv-action]').forEach(btn => {
+    this.bindInventoryActions(node);
+    const expand = node.querySelector('[data-overlay-open="inventory"]');
+    if (expand) {
+      expand.addEventListener('click', () => {
+        this.openOverlay('inventory');
+      });
+    }
+  }
+
+  inventoryMarkup({ mode = 'panel' } = {}) {
+    const player = this.run?.player;
+    if (!player) return '<div class="muted">尚未开局。</div>';
+    const showDescriptions = mode !== 'panel';
+    const showActions = true;
+    const currency = this.ensureCurrency();
+    const consumables = [];
+    const equipmentBag = [];
+    player.inventory.forEach((item, idx) => {
+      if (!item) return;
+      if (item.slot) equipmentBag.push({ item, idx });
+      else consumables.push({ item, idx });
+    });
+    const slotLabel = slot => ({ weapon: '武器', armor: '护甲', ring: '戒指', amulet: '护符', glove: '手套', boots: '靴子', shield: '盾牌' }[slot] || slot || '装备');
+    const renderEntries = (entries, { emptyText }) => {
+      if (!entries.length) return `<li class="muted">${emptyText}</li>`;
+      return entries.map(({ item, idx }) => {
+        const rarity = item.rarity || 'common';
+        const tags = [];
+        if (item.slot) tags.push(`<span class="item-tag rarity-${rarity}">${slotLabel(item.slot)}</span>`);
+        if (item.equipped) tags.push('<span class="item-tag equipped">已装备</span>');
+        if (item.effect?.imbue === 'ember') tags.push('<span class="item-tag ember">余烬</span>');
+        const actions = [];
+        if (item.slot) actions.push(`<button data-inv-action="equip" data-idx="${idx}">装备</button>`);
+        if (!item.slot && this.canUseItemOutsideCombat(item)) actions.push(`<button data-inv-action="use" data-idx="${idx}">使用</button>`);
+        const desc = item.description ? `<div class="item-desc">${item.description}</div>` : '';
+        const detail = showDescriptions ? desc : '';
+        const info = item.effect?.charges && item.charges === undefined ? ` ×${item.effect.charges}` : '';
+        const charges = item.charges > 1 ? ` ×${item.charges}` : info;
+        return `
+          <li>
+            <div class="item-line"><span class="item-name rarity-${rarity}">${item.name}${charges || ''}</span>${tags.join('')}</div>
+            ${detail}
+            ${actions.length && showActions ? `<div class="item-actions">${actions.join('')}</div>` : ''}
+          </li>
+        `;
+      }).join('');
+    };
+    const equipped = Object.entries(player.equipment).map(([slot, item]) => `<li>${slotLabel(slot)}：<span class="item-name rarity-${item?.rarity || 'common'}">${item?.name || '无'}</span></li>`).join('');
+    const overlayHint = mode === 'panel' ? '<button class="inventory-expand" data-overlay-open="inventory">查看全部详情</button>' : '';
+    return `
+      <div class="dungeon-inventory-currency">灵魂碎片：<span class="hl-coin">${currency}</span></div>
+      <div class="dungeon-inventory-section">
+        <div class="dungeon-inventory-section__title">消耗品</div>
+        <ul>${renderEntries(consumables, { emptyText: '暂无消耗品' })}</ul>
+      </div>
+      <div class="dungeon-inventory-section">
+        <div class="dungeon-inventory-section__title">已装备</div>
+        <ul>${equipped || '<li class="muted">未装备</li>'}</ul>
+      </div>
+      <div class="dungeon-inventory-section">
+        <div class="dungeon-inventory-section__title">未装备</div>
+        <ul>${renderEntries(equipmentBag.filter(({ item }) => !item.equipped), { emptyText: '暂无备用装备' })}</ul>
+      </div>
+      ${overlayHint}
+    `;
+  }
+
+  bindInventoryActions(rootNode) {
+    if (!rootNode) return;
+    rootNode.querySelectorAll('button[data-inv-action]').forEach(btn => {
       btn.addEventListener('click', () => {
         this.handleInventoryAction(btn.dataset.invAction, Number(btn.dataset.idx));
       });
     });
+  }
+
+  openOverlay(type, payload = {}) {
+    this.state.overlay = { type, payload };
+    this.renderOverlay();
+  }
+
+  closeOverlay() {
+    this.state.overlay = null;
+    const node = this.root.querySelector('#dungeon-overlay');
+    if (node) {
+      node.classList.add('is-hidden');
+      node.innerHTML = '';
+    }
+  }
+
+  renderOverlay() {
+    const node = this.root.querySelector('#dungeon-overlay');
+    if (!node) return;
+    const overlay = this.state.overlay;
+    if (!overlay) {
+      node.classList.add('is-hidden');
+      node.innerHTML = '';
+      return;
+    }
+    const { type } = overlay;
+    const payload = overlay.payload || {};
+    const { title, body } = this.overlayContent(type, payload);
+    node.innerHTML = `
+      <div class="overlay-backdrop" data-overlay-close></div>
+      <div class="overlay-content">
+        <div class="overlay-head">
+          <div class="overlay-title">${title}</div>
+          <button class="overlay-close" data-overlay-close>×</button>
+        </div>
+        <div class="overlay-body">${body}</div>
+      </div>
+    `;
+    node.classList.remove('is-hidden');
+    node.querySelectorAll('[data-overlay-close]').forEach(btn => {
+      btn.addEventListener('click', () => this.closeOverlay());
+    });
+    this.bindOverlayInteractions(type, node);
+  }
+
+  overlayContent(type, payload = {}) {
+    switch (type) {
+      case 'map':
+        return { title: '关卡地图', body: this.progressMarkup() };
+      case 'status':
+        return { title: '状态总览', body: this.statusMarkup() };
+      case 'bestiary':
+        return { title: '敌典情报', body: this.bestiaryMarkup() };
+      case 'relics':
+        return { title: '遗物列表', body: this.relicsMarkup() };
+      case 'log':
+        return { title: '战斗记录', body: this.logMarkup() };
+      case 'inventory':
+        return { title: '背包详情', body: this.inventoryMarkup({ mode: 'overlay' }) };
+      case 'merchant-items':
+        return { title: '行商补给', body: this.merchantItemsMarkup(payload) };
+      case 'merchant-relics':
+        return { title: '遗物交换', body: this.merchantRelicsMarkup(payload) };
+      default:
+        return { title: '记录', body: '<div class="muted">暂无内容。</div>' };
+    }
+  }
+
+  bindOverlayInteractions(type, node) {
+    if (!node) return;
+    if (type === 'inventory') {
+      this.bindInventoryActions(node);
+      return;
+    }
+    if (type === 'merchant-items') {
+      node.querySelectorAll('[data-merchant-buy]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          this.purchaseMerchantItem(btn.dataset.merchantBuy);
+        });
+      });
+    }
+    if (type === 'merchant-relics') {
+      node.querySelectorAll('[data-merchant-relic]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          this.purchaseMerchantRelic(btn.dataset.merchantRelic);
+        });
+      });
+    }
+  }
+
+  corruptionTierFor(value) {
+    const max = this.run?.maxCorruption || 10;
+    if (value >= max) return 3;
+    if (value >= Math.ceil(max * 0.8)) return 2;
+    if (value >= Math.ceil(max * 0.5)) return 1;
+    return 0;
+  }
+
+  corruptionTier() {
+    return this.corruptionTierFor(this.run?.corruption || 0);
+  }
+
+  corruptionStateLabel() {
+    const labels = ['稳定', '浸染', '溢出', '暴走'];
+    return labels[this.corruptionTier()] || '未知';
+  }
+
+  adjustCorruption(delta = 0) {
+    if (!this.run) return;
+    const before = this.run.corruption;
+    const beforeTier = this.corruptionTierFor(before);
+    const max = this.run.maxCorruption || 10;
+    const next = Math.min(max, Math.max(0, before + delta));
+    this.run.corruption = next;
+    const afterTier = this.corruptionTierFor(next);
+    this.run.player.flags = this.run.player.flags || {};
+    this.run.player.flags.corruptionTier = afterTier;
+    if (afterTier !== beforeTier) {
+      this.applyCorruptionEffects(beforeTier, afterTier);
+    }
+  }
+
+  applyCorruptionEffects(beforeTier, afterTier) {
+    if (afterTier > beforeTier) {
+      if (afterTier === 1) this.addLog('腐蚀浸入血脉，治疗效果降低。', 'warn');
+      if (afterTier === 2) this.addLog('腐蚀溢出，你感到潮汐的压迫。', 'warn');
+      if (afterTier >= 3) this.addLog('腐蚀爆满，追猎者紧盯着你的气息！', 'announce');
+    } else if (afterTier < beforeTier) {
+      this.addLog('腐蚀暂时缓解，呼吸变得顺畅。', 'good');
+    }
+  }
+
+  currentMerchantRoom() {
+    if (this.run?.currentRoom?.type === 'merchant') return this.run.currentRoom;
+    return null;
+  }
+
+  ensureMerchantStock(room) {
+    if (!room) return null;
+    if (!room.merchantStock) {
+      room.merchantStock = this.generateMerchantStock();
+    }
+    return room.merchantStock;
+  }
+
+  generateMerchantStock() {
+    const depth = this.run?.floorIndex || 0;
+    const makeKey = prefix => `${prefix}-${Math.floor(this.rng.random() * 1e7)}`;
+    const items = [];
+    const consumablePool = this.rng.shuffle(Object.keys(DungeonData.consumables)).slice(0, 4);
+    consumablePool.forEach((id, idx) => {
+      const def = DungeonData.consumables[id];
+      if (!def) return;
+      const base = 36 + idx * 9 + Math.round(this.rng.random() * 12);
+      const cost = base + depth * 14;
+      items.push({
+        key: makeKey('c'),
+        type: 'consumable',
+        id,
+        name: def.name,
+        description: def.description,
+        cost,
+        sold: false,
+        data: { ...def },
+      });
+    });
+    const equipmentPool = this.rng.shuffle(Object.keys(DungeonData.equipments)).slice(0, 3);
+    equipmentPool.forEach((id, idx) => {
+      const def = DungeonData.equipments[id];
+      if (!def) return;
+      const base = 120 + idx * 35 + Math.round(this.rng.random() * 30);
+      const cost = base + depth * 45;
+      items.push({
+        key: makeKey('e'),
+        type: 'equipment',
+        id,
+        name: def.name,
+        description: def.description,
+        cost,
+        sold: false,
+        data: { ...def },
+      });
+    });
+    const relicPool = this.rng.shuffle(Object.keys(DungeonData.relics)).slice(0, 3);
+    const relics = relicPool.map((id, idx) => {
+      const def = DungeonData.relics[id];
+      const base = 210 + idx * 70 + Math.round(this.rng.random() * 40);
+      const cost = base + depth * 60;
+      return {
+        key: makeKey('r'),
+        id,
+        name: def?.name || id,
+        description: def?.effect || '',
+        cost,
+        sold: false,
+      };
+    });
+    return { items, relics };
+  }
+
+  merchantItemsMarkup() {
+    const room = this.currentMerchantRoom();
+    const stock = this.ensureMerchantStock(room);
+    if (!stock) return '<div class="muted">行商不在此处。</div>';
+    const currency = this.ensureCurrency();
+    const entries = stock.items.map(entry => {
+      const disabled = entry.sold || currency < entry.cost;
+      const state = entry.sold
+        ? '<span class="item-tag sold">已售罄</span>'
+        : `<button data-merchant-buy="${entry.key}" ${disabled ? 'disabled' : ''}>购入</button>`;
+      const rarity = entry.type === 'equipment' ? entry.data?.rarity || 'common' : 'common';
+      const typeLabel = entry.type === 'equipment' ? '装备' : '消耗品';
+      return `
+        <li class="merchant-line ${entry.sold ? 'is-sold' : ''}">
+          <div class="item-line"><span class="item-name rarity-${rarity}">${entry.name}</span><span class="item-tag">${typeLabel}</span><span class="item-price">${entry.cost} 碎片</span></div>
+          <div class="muted">${entry.description || ''}</div>
+          <div class="item-actions">${state}</div>
+        </li>
+      `;
+    }).join('');
+    return `
+      <div class="merchant-currency">当前拥有：<span class="hl-coin">${currency}</span> 灵魂碎片</div>
+      <ul class="info-list">${entries || '<li class="muted">库存已清空</li>'}</ul>
+    `;
+  }
+
+  merchantRelicsMarkup() {
+    const room = this.currentMerchantRoom();
+    const stock = this.ensureMerchantStock(room);
+    if (!stock) return '<div class="muted">暂无遗物可换。</div>';
+    const currency = this.ensureCurrency();
+    const player = this.run?.player;
+    const entries = stock.relics.map(entry => {
+      const owned = player?.relics?.includes(entry.id);
+      const disabled = entry.sold || owned || currency < entry.cost;
+      const state = entry.sold
+        ? '<span class="item-tag sold">已售罄</span>'
+        : owned
+          ? '<span class="item-tag owned">已拥有</span>'
+          : `<button data-merchant-relic="${entry.key}" ${disabled ? 'disabled' : ''}>兑换</button>`;
+      return `
+        <li class="merchant-line ${entry.sold ? 'is-sold' : ''}">
+          <div class="item-line"><span class="item-name rarity-purple">${entry.name}</span><span class="item-price">${entry.cost} 碎片</span></div>
+          <div class="muted">${entry.description || ''}</div>
+          <div class="item-actions">${state}</div>
+        </li>
+      `;
+    }).join('');
+    return `
+      <div class="merchant-currency">当前拥有：<span class="hl-coin">${currency}</span> 灵魂碎片</div>
+      <ul class="info-list">${entries || '<li class="muted">遗物已售罄</li>'}</ul>
+    `;
+  }
+
+  purchaseMerchantItem(key) {
+    const room = this.currentMerchantRoom();
+    const stock = this.ensureMerchantStock(room);
+    if (!stock) { this.addLog('行商不在此处。', 'warn'); return; }
+    const entry = stock.items.find(item => item.key === key);
+    if (!entry) return;
+    if (entry.sold) { this.addLog('这件物品已被购走。', 'warn'); return; }
+    const current = this.ensureCurrency();
+    if (current < entry.cost) { this.addLog('灵魂碎片不足。', 'warn'); return; }
+    this.run.currency = Math.max(0, current - entry.cost);
+    entry.sold = true;
+    if (entry.type === 'consumable') {
+      this.run.player.inventory.push({ ...entry.data, charges: entry.data.effect?.charges || 1 });
+    } else if (entry.type === 'equipment') {
+      this.run.player.inventory.push({ ...entry.data, charges: 1 });
+    }
+    this.addLog(`你购买了${entry.name}，灵魂碎片-${entry.cost}。`, 'good');
+    this.updateAll();
+  }
+
+  purchaseMerchantRelic(key) {
+    const room = this.currentMerchantRoom();
+    const stock = this.ensureMerchantStock(room);
+    if (!stock) { this.addLog('此处没有遗物可换。', 'warn'); return; }
+    const entry = stock.relics.find(item => item.key === key);
+    if (!entry) return;
+    if (entry.sold) { this.addLog('遗物已被取走。', 'warn'); return; }
+    if (this.run.player.relics.includes(entry.id)) { this.addLog('你已经拥有该遗物。', 'warn'); return; }
+    const current = this.ensureCurrency();
+    if (current < entry.cost) { this.addLog('灵魂碎片不足以兑换。', 'warn'); return; }
+    this.run.currency = Math.max(0, current - entry.cost);
+    entry.sold = true;
+    if (!this.run.player.relics.includes(entry.id)) this.run.player.relics.push(entry.id);
+    this.addLog(`你兑换了遗物【${entry.name}】。`, 'goal');
+    this.updateAll();
+  }
+
+  statusMarkup() {
+    const player = this.run?.player;
+    if (!player) return '<div class="muted">尚未开局。</div>';
+    const corruption = `${this.run.corruption}/${this.run.maxCorruption}`;
+    const tierLabel = this.corruptionStateLabel();
+    const statuses = this.describeEntityStatus(player, true);
+    const cooldowns = Object.entries(player.cooldowns || {})
+      .filter(([, v]) => v > 0)
+      .map(([id, v]) => {
+        if (id === '__heal') return `治疗(${v})`;
+        return `${DungeonData.skills[id]?.name || id}(${v})`;
+      });
+    const relics = player.relics.map(id => DungeonData.relics[id]?.name || id).join('、');
+    const passive = this.describePassive();
+    return `
+      <div class="status-overview">
+        <div class="status-row"><span>生命</span><span class="hl-hp">${player.hp}/${player.maxHP}</span></div>
+        <div class="status-row"><span>能量</span><span class="hl-energy">${player.energy}/${player.maxEnergy}</span></div>
+        <div class="status-row"><span>腐蚀</span><span class="hl-corrupt">${corruption}</span><span class="status-badge tier-${this.corruptionTier()}">${tierLabel}</span></div>
+        <div class="status-row"><span>勇气</span><span class="hl-heroism">${player.heroism}</span></div>
+        <div class="status-row"><span>连胜</span><span>${player.streak}</span></div>
+        <div class="status-row"><span>灵魂碎片</span><span class="hl-coin">${this.run?.currency ?? 0}</span></div>
+        <div class="status-row"><span>职业被动</span><span>${passive}</span></div>
+      </div>
+      <div class="status-section">
+        <div class="status-section__title">当前状态</div>
+        <div class="status-section__body">${statuses}</div>
+      </div>
+      <div class="status-section">
+        <div class="status-section__title">技能冷却</div>
+        <div class="status-section__body">${cooldowns.length ? cooldowns.join('、') : '无'}</div>
+      </div>
+      <div class="status-section">
+        <div class="status-section__title">遗物</div>
+        <div class="status-section__body">${relics || '暂无遗物'}</div>
+      </div>
+    `;
+  }
+
+  bestiaryMarkup() {
+    const player = this.run?.player;
+    if (!player) return '<div class="muted">尚未记录敌人。</div>';
+    const entries = Array.from(player.bestiary).map(id => {
+      const enemy = DungeonData.enemies[id];
+      return `<li><span class="text-enemy">${enemy?.name || id}</span><span class="muted"> · 弱点：${enemy?.weakness.join('、') || '未知'}</span><div class="muted">${enemy?.flavor || ''}</div></li>`;
+    }).join('');
+    return `<ul class="info-list">${entries || '<li class="muted">尚无记录</li>'}</ul>`;
+  }
+
+  relicsMarkup() {
+    const player = this.run?.player;
+    if (!player) return '<div class="muted">尚未获得遗物。</div>';
+    const entries = player.relics.map(id => {
+      const relic = DungeonData.relics[id];
+      return `<li><span class="text-relic">${relic?.name || id}</span><span class="muted"> · ${relic?.effect || ''}</span></li>`;
+    }).join('');
+    return `<ul class="info-list">${entries || '<li class="muted">暂无遗物</li>'}</ul>`;
+  }
+
+  logMarkup() {
+    if (!this.logEntries.length) return '<div class="muted">暂无记录</div>';
+    return `<div class="overlay-log">${this.logEntries.slice(-120).map(entry => `<div class="log-entry ${entry.type}">${entry.text}</div>`).join('')}</div>`;
   }
 
   renderBestiary() {
@@ -1199,8 +1676,8 @@ class DungeonGame {
       stage: '探索旅程',
       tips: [
         { icon: '🧭', text: '使用「上 / 下 / 左 / 右」选择行进方向，未知房间以问号显示。' },
-        { icon: '🗺️', text: '右侧关卡地图实时更新，营地与商人位置一目了然。' },
-        { icon: '📖', text: '多用图鉴与遗物面板，熟悉敌人弱点与被动效果。' },
+        { icon: '🗺️', text: '使用“查看地图”指令打开关卡全图，营地与商人位置一目了然。' },
+        { icon: '📖', text: '点击指令即可打开图鉴与遗物面板，熟悉敌人弱点与被动效果。' },
       ],
     };
     const result = map[stage] || base;
@@ -1214,9 +1691,37 @@ class DungeonGame {
     return { ...result, focus };
   }
 
+  dismissTutorial(reason = 'auto') {
+    if (!this.tutorial || this.tutorial.hidden) return;
+    this.tutorial.hidden = true;
+    this.tutorial.dismissedReason = reason;
+    this.clearTutorialTimer();
+    this.addLog('新手指引渐渐淡去，你已能独当一面。', 'info');
+    this.renderGuide();
+  }
+
+  registerTutorialAction(cmd) {
+    if (!this.tutorial || this.tutorial.hidden) return;
+    const ignore = new Set(['status', 'bestiary', 'relics', 'map', 'log']);
+    if (ignore.has(cmd)) return;
+    this.tutorial.actions = (this.tutorial.actions || 0) + 1;
+    if (this.tutorial.actions >= 12) {
+      this.dismissTutorial('actions');
+    }
+  }
+
   renderGuide() {
     const node = this.root.querySelector('#dungeon-panel-guide');
     if (!node) return;
+    if (this.tutorial?.expiresAt && !this.tutorial.hidden && Date.now() >= this.tutorial.expiresAt) {
+      this.dismissTutorial('time');
+    }
+    if (this.tutorial?.hidden) {
+      node.innerHTML = '';
+      node.classList.add('is-hidden');
+      return;
+    }
+    node.classList.remove('is-hidden');
     const info = this.guideContent();
     const tips = info.tips.map(tip => `
       <div class="guide-step">
@@ -1233,12 +1738,67 @@ class DungeonGame {
     `;
   }
 
-  renderProgress() {
-    const node = this.root.querySelector('#dungeon-panel-progress');
-    if (!node) return;
+  clearTutorialTimer() {
+    if (this._tutorialTimer) {
+      clearTimeout(this._tutorialTimer);
+      this._tutorialTimer = null;
+    }
+  }
+
+  scheduleTutorialTimeout() {
+    this.clearTutorialTimer();
+    if (!this.tutorial || this.tutorial.hidden) return;
+    const remain = Math.max(0, (this.tutorial.expiresAt || 0) - Date.now());
+    if (typeof window === 'undefined') return;
+    this._tutorialTimer = window.setTimeout(() => {
+      this.dismissTutorial('time');
+      this.renderGuide();
+    }, remain);
+  }
+
+  ensureCurrency() {
+    if (!this.run) return 0;
+    const value = Number(this.run.currency);
+    if (Number.isNaN(value)) {
+      this.run.currency = 0;
+      return 0;
+    }
+    this.run.currency = Math.max(0, value);
+    return this.run.currency;
+  }
+
+  applyCorruptionPressure(context = 'move') {
+    const tier = this.corruptionTier();
+    if (tier <= 0) return false;
+    const player = this.run?.player;
+    if (!player) return false;
+    const effects = [];
+    if (tier >= 1 && player.energy > 0) {
+      player.energy -= 1;
+      effects.push('能量 -1');
+    }
+    if (tier >= 2) {
+      const pressure = tier === 2 ? 2 : 4;
+      const applied = this.applyPlayerDamage(pressure, { silent: true });
+      if (applied > 0) effects.push(`受到 ${applied} 点伤害`);
+      if (this.handlePlayerDown()) return true;
+    }
+    if (tier >= 3) {
+      if (!this.hasStatus(player, 'corrupt')) {
+        this.applyStatus(player, 'corrupt', 1, 2);
+      }
+      effects.push('腐化缠身');
+    }
+    if (effects.length) {
+      const prefix = context === 'rest' ? '静坐之际腐蚀翻涌' : '腐蚀潮水席卷';
+      this.addLog(`${prefix}：${effects.join('，')}。`, 'warn');
+    }
+    return false;
+  }
+
+  progressMarkup() {
     if (!this.run?.floors) {
-      node.innerHTML = `<div class="panel-title">关卡进度</div><div class="muted">尚未踏入古井。</div>`;
-      return;
+      return '<div class="muted">尚未踏入古井。</div>';
     }
     const floorsHtml = this.run.floors.map((floor, idx) => {
       const active = idx === this.run.floorIndex;
@@ -1269,10 +1829,7 @@ class DungeonGame {
         </div>
       `;
     }).join('');
-    node.innerHTML = `
-      <div class="panel-title">关卡进度</div>
-      <div class="progress-floors">${floorsHtml}</div>
-    `;
+    return `<div class="progress-floors">${floorsHtml}</div>`;
   }
 
   renderLog() {
@@ -1296,6 +1853,9 @@ class DungeonGame {
       this.addLog('本次冒险已落幕，如需再战请点击“重新启程”。', 'info');
       return;
     }
+    const overlayCommands = new Set(['map', 'status', 'bestiary', 'relics', 'log', 'inventory', 'merchant-buy', 'merchant-relic']);
+    if (!overlayCommands.has(cmd)) this.closeOverlay();
+    this.registerTutorialAction(cmd);
     switch (cmd) {
       case 'attack':
         this.playerAttack();
@@ -1326,6 +1886,7 @@ class DungeonGame {
         break;
       case 'log':
         this.addLog('你回顾战斗记录，寻找下次出手的节奏。', 'info');
+        this.openOverlay('log');
         break;
       case 'move':
         this.commandMove(arg);
@@ -1338,18 +1899,23 @@ class DungeonGame {
         break;
       case 'inventory':
         this.addLog('你翻了翻背包，确认物资尚可。', 'info');
+        this.openOverlay('inventory');
         break;
       case 'map':
-        this.addLog('关卡地图已在右侧展示，未知房间以问号标记。', 'info');
+        this.addLog('你展开地图，未知房间以问号标记。', 'info');
+        this.openOverlay('map');
         break;
       case 'status':
         this.addLog(`状态：HP ${this.run.player.hp}/${this.run.player.maxHP}，腐蚀 ${this.run.corruption}/${this.run.maxCorruption}。`, 'info');
+        this.openOverlay('status');
         break;
       case 'bestiary':
         this.addLog('你翻阅图鉴，回忆敌人的弱点。', 'info');
+        this.openOverlay('bestiary');
         break;
       case 'relics':
         this.addLog('你感受遗物的脉动，它们等待被唤醒。', 'info');
+        this.openOverlay('relics');
         break;
       case 'leave':
         this.finishRun(false);
@@ -1365,10 +1931,10 @@ class DungeonGame {
         this.updateAll();
         break;
       case 'merchant-buy':
-        this.handleMerchantBuy();
+        this.openOverlay('merchant-items');
         break;
       case 'merchant-relic':
-        this.handleMerchantRelic();
+        this.openOverlay('merchant-relics');
         break;
       case 'merchant-leave':
         if (this.run.currentRoom) this.run.currentRoom.resolved = true;
@@ -1452,6 +2018,10 @@ class DungeonGame {
     let value = Math.round(amount || 0);
     if (this.hasStatus(player, 'poison')) value = Math.floor(value * 0.7);
     const bonus = this.equipmentBonus('healBonus') || 0;
+    const tier = this.corruptionTier();
+    if (tier === 1) value = Math.round(value * 0.8);
+    if (tier === 2) value = Math.round(value * 0.65);
+    if (tier >= 3) value = Math.round(value * 0.5);
     value = Math.round(value * (1 + bonus));
     player.hp = Math.min(player.maxHP, player.hp + value);
     return value;
@@ -1489,7 +2059,13 @@ class DungeonGame {
       this.addLog('能量不足，无法进行治疗。', 'warn');
       return;
     }
+    const cd = player.cooldowns.__heal || 0;
+    if (cd > 0) {
+      this.addLog(`治疗冷却中（${cd}）。`, 'warn');
+      return;
+    }
     player.energy -= 1;
+    player.cooldowns.__heal = 2;
     const healed = this.healPlayer(12, { context: 'combat' });
     this.addLog(`你调整呼吸，恢复 ${healed} 点生命。`, 'player');
     this.enemyTurn();
@@ -1720,6 +2296,15 @@ class DungeonGame {
     const enemy = combat.enemy;
     if (enemy.hp <= 0) return;
     this.reduceCooldowns();
+    const tier = this.corruptionTier();
+    if (tier >= 2) {
+      const pressure = tier === 2 ? 2 : 3;
+      const applied = this.applyPlayerDamage(pressure, { silent: true });
+      if (applied > 0) {
+        this.addLog(`腐蚀潮汐压迫你，造成 ${applied} 点伤害。`, 'warn');
+        if (this.handlePlayerDown()) return;
+      }
+    }
     this.tickStatuses(this.run.player);
     if (this.handlePlayerDown()) return;
     this.tickStatuses(enemy);
@@ -1936,6 +2521,7 @@ class DungeonGame {
       this.addLog('该方向是坚实石壁。', 'warn');
       return;
     }
+    if (this.applyCorruptionPressure('move')) return;
     const floor = this.currentFloor;
     floor.position = { x: move.x, y: move.y };
     this.addLog(`你朝${move.label}迈进。`, 'info');
@@ -1964,8 +2550,10 @@ class DungeonGame {
       return;
     }
     const healed = this.healPlayer(10, { context: 'explore' });
-    this.run.corruption = Math.min(this.run.maxCorruption, this.run.corruption + 1);
+    this.adjustCorruption(1);
     this.addLog(`你短暂靠墙休息，恢复 ${healed} 点生命，但腐蚀条上涨。`, 'info');
+    if (this.applyCorruptionPressure('rest')) return;
+    this.updateAll();
   }
 
   resolveEvent(arg) {
@@ -2171,29 +2759,18 @@ class DungeonGame {
     }
   }
 
-  handleMerchantBuy() {
-    const gain = this.rng.pick(['small_heal', 'bomb', 'dispel', 'ether']);
-    const item = DungeonData.consumables[gain];
-    this.run.player.inventory.push({ ...item, charges: 1 });
-    this.addLog(`你购买了${item.name}。`, 'good');
-  }
-
-  handleMerchantRelic() {
-    const options = ['time_hourglass', 'veil', 'cleric_pendant', 'tide_codex'];
-    const available = options.filter(id => !this.run.player.relics.includes(id));
-    const pick = this.rng.pick(available.length ? available : options);
-    if (!this.run.player.relics.includes(pick)) this.run.player.relics.push(pick);
-    this.addLog(`你获得遗物【${DungeonData.relics[pick]?.name || pick}】。`, 'good');
-  }
-
   handleCamp(mode) {
-    const key = `${this.run.floorIndex}-${mode}`;
-    if (this.run.campUsed[key]) {
-      this.addLog('营地火堆已冷，无法重复使用。', 'warn');
+    const room = this.run.currentRoom;
+    if (!room || room.resolved) {
+      this.addLog('营地火堆已冷，无法停留。', 'warn');
       return;
     }
-    this.run.campUsed[key] = true;
-    this.run.corruption = Math.min(this.run.maxCorruption, this.run.corruption + 2);
+    if (room.campChoice) {
+      this.addLog('你已在此营地做出抉择。', 'warn');
+      return;
+    }
+    room.campChoice = mode;
+    this.adjustCorruption(2);
     if (mode === 'rest') {
       const healed = this.healPlayer(20, { context: 'camp' });
       this.addLog(`你在营地歇息，恢复 ${healed} 点生命。`, 'good');
@@ -2204,6 +2781,11 @@ class DungeonGame {
       this.removeNegative(this.run.player, 2);
       this.addLog('你在火光前祷告，净化了负面。', 'good');
     }
+    room.resolved = true;
+    this.state.phase = 'explore';
+    this.addLog('你熄灭火堆，继续深入。', 'info');
+    this.tutorial.stage = 'explore';
+    this.updateAll();
   }
 
   finishCombat(victory) {
@@ -2219,6 +2801,9 @@ class DungeonGame {
       const scoreMap = { normal: 60, elite: 150, boss: 360 };
       const labelMap = { normal: '战斗胜利', elite: '精英讨伐', boss: '终殿制胜' };
       this.addScore(scoreMap[tier] || 40, labelMap[tier] || '战斗胜利', { log: true });
+      const currencyGain = tier === 'boss' ? 90 : (tier === 'elite' ? 45 : 20);
+      this.run.currency = this.ensureCurrency() + currencyGain;
+      this.addLog(`灵魂碎片 +${currencyGain}。`, 'score');
       if (['elite', 'boss'].includes(tier)) {
         this.run.player.heroism += 1;
         this.addLog(`勇气涌动，勇气提升至 ${this.run.player.heroism}。`, 'goal');
@@ -2300,6 +2885,7 @@ class DungeonGame {
     this.run.combat = null;
     this.run.player.hp = Math.max(0, this.run.player.hp);
     this.tutorial.stage = 'ended';
+    this.closeOverlay();
     if (this.run) this.run.result = victory ? 'victory' : 'defeat';
     const floorsCleared = victory ? this.run.floors.length : Math.max(1, this.run.floorIndex + 1);
     this.recordScore({
@@ -2321,7 +2907,7 @@ class DungeonGame {
   restartRun() {
     this.destroy();
     this.logEntries = [];
-    this.state = { phase: 'intro' };
+    this.state = { phase: 'intro', overlay: null };
     this.renderIntro();
   }
 }
