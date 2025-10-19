@@ -6,8 +6,10 @@
     sfxGain: null,
     _music: new Map(),
     _musicBuffers: new Map(),
+    _musicBufferTasks: new Map(),
     _sfxBuffers: new Map(),
     _activeSfx: new Set(),
+    _pendingChannels: new Map(),
     _currentRoute: null,
     _muted: false,
     _masterVolume: 0.75,
@@ -314,6 +316,7 @@
       if (!this.ctx) return;
       const entry = this._music.get(channel);
       if (!entry) return;
+      this._pendingChannels.delete(channel);
       try {
         entry.source.stop();
       } catch (_) {}
@@ -336,6 +339,10 @@
           this.fadeOut(channel, 0.35);
         }
       });
+      for (const [channel] of this._pendingChannels) {
+        if (skip && channel === skip) continue;
+        this._pendingChannels.delete(channel);
+      }
     },
     setRoute(route) {
       this.ensure();
@@ -373,7 +380,11 @@
       if (!channel) return;
       this.ensure();
       if (!this.ctx) return;
-      if (!this._music.has(channel)) return;
+      const hasActive = this._music.has(channel);
+      const hasPending = this._pendingChannels.has(channel);
+      if (!hasActive && !hasPending) return;
+      this._pendingChannels.delete(channel);
+      if (!hasActive) return;
       if (immediate) {
         this._stopChannel(channel);
       } else {
@@ -384,6 +395,7 @@
       if (!this.ctx) return;
       const entry = this._music.get(channel);
       if (!entry) return;
+      this._pendingChannels.delete(channel);
       const now = this.ctx.currentTime;
       try {
         entry.gain.gain.cancelScheduledValues(now);
@@ -399,16 +411,55 @@
     playMusic(channel, preset = {}) {
       this.ensure();
       if (!this.ctx) return;
+      const descriptor = Object.assign({}, preset || {});
+      const signature = descriptor.key || channel;
+      descriptor.key = signature;
       const existing = this._music.get(channel);
-      const signature = preset.key || channel;
+      const pending = this._pendingChannels.get(channel);
       if (existing && existing.signature === signature) {
+        return;
+      }
+      if (pending && pending.signature === signature) {
         return;
       }
       if (existing) {
         this.fadeOut(channel, 0.4);
       }
-      const buffer = this._getMusicBuffer(signature, preset);
-      if (!buffer) return;
+      this._pendingChannels.delete(channel);
+      const cached = this._getMusicBuffer(signature);
+      if (cached) {
+        this._startMusicChannel(channel, cached, descriptor, signature);
+        return;
+      }
+      const task = this._scheduleMusicBuffer(signature, descriptor, 'high');
+      if (!task || typeof task.then !== 'function') {
+        return;
+      }
+      this._pendingChannels.set(channel, { signature, preset: descriptor });
+      task.then(buffer => {
+        if (!buffer || !this.ctx) {
+          const info = this._pendingChannels.get(channel);
+          if (info && info.signature === signature) {
+            this._pendingChannels.delete(channel);
+          }
+          return;
+        }
+        const info = this._pendingChannels.get(channel);
+        if (!info || info.signature !== signature) {
+          return;
+        }
+        this._pendingChannels.delete(channel);
+        const pendingPreset = info.preset || descriptor;
+        this._startMusicChannel(channel, buffer, pendingPreset, signature);
+      }).catch(() => {
+        const info = this._pendingChannels.get(channel);
+        if (info && info.signature === signature) {
+          this._pendingChannels.delete(channel);
+        }
+      });
+    },
+    _startMusicChannel(channel, buffer, preset, signature) {
+      if (!this.ctx || !buffer) return;
       const source = this.ctx.createBufferSource();
       source.buffer = buffer;
       source.loop = true;
@@ -418,19 +469,72 @@
       try {
         source.start();
       } catch (_) {
+        try { source.disconnect(); } catch (_) {}
+        try { gain.disconnect(); } catch (_) {}
         return;
       }
       this._music.set(channel, { source, gain, signature });
     },
-    _getMusicBuffer(key, preset) {
+    _getMusicBuffer(key) {
+      if (!key) return null;
+      return this._musicBuffers.get(key) || null;
+    },
+    _scheduleMusicBuffer(key, preset, priority = 'normal') {
+      if (!key) return null;
       if (this._musicBuffers.has(key)) {
-        return this._musicBuffers.get(key);
+        return Promise.resolve(this._musicBuffers.get(key));
       }
-      const buffer = this._generateMusic(preset);
-      if (buffer) {
-        this._musicBuffers.set(key, buffer);
+      if (this._musicBufferTasks.has(key)) {
+        return this._musicBufferTasks.get(key);
       }
-      return buffer;
+      const descriptor = Object.assign({}, preset || {});
+      descriptor.key = key;
+      const run = () => {
+        let buffer = null;
+        try {
+          buffer = this._generateMusic(descriptor);
+        } catch (_) {
+          buffer = null;
+        }
+        if (buffer) {
+          this._musicBuffers.set(key, buffer);
+        }
+        this._musicBufferTasks.delete(key);
+        return buffer;
+      };
+      const promise = new Promise(resolve => {
+        const execute = () => resolve(run());
+        try {
+          if (priority === 'high') {
+            setTimeout(execute, 0);
+          } else if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+            const timeout = priority === 'low' ? 2000 : 800;
+            window.requestIdleCallback(() => execute(), { timeout });
+          } else {
+            const delay = priority === 'low' ? 64 : 16;
+            setTimeout(execute, delay);
+          }
+        } catch (_) {
+          setTimeout(execute, 0);
+        }
+      });
+      this._musicBufferTasks.set(key, promise);
+      return promise;
+    },
+    prewarmPresets(presets = [], options = {}) {
+      this.ensure();
+      if (!this.ctx) return;
+      if (!Array.isArray(presets) || !presets.length) return;
+      const priority = options.priority || 'low';
+      presets.forEach(name => {
+        if (!name) return;
+        const preset = this._musicPresets[name];
+        if (!preset) return;
+        const descriptor = Object.assign({}, preset);
+        const key = descriptor.key || name;
+        descriptor.key = key;
+        this._scheduleMusicBuffer(key, descriptor, priority);
+      });
     },
     _rng(seed) {
       let s = seed % 2147483647;
