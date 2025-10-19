@@ -208,6 +208,38 @@ const DungeonStorage = {
       // ignore
     }
   },
+  loadRunState() {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem('dungeon-run-state');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      return parsed;
+    } catch (err) {
+      return null;
+    }
+  },
+  saveRunState(state) {
+    if (typeof window === 'undefined') return;
+    try {
+      if (!state) {
+        window.localStorage.removeItem('dungeon-run-state');
+        return;
+      }
+      window.localStorage.setItem('dungeon-run-state', JSON.stringify(state));
+    } catch (err) {
+      // ignore
+    }
+  },
+  clearRunState() {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.removeItem('dungeon-run-state');
+    } catch (err) {
+      // ignore
+    }
+  },
 };
 
 class DungeonRng {
@@ -244,6 +276,7 @@ class DungeonGame {
     this.logEntries = [];
     this._tutorialTimer = null;
     this._audioPhase = null;
+    this._restoring = false;
     const storedAdmin = DungeonStorage.loadAdminSettings();
     this.admin = { gameEnabled: true, invincible: false, ...storedAdmin };
     this.scores = DungeonStorage.loadScores();
@@ -254,10 +287,245 @@ class DungeonGame {
     if (typeof window !== 'undefined') {
       window.addEventListener('dungeon-admin-updated', this._handleAdminBroadcast);
     }
-    this.renderIntro();
+    const saved = DungeonStorage.loadRunState();
+    if (saved && saved.run) {
+      this.restoreFromSnapshot(saved);
+    } else {
+      this.renderIntro();
+    }
   }
 
-  destroy() {
+  snapshotState() {
+    if (!this.run || this.state.phase === 'intro') return null;
+    const run = this.serializeRun();
+    if (!run) return null;
+    const tutorial = this.serializeTutorial();
+    const logEntries = Array.isArray(this.logEntries)
+      ? this.logEntries.slice(0, 160).map(entry => ({ text: entry.text, type: entry.type }))
+      : [];
+    return {
+      version: 1,
+      state: { phase: this.state.phase, finished: !!this._finished },
+      run,
+      tutorial,
+      logEntries,
+      rngSeed: this.rng?.seed || null,
+      timestamp: Date.now(),
+    };
+  }
+
+  serializeTutorial() {
+    if (!this.tutorial) return null;
+    const base = {
+      ...this.tutorial,
+      seen: Array.from(this.tutorial.seen || []),
+    };
+    return JSON.parse(JSON.stringify(base));
+  }
+
+  serializeRun() {
+    if (!this.run) return null;
+    const run = this.run;
+    const player = run.player || {};
+    const playerData = {
+      ...player,
+      bestiary: Array.from(player.bestiary || []),
+      codex: Array.from(player.codex || []),
+    };
+    const playerClone = JSON.parse(JSON.stringify(playerData));
+    const floorsClone = JSON.parse(JSON.stringify(Array.isArray(run.floors) ? run.floors : []));
+    const currentRoom = run.currentRoom && run.currentRoom.coords
+      ? { floorIndex: run.floorIndex, x: run.currentRoom.coords.x, y: run.currentRoom.coords.y }
+      : null;
+    const combat = run.combat
+      ? {
+          enemy: JSON.parse(JSON.stringify(run.combat.enemy || null)),
+          turn: run.combat.turn || 1,
+          playerActed: !!run.combat.playerActed,
+          dropsGuaranteed: !!run.combat.dropsGuaranteed,
+          room: run.combat.room?.coords
+            ? { floorIndex: run.floorIndex, x: run.combat.room.coords.x, y: run.combat.room.coords.y }
+            : null,
+        }
+      : null;
+    return {
+      floorIndex: run.floorIndex,
+      corruption: run.corruption,
+      maxCorruption: run.maxCorruption,
+      currency: run.currency,
+      heroicPromise: run.heroicPromise,
+      score: run.score,
+      startTime: run.startTime,
+      timeHourglassUsed: !!run.timeHourglassUsed,
+      history: Array.isArray(run.history) ? run.history.slice(0, 40) : [],
+      floors: floorsClone,
+      player: playerClone,
+      currentRoom,
+      combat,
+      result: run.result || null,
+    };
+  }
+
+  persistState(forceClear = false) {
+    if (this._restoring) return;
+    if (forceClear) {
+      DungeonStorage.clearRunState();
+      return;
+    }
+    const snapshot = this.snapshotState();
+    if (snapshot) {
+      DungeonStorage.saveRunState(snapshot);
+    } else {
+      DungeonStorage.clearRunState();
+    }
+  }
+
+  restoreFromSnapshot(saved) {
+    const run = this.deserializeRun(saved?.run);
+    if (!run) {
+      this.renderIntro();
+      return;
+    }
+    this._restoring = true;
+    this.run = run;
+    this.state = { phase: saved?.state?.phase || 'explore', overlay: null };
+    this._finished = !!(saved?.state?.finished);
+    this.logEntries = Array.isArray(saved?.logEntries)
+      ? saved.logEntries.filter(entry => entry && typeof entry.text === 'string')
+          .map(entry => ({ text: entry.text, type: entry.type || 'info' }))
+      : [];
+    this.tutorial = this.deserializeTutorial(saved?.tutorial);
+    if (!this.tutorial) {
+      this.tutorial = { stage: 'explore', seen: new Set(), actions: 0, expiresAt: Date.now() + 120000, hidden: false };
+    }
+    this.rng = new DungeonRng(saved?.rngSeed || Date.now());
+    this.clearTutorialTimer();
+    this.scheduleTutorialTimeout();
+    this.renderLayout();
+    this.renderLog();
+    this._restoring = false;
+    this.persistState();
+  }
+
+  deserializeTutorial(data) {
+    if (!data || typeof data !== 'object') return null;
+    const copy = { ...data };
+    copy.seen = new Set(Array.isArray(data.seen) ? data.seen : []);
+    copy.actions = Number.isFinite(copy.actions) ? Number(copy.actions) : 0;
+    copy.expiresAt = Number.isFinite(copy.expiresAt) ? Number(copy.expiresAt) : Date.now() + 120000;
+    copy.stage = typeof copy.stage === 'string' ? copy.stage : 'explore';
+    copy.hidden = !!copy.hidden;
+    return copy;
+  }
+
+  deserializeRun(data) {
+    if (!data || typeof data !== 'object') return null;
+    const run = {
+      floorIndex: Number.isFinite(data.floorIndex) ? Number(data.floorIndex) : 0,
+      corruption: Number.isFinite(data.corruption) ? Number(data.corruption) : 0,
+      maxCorruption: Number.isFinite(data.maxCorruption) ? Number(data.maxCorruption) : 10,
+      currency: Number.isFinite(data.currency) ? Number(data.currency) : 0,
+      heroicPromise: Number.isFinite(data.heroicPromise) ? Number(data.heroicPromise) : 0,
+      score: Number.isFinite(data.score) ? Number(data.score) : 0,
+      startTime: Number.isFinite(data.startTime) ? Number(data.startTime) : Date.now(),
+      timeHourglassUsed: !!data.timeHourglassUsed,
+      history: Array.isArray(data.history) ? data.history.slice(0, 40) : [],
+      floors: Array.isArray(data.floors) ? JSON.parse(JSON.stringify(data.floors)) : [],
+      result: data.result || null,
+    };
+    const playerData = data.player || {};
+    const player = JSON.parse(JSON.stringify(playerData));
+    player.bestiary = new Set(Array.isArray(playerData.bestiary) ? playerData.bestiary : []);
+    player.codex = new Set(Array.isArray(playerData.codex) ? playerData.codex : []);
+    if (!Array.isArray(player.inventory)) player.inventory = [];
+    player.inventory = player.inventory.map(item => {
+      if (!item || typeof item !== 'object') return item;
+      const copyItem = { ...item };
+      if (copyItem.charges != null && Number.isFinite(Number(copyItem.charges))) {
+        copyItem.charges = Number(copyItem.charges);
+      }
+      return copyItem;
+    });
+    if (!player.cooldowns || typeof player.cooldowns !== 'object') player.cooldowns = {};
+    if (!Array.isArray(player.statuses)) player.statuses = [];
+    player.statuses = player.statuses.map(status => {
+      if (!status || typeof status !== 'object') return status;
+      const copyStatus = { ...status };
+      if (copyStatus.duration != null && Number.isFinite(Number(copyStatus.duration))) {
+        copyStatus.duration = Number(copyStatus.duration);
+      }
+      if (copyStatus.stacks != null && Number.isFinite(Number(copyStatus.stacks))) {
+        copyStatus.stacks = Number(copyStatus.stacks);
+      }
+      return copyStatus;
+    });
+    if (!player.equipment || typeof player.equipment !== 'object') player.equipment = {};
+    if (!Array.isArray(player.relics)) player.relics = [];
+    if (!player.flags || typeof player.flags !== 'object') player.flags = {};
+    Object.keys(player.cooldowns).forEach(key => {
+      const val = player.cooldowns[key];
+      player.cooldowns[key] = Number.isFinite(val) ? Number(val) : (Number.isFinite(Number(val)) ? Number(val) : 0);
+    });
+    ['hp', 'maxHP', 'energy', 'maxEnergy', 'armor', 'guard', 'heroism', 'streak', 'level', 'attack', 'defense'].forEach(stat => {
+      if (player[stat] != null && Number.isFinite(Number(player[stat]))) {
+        player[stat] = Number(player[stat]);
+      }
+    });
+    run.player = player;
+    run.floors = run.floors.map(floor => {
+      const mapped = { ...floor };
+      if (!mapped.map) mapped.map = {};
+      if (!Array.isArray(mapped.map.cells)) mapped.map.cells = [];
+      if (!mapped.position && mapped.map?.start) {
+        mapped.position = { ...mapped.map.start };
+      }
+      return mapped;
+    });
+    const currentRoomInfo = data.currentRoom;
+    const ensureRoom = (floorIndex, x, y) => {
+      const floor = run.floors[floorIndex];
+      if (!floor?.map?.cells?.[y]?.[x]) return null;
+      floor.position = { x, y };
+      return floor.map.cells[y][x];
+    };
+    let currentRoom = null;
+    if (currentRoomInfo && Number.isFinite(currentRoomInfo.x) && Number.isFinite(currentRoomInfo.y)) {
+      const idx = Number.isFinite(currentRoomInfo.floorIndex) ? currentRoomInfo.floorIndex : run.floorIndex;
+      currentRoom = ensureRoom(idx, currentRoomInfo.x, currentRoomInfo.y);
+    }
+    const floorFallback = run.floors[run.floorIndex] || run.floors[0];
+    if (!currentRoom && floorFallback?.map?.start) {
+      const { x, y } = floorFallback.position || floorFallback.map.start;
+      currentRoom = ensureRoom(run.floorIndex, x, y) || currentRoom;
+    }
+    run.currentRoom = currentRoom;
+    if (data.combat && data.combat.enemy && currentRoom) {
+      const combatRoomInfo = data.combat.room;
+      let combatRoom = currentRoom;
+      if (combatRoomInfo && Number.isFinite(combatRoomInfo.x) && Number.isFinite(combatRoomInfo.y)) {
+        const idx = Number.isFinite(combatRoomInfo.floorIndex) ? combatRoomInfo.floorIndex : run.floorIndex;
+        combatRoom = ensureRoom(idx, combatRoomInfo.x, combatRoomInfo.y) || combatRoom;
+      }
+      run.combat = {
+        enemy: JSON.parse(JSON.stringify(data.combat.enemy)),
+        room: combatRoom,
+        turn: Number.isFinite(data.combat.turn) ? Number(data.combat.turn) : 1,
+        playerActed: !!data.combat.playerActed,
+        dropsGuaranteed: !!data.combat.dropsGuaranteed,
+      };
+    } else {
+      run.combat = null;
+    }
+    return run;
+  }
+
+  destroy(options = {}) {
+    const preserve = options?.preserve !== false;
+    if (preserve) {
+      this.persistState();
+    } else {
+      this.persistState(true);
+    }
     if (typeof window !== 'undefined' && this._handleAdminBroadcast) {
       window.removeEventListener('dungeon-admin-updated', this._handleAdminBroadcast);
     }
@@ -267,6 +535,7 @@ class DungeonGame {
   }
 
   renderIntro() {
+    DungeonStorage.clearRunState();
     const classes = Object.values(DungeonData.classes);
     const cards = classes.map(cls => `
       <div class="dungeon-class" data-class="${cls.id}">
@@ -483,6 +752,7 @@ class DungeonGame {
     this.renderLog();
     this.renderOverlay();
     this.updateAudio();
+    if (!this._restoring) this.persistState();
   }
 
   audioPhaseKey() {
@@ -1920,13 +2190,19 @@ class DungeonGame {
   renderLog() {
     const node = this.root.querySelector('#dungeon-log');
     if (!node) return;
-    node.innerHTML = this.logEntries.slice(-80).map(entry => `<div class="log-entry ${entry.type}">${entry.text}</div>`).join("");
-    node.scrollTop = node.scrollHeight;
+    const entries = Array.isArray(this.logEntries) ? this.logEntries.slice(0, 80) : [];
+    node.innerHTML = entries.map(entry => `<div class="log-entry ${entry.type}">${entry.text}</div>`).join("");
+    node.scrollTop = 0;
   }
 
   addLog(text, type = "info") {
-    this.logEntries.push({ text, type });
+    if (!Array.isArray(this.logEntries)) this.logEntries = [];
+    this.logEntries.unshift({ text, type });
+    if (this.logEntries.length > 160) {
+      this.logEntries.length = 160;
+    }
     this.renderLog();
+    if (!this._restoring) this.persistState();
   }
 
   handleCommand(cmd, arg) {
@@ -2990,7 +3266,7 @@ class DungeonGame {
   }
 
   restartRun() {
-    this.destroy();
+    this.destroy({ preserve: false });
     this.logEntries = [];
     this.state = { phase: 'intro', overlay: null };
     this.renderIntro();
@@ -3007,7 +3283,7 @@ const DungeonCrawlerPage = {
     this._game = new DungeonGame(root);
   },
   teardown() {
-    this._game?.destroy();
+    this._game?.destroy({ preserve: true });
     this._game = null;
   },
   presence() {
