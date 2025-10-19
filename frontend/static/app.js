@@ -222,6 +222,7 @@ const Pages = {
   cookie: CookieFactoryPage,
   starfall: StarfallPage,
   cultivation: CultivationPage,
+  roguelike: RoguelikePage,
   friends: FriendsPage,
   inventory: InventoryPage,
   craft: CraftPage,

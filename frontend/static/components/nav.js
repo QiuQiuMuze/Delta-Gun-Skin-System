@@ -12,6 +12,7 @@ const Nav = {
         ...(hasCookie ? [["cookie","饼干工厂"]] : []),
         ...((hasStarfall || isAdmin) ? [["starfall","星际余生"]] : []),
         ...(hasCultivation ? [["cultivation","修仙历练"]] : []),
+        ["roguelike","古井远征"],
         ["friends","好友"],
         ["inventory","背包"], ["craft","合成"], ["market","交易行"]
       ] : [["auth","登录/注册"]]),
