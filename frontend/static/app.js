@@ -66,7 +66,10 @@ const PresenceTracker = {
     if (!payload) return;
     this._lastSent = now;
     try {
-      await API.updatePresence(payload);
+      const resp = await API.updatePresence(payload);
+      if (resp && resp.announcement) {
+        try { window.AnnouncementCenter?.show?.(resp.announcement); } catch (_) { /* ignore */ }
+      }
     } catch (_) {
       /* 忽略错误，保持静默 */
     }
@@ -100,6 +103,50 @@ const Notifier = {
 };
 
 window.Notifier = Notifier;
+
+const AnnouncementCenter = {
+  _displayed: new Set(),
+  show(payload = {}) {
+    if (!payload) return;
+    const message = (payload.message || "").trim();
+    if (!message) return;
+    const id = payload.id || `announcement-${Date.now()}`;
+    if (this._displayed.has(id)) return;
+    const expiresAt = Number(payload.expires_at || 0);
+    if (expiresAt && expiresAt * 1000 < Date.now()) return;
+    const wrap = $notify();
+    if (!wrap) return;
+    this._displayed.add(id);
+    const node = document.createElement("div");
+    node.className = "notify-card notice";
+    node.innerHTML = `
+      <div class="notify-title">📢 全服公告</div>
+      <div class="notify-body">${escapeHtml(message)}</div>
+    `;
+    wrap.appendChild(node);
+    requestAnimationFrame(() => node.classList.add("show"));
+    const seconds = Math.max(5, Math.min(Number(payload.duration || 60), 600));
+    setTimeout(() => {
+      node.classList.remove("show");
+      setTimeout(() => node.remove(), 320);
+    }, seconds * 1000);
+  }
+};
+
+window.AnnouncementCenter = AnnouncementCenter;
+
+let maintenanceNotifiedKey = null;
+window.addEventListener('app-maintenance', (event) => {
+  const info = (event && event.detail) || {};
+  const message = info.message || "网站进入维护模式，请稍后再试。";
+  const updated = info.updated_at ? Number(info.updated_at) : Date.now();
+  const key = info.updated_at ? `maintenance-${info.updated_at}` : `maintenance-${message}`;
+  if (maintenanceNotifiedKey === key) return;
+  maintenanceNotifiedKey = key;
+  AnnouncementCenter.show({ id: `maintenance-${updated}`, message, duration: 60 });
+  try { alert(message); } catch (_) { /* ignore */ }
+  location.hash = "#/auth";
+});
 
 const Pages = {
   home: { render: () => `<div class="card"><h2>欢迎</h2><p>这是三角洲砖皮模拟器的网站版。</p></div>`, bind: ()=>{} },
