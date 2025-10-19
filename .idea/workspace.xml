@@ -4,7 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="1a7167cf-f1dc-4eff-9d02-6fd15bdebbe6" name="更改" comment="" />
+    <list default="true" id="1a7167cf-f1dc-4eff-9d02-6fd15bdebbe6" name="更改" comment="">
+      <change beforePath="$PROJECT_DIR$/backend/delta_brick.db" beforeDir="false" afterPath="$PROJECT_DIR$/backend/delta_brick.db" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
