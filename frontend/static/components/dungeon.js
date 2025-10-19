@@ -82,6 +82,7 @@ const DungeonData = (() => {
       baseStats: { maxHP: 42, maxEnergy: 5, attack: 6, defense: 2 },
       startingSkill: "shield_bash",
       startingItems: [consumables.small_heal, equipments.short_sword],
+      lore: "前城卫队长，擅长正面对决。稳扎稳打、护甲与反击是他的生存之道。",
     },
     rogue: {
       id: "rogue",
@@ -91,6 +92,7 @@ const DungeonData = (() => {
       baseStats: { maxHP: 36, maxEnergy: 6, attack: 5, defense: 1 },
       startingSkill: "skill_mark",
       startingItems: [consumables.poison_coat, consumables.smoke],
+      lore: "来自港区的影子行者，习惯用陷阱与毒药解决问题。她的战斗节奏极快但身板较脆。",
     },
     mage: {
       id: "mage",
@@ -100,6 +102,7 @@ const DungeonData = (() => {
       baseStats: { maxHP: 34, maxEnergy: 7, attack: 5, defense: 1 },
       startingSkill: "spark",
       startingItems: [consumables.ether, consumables.small_heal],
+      lore: "流浪的咒术学者，熟悉火焰与寒霜的转换。她需要保持距离并管理能量。",
     },
     cleric: {
       id: "cleric",
@@ -109,6 +112,7 @@ const DungeonData = (() => {
       baseStats: { maxHP: 44, maxEnergy: 5, attack: 4, defense: 2 },
       startingSkill: "prayer",
       startingItems: [consumables.small_heal, consumables.dispel],
+      lore: "誓言守夜的圣堂侍者，以祷言与光辉稳住队伍。她能自保也能在危急时刻拯救同伴。",
     },
     hunter: {
       id: "hunter",
@@ -118,6 +122,7 @@ const DungeonData = (() => {
       baseStats: { maxHP: 40, maxEnergy: 6, attack: 5, defense: 2 },
       startingSkill: "hunter_net",
       startingItems: [consumables.bomb, equipments.ranger_cloak],
+      lore: "被潮湿森林养出的追迹者，射术与侦察兼备。靠控制敌人节奏来取胜。",
     },
   };
 
@@ -142,24 +147,177 @@ const DungeonData = (() => {
   };
 
   const events = {
-    blood_oath: { id: "blood_oath", name: "血字誓约", description: "你在石台上看到一行古旧誓文：献出体与力，换得刀锋饮血的许可。", effect: "失去上限HP 5，获得嗜血到本层结束" },
-    cracked_mirror: { id: "cracked_mirror", name: "碎裂镜面", description: "镜面映出你的轮廓，又像在嘲笑。你伸手触摸，裂痕像花绽放。", effect: "随机重掷一个负面状态，有概率转正或恶化" },
-    old_page: { id: "old_page", name: "旧书页", description: "纸页泛黄，却仍散发墨香。几行注记似是基础式。", effect: "从三条基础技能指令中学会一条" },
-    tide_chosen: { id: "tide_chosen", name: "潮汐选民", description: "潮水符纹绕着石台流动。呼吸中有咸味。", effect: "施法使敌潮湿，但你受雷伤+10%" },
-    mirror_sigil: { id: "mirror_sigil", name: "无面誓印", description: "冰冷的符印贴上皮肤，你听见另一张嗓音在耳边低语。", effect: "获得镜像反噬，但普通战初始-1层护甲" },
-    tide_surge: { id: "tide_surge", name: "潮水突涨", description: "潮水猛然倒灌，几乎淹过脚踝。", effect: "本房内每回合后额外受潮汐伤害" },
-    silhouette_lock: { id: "silhouette_lock", name: "剪影锁", description: "锁孔如剪影，需按顺序敲击才能开启。", effect: "mark后attack次序即可打开" },
-    mirror_maze: { id: "mirror_maze", name: "镜像迷障", description: "镜面反射无数条路，错指令会被反噬。", effect: "在此房inspect可获正确口令提示" },
-    moth_eaten: { id: "moth_eaten", name: "蛀书堆", description: "残卷堆成小山，虫蛀的洞还残留湿迹。", effect: "翻找或许能找到技能线索" },
-    damp_torch: { id: "damp_torch", name: "潮湿火把", description: "火把忽明忽暗，空气湿到让火星发愁。", effect: "晾干可换少量能量或火焰加成" },
-    dry_well_echo: { id: "dry_well_echo", name: "枯井回声", description: "低沉的回声告诉你，召唤阵就在更深处。", effect: "增强勇气，连胜加成" },
-    altar_shadow: { id: "altar_shadow", name: "祭坛阴影", description: "祭坛阴影里潜伏着另一双眼睛。", effect: "献祭换祝福或承受诅咒" },
+    blood_oath: {
+      id: "blood_oath",
+      name: "血字誓约",
+      description: "你在石台上看到一行古旧誓文：献出体与力，换得刀锋饮血的许可。",
+      effect: "失去上限HP 5，获得嗜血到本层结束",
+      options: [
+        { id: 'pledge', label: '献血签下誓约', badge: 'danger', preview: '牺牲生命换取嗜血祝福，可能激发勇气或引来流血。' },
+        { id: 'temper', label: '以碎片稳住仪式', badge: 'trade', preview: '支付35灵魂碎片，使契约更稳妥并保留更多体魄。', requiresCurrency: 35 },
+        { id: 'observe', label: '抄录誓文', badge: 'mystic', preview: '暂不签约，记录誓词以换取战斗心得。' },
+      ],
+    },
+    cracked_mirror: {
+      id: "cracked_mirror",
+      name: "碎裂镜面",
+      description: "镜面映出你的轮廓，又像在嘲笑。你伸手触摸，裂痕像花绽放。",
+      effect: "随机重掷一个负面状态，有概率转正或恶化",
+      options: [
+        { id: 'touch', label: '触摸裂纹', badge: 'mystic', preview: '让镜面决定你的命运，负面可能转化为激励。' },
+        { id: 'shatter', label: '敲碎镜面', badge: 'danger', preview: '强行粉碎映像，可能受伤却能清除负面。' },
+        { id: 'meditate', label: '凝神观照', badge: 'blessing', preview: '放下武器平复心绪，缓解腐蚀但消耗时间。' },
+      ],
+    },
+    old_page: {
+      id: "old_page",
+      name: "旧书页",
+      description: "纸页泛黄，却仍散发墨香。几行注记似是基础式。",
+      effect: "从三条基础技能指令中学会一条",
+      options: [
+        { id: 'study', label: '研读纸页', badge: 'mystic', preview: '耐心学习，掌握一项基础技能，并有机会获得额外笔记。' },
+        { id: 'copy', label: '抄录要点', badge: 'support', preview: '抄写有用片段，提升勇气或恢复能量。' },
+        { id: 'torch', label: '焚烧供暖', badge: 'danger', preview: '烧掉纸页取暖，换取短暂的生命与腐蚀波动。' },
+      ],
+    },
+    tide_chosen: {
+      id: "tide_chosen",
+      name: "潮汐选民",
+      description: "潮水符纹绕着石台流动。呼吸中有咸味。",
+      effect: "施法使敌潮湿，但你受雷伤+10%",
+      options: [
+        { id: 'accept', label: '接纳潮汐', badge: 'danger', preview: '接受潮汐改造，获得潮湿恩赐但承受弱点。' },
+        { id: 'etch', label: '刻下防护符', badge: 'mystic', preview: '花费1点勇气稳住潮力，降低副作用。', requiresHeroism: 1 },
+        { id: 'walk', label: '缓步离开', badge: 'support', preview: '观察潮汐运行，稍作冥想恢复状态。' },
+      ],
+    },
+    mirror_sigil: {
+      id: "mirror_sigil",
+      name: "无面誓印",
+      description: "冰冷的符印贴上皮肤，你听见另一张嗓音在耳边低语。",
+      effect: "获得镜像反噬，但普通战初始-1层护甲",
+      options: [
+        { id: 'accept', label: '刻下誓印', badge: 'danger', preview: '接受镜像力量，获得强力反击也可能失去护甲。' },
+        { id: 'reflect', label: '与影对视', badge: 'mystic', preview: '凝视镜像进行谈判，可能换取勇气或腐蚀。' },
+        { id: 'retreat', label: '撤离阴影', badge: 'support', preview: '不冒险，恢复少量能量并离开。' },
+      ],
+    },
+    tide_surge: {
+      id: "tide_surge",
+      name: "潮水突涨",
+      description: "潮水猛然倒灌，几乎淹过脚踝。",
+      effect: "本房内每回合后额外受潮汐伤害",
+      options: [
+        { id: 'brace', label: '稳住身形', badge: 'danger', preview: '硬扛潮水换取守备，但会受伤。' },
+        { id: 'soak', label: '任其冲刷', badge: 'danger', preview: '完全交给潮水，可能受潮湿或更大伤害。' },
+        { id: 'channel', label: '引导潮力', badge: 'mystic', preview: '尝试吸收潮水能量，用于恢复或提升勇气。' },
+      ],
+    },
+    silhouette_lock: {
+      id: "silhouette_lock",
+      name: "剪影锁",
+      description: "锁孔如剪影，需按顺序敲击才能开启。",
+      effect: "mark后attack次序即可打开",
+      options: [
+        { id: 'attempt', label: '按影敲击', badge: 'danger', preview: '凭直觉敲击，可能开锁也可能触发陷阱。' },
+        { id: 'decode', label: '细察纹路', badge: 'mystic', preview: '消耗1点勇气分析线路，几乎可以成功。', requiresHeroism: 1 },
+        { id: 'force', label: '强行撬开', badge: 'danger', preview: '用武器撬锁，消耗装备耐久但换来碎片。' },
+      ],
+    },
+    mirror_maze: {
+      id: "mirror_maze",
+      name: "镜像迷障",
+      description: "镜面反射无数条路，错指令会被反噬。",
+      effect: "在此房inspect可获正确口令提示",
+      options: [
+        { id: 'inspect', label: '记下路线', badge: 'mystic', preview: '耐心观察，下一场遭遇将获得提示。' },
+        { id: 'dash', label: '强行穿行', badge: 'danger', preview: '冒险突进，可能获得勇气或遭受反噬。' },
+        { id: 'chalk', label: '用粉笔标记', badge: 'support', preview: '消耗10灵魂碎片，永久在地图上标注安全路径。', requiresCurrency: 10 },
+      ],
+    },
+    moth_eaten: {
+      id: "moth_eaten",
+      name: "蛀书堆",
+      description: "残卷堆成小山，虫蛀的洞还残留湿迹。",
+      effect: "翻找或许能找到技能线索",
+      options: [
+        { id: 'search', label: '翻找残页', badge: 'mystic', preview: '耐心翻找，可能学会技能或被毒尘侵袭。' },
+        { id: 'press', label: '压榨药汁', badge: 'support', preview: '提炼药剂，获得治疗或净化道具。' },
+        { id: 'brew', label: '熬制苦茶', badge: 'blessing', preview: '熬出提神苦茶，恢复能量但腐蚀上升。' },
+      ],
+    },
+    damp_torch: {
+      id: "damp_torch",
+      name: "潮湿火把",
+      description: "火把忽明忽暗，空气湿到让火星发愁。",
+      effect: "晾干可换少量能量或火焰加成",
+      options: [
+        { id: 'dry', label: '烘干火把', badge: 'support', preview: '恢复能量并附带余烬效果。' },
+        { id: 'split', label: '取下火油', badge: 'mystic', preview: '萃取火油，获得额外的余烬药剂。' },
+        { id: 'extinguish', label: '彻底熄灭', badge: 'blessing', preview: '熄灭火焰换取腐蚀下降，但勇气会减弱。' },
+      ],
+    },
+    dry_well_echo: {
+      id: "dry_well_echo",
+      name: "枯井回声",
+      description: "低沉的回声告诉你，召唤阵就在更深处。",
+      effect: "增强勇气，连胜加成",
+      options: [
+        { id: 'listen', label: '聆听回声', badge: 'blessing', preview: '获得勇气，并提升下一次战利品品质。' },
+        { id: 'hum', label: '回声和鸣', badge: 'mystic', preview: '以回声共鸣，清理腐蚀或恢复能量。' },
+        { id: 'descend', label: '沿声找路', badge: 'danger', preview: '贸然前进，可能触发伏击或发现宝物。' },
+      ],
+    },
+    altar_shadow: {
+      id: "altar_shadow",
+      name: "祭坛阴影",
+      description: "祭坛阴影里潜伏着另一双眼睛。",
+      effect: "献祭换祝福或承受诅咒",
+      options: [
+        { id: 'offer', label: '献上贡品', badge: 'danger', preview: '献出背包物品换取遗物或腐蚀。' },
+        { id: 'resist', label: '抵抗诱惑', badge: 'blessing', preview: '以勇气抵抗阴影，净化腐蚀但可能受伤。', requiresHeroism: 1 },
+        { id: 'trade', label: '以碎片交易', badge: 'trade', preview: '支付40灵魂碎片，换取随机遗物或装备。', requiresCurrency: 40 },
+      ],
+    },
+    glimmering_pool: {
+      id: 'glimmering_pool',
+      name: '磷光之池',
+      description: '池水泛着微光，水面上漂浮着不明的孢子。',
+      effect: '池水可净化或强化，但同样可能引来潮湿诅咒。',
+      options: [
+        { id: 'drink', label: '饮下池水', badge: 'danger', preview: '随机获得强化或潮湿负面。' },
+        { id: 'bottle', label: '舀入水囊', badge: 'trade', preview: '支付10灵魂碎片，换取一瓶稀有药剂。', requiresCurrency: 10 },
+        { id: 'wash', label: '净手静坐', badge: 'blessing', preview: '解除一个负面并降低腐蚀，但会消耗时间。' },
+      ],
+    },
+    rusted_armory: {
+      id: 'rusted_armory',
+      name: '锈蚀军械库',
+      description: '铁柜半开，锁扣却被潮水锈死。里面隐约可见光泽。',
+      effect: '可能获得武器或装备，也可能惊动守卫。',
+      options: [
+        { id: 'force', label: '蛮力撬开', badge: 'danger', preview: '强行破坏锁具，可能受伤或找到装备。' },
+        { id: 'salvage', label: '拆解零件', badge: 'support', preview: '小心拆解，换取灵魂碎片与材料。' },
+        { id: 'catalog', label: '研究铭文', badge: 'mystic', preview: '记录铭文，获得技能灵感或勇气。' },
+      ],
+    },
+    echo_shrine: {
+      id: 'echo_shrine',
+      name: '回声祭坛',
+      description: '石台上堆着旧供品，祭坛中心有条裂缝通向深处。',
+      effect: '回应祭坛的祈求可恢复或强化，但也可能激怒阴影。',
+      options: [
+        { id: 'kneel', label: '跪祷献声', badge: 'blessing', preview: '恢复生命并净化一个负面。' },
+        { id: 'chant', label: '吟唱古语', badge: 'mystic', preview: '消耗1点勇气，换取随机遗物增益。', requiresHeroism: 1 },
+        { id: 'steal', label: '顺走供品', badge: 'danger', preview: '取走供品，获得资源但会增长腐蚀。' },
+      ],
+    },
   };
 
   const floors = [
-    { id: "floor1", name: "苔痕石室", ambience: "潮湿、苔藓、积水，火把昏黄。", rooms: { normal: ["slime", "rat", "skeleton"], elite: ["bone_captain"], boss: "muck_beast", events: ["blood_oath", "old_page", "cracked_mirror", "damp_torch"], merchants: true, camp: 1 } },
-    { id: "floor2", name: "腐潮洞廊", ambience: "水汽更重，暗潮与骨粉混杂。", rooms: { normal: ["spider", "cultist", "gargoyle"], elite: ["chanter", "spider_queen"], boss: "twilight_priestess", events: ["tide_chosen", "tide_surge", "altar_shadow", "moth_eaten"], merchants: true, camp: 1 } },
-    { id: "floor3", name: "无面之厅", ambience: "镜面墙、回声长廊，偶有低语。", rooms: { normal: ["shadow", "stone_colossus", "cult_deacon"], elite: ["twin_assassins", "mirror_guard"], boss: "faceless_duke", events: ["mirror_sigil", "silhouette_lock", "mirror_maze", "dry_well_echo"], merchants: true, camp: 1 } },
+    { id: "floor1", name: "苔痕石室", ambience: "潮湿、苔藓、积水，火把昏黄。", rooms: { normal: ["slime", "rat", "skeleton"], elite: ["bone_captain"], boss: "muck_beast", events: ["blood_oath", "old_page", "cracked_mirror", "damp_torch", "glimmering_pool", "rusted_armory"], merchants: true, camp: 1 } },
+    { id: "floor2", name: "腐潮洞廊", ambience: "水汽更重，暗潮与骨粉混杂。", rooms: { normal: ["spider", "cultist", "gargoyle"], elite: ["chanter", "spider_queen"], boss: "twilight_priestess", events: ["tide_chosen", "tide_surge", "altar_shadow", "moth_eaten", "glimmering_pool", "echo_shrine"], merchants: true, camp: 1 } },
+    { id: "floor3", name: "无面之厅", ambience: "镜面墙、回声长廊，偶有低语。", rooms: { normal: ["shadow", "stone_colossus", "cult_deacon"], elite: ["twin_assassins", "mirror_guard"], boss: "faceless_duke", events: ["mirror_sigil", "silhouette_lock", "mirror_maze", "dry_well_echo", "rusted_armory", "echo_shrine"], merchants: true, camp: 1 } },
   ];
 
   return { statuses, skills, consumables, equipments, relics, classes, enemies, events, floors };
@@ -277,6 +435,7 @@ class DungeonGame {
     this._tutorialTimer = null;
     this._audioPhase = null;
     this._restoring = false;
+    this.introChoice = { classId: null };
     const storedAdmin = DungeonStorage.loadAdminSettings();
     this.admin = { gameEnabled: true, invincible: false, ...storedAdmin };
     this.scores = DungeonStorage.loadScores();
@@ -536,46 +695,166 @@ class DungeonGame {
 
   renderIntro() {
     DungeonStorage.clearRunState();
+    this.closeOverlay();
+    this.run = null;
+    this.state.phase = 'intro';
+    this.state.overlay = null;
     const classes = Object.values(DungeonData.classes);
-    const cards = classes.map(cls => `
-      <div class="dungeon-class" data-class="${cls.id}">
-        <div class="dungeon-class__title">${cls.name}</div>
-        <div class="dungeon-class__passive">${cls.passive}</div>
-        <div class="dungeon-class__skill"><span class="label">起始技能</span>${DungeonData.skills[cls.startingSkill]?.name || "-"}</div>
-        <div class="dungeon-class__items"><span class="label">开局物品</span>${cls.startingItems.map(item => item.name).join("、")}</div>
-      </div>
-    `).join("");
+    const selected = classes.find(cls => cls.id === this.introChoice?.classId);
+    if (!selected) this.introChoice = { classId: null };
+    const classCards = classes.map(cls => {
+      const stats = cls.baseStats || {};
+      const selectedClass = this.introChoice?.classId === cls.id ? ' is-selected' : '';
+      const items = cls.startingItems.map(item => item.name).join('、');
+      return `
+        <button type="button" class="dungeon-class-card${selectedClass}" data-class="${cls.id}">
+          <div class="dungeon-class-card__header">
+            <span class="dungeon-class-card__name">${cls.name}</span>
+            <span class="dungeon-class-card__passive">${cls.passive}</span>
+          </div>
+          <div class="dungeon-class-card__stats">
+            <span>生命 ${stats.maxHP ?? '-'}</span>
+            <span>能量 ${stats.maxEnergy ?? '-'}</span>
+            <span>攻击 ${stats.attack ?? '-'}</span>
+            <span>防御 ${stats.defense ?? '-'}</span>
+          </div>
+          <div class="dungeon-class-card__items"><span class="label">开局物品</span>${items}</div>
+        </button>
+      `;
+    }).join('');
+    const featureList = [
+      '起点与房间分布会随周种子刷新，每次深入都是全新路线。',
+      '事件拥有多重抉择，成功或失败会影响状态、物品与遗物。',
+      '奖励不止积分，还可能获得装备、药剂、勇气与灵魂碎片。',
+    ].map(text => `<li>${text}</li>`).join('');
+    const seed = Math.abs(Math.floor(Date.now() / 604800000));
+    this.currentIntroSeed = seed;
     this.root.innerHTML = `
       <div class="dungeon-intro">
-        <div class="dungeon-intro__head">
-          <h2>〈史莱姆古井〉探险</h2>
-          <p>选择一个职业，准备下井。</p>
+        <div class="dungeon-intro__layout">
+          <div class="dungeon-intro__story">
+            <h2>〈史莱姆古井〉探险</h2>
+            <p>潮水倒灌的古井再次开放。先挑好一名先锋，确认装备后再下井。</p>
+            <ul class="dungeon-intro__features">${featureList}</ul>
+          </div>
+          <div class="dungeon-intro__preview" id="dungeon-class-preview">
+            <div class="dungeon-preview-placeholder">选择一名职业即可查看详细介绍与建议。</div>
+          </div>
         </div>
-        <div class="dungeon-class-list">${cards}</div>
+        <div class="dungeon-class-grid">${classCards}</div>
+        <div class="dungeon-intro__actions">
+          <button type="button" class="dungeon-intro__start" id="dungeon-start-run" ${(!this.admin.gameEnabled || !selected) ? 'disabled' : ''}>准备下井</button>
+          <button type="button" class="dungeon-intro__random" id="dungeon-random-class">随机推荐</button>
+        </div>
         <div class="dungeon-intro__meta">
           <div>提示：首层前两场战斗必掉职业相关装备。</div>
-          <div class="dungeon-seed">本周种子：<span id="dungeon-seed"></span></div>
+          <div class="dungeon-seed">本周种子：<span id="dungeon-seed">${seed}</span></div>
         </div>
         <div class="dungeon-panel dungeon-intro-scores" id="dungeon-intro-scores" data-context="intro"></div>
         ${this.admin.gameEnabled ? '' : '<div class="dungeon-maintenance">古井入口暂时关闭，请等待管理员重新开启。</div>'}
       </div>
     `;
-    const seed = Math.abs(Math.floor(Date.now() / 604800000));
-    const seedNode = this.root.querySelector('#dungeon-seed');
-    if (seedNode) seedNode.textContent = seed;
     this.renderScoreboard('dungeon-intro-scores');
-    this.root.querySelectorAll('.dungeon-class').forEach(node => {
+    if (selected) {
+      this.updateIntroPreview(selected);
+    }
+    this.bindIntroInteractions();
+    window.AudioEngine?.decorateArea?.(this.root);
+    this.updateAudio();
+  }
+
+  bindIntroInteractions() {
+    const cards = this.root.querySelectorAll('.dungeon-class-card');
+    cards.forEach(node => {
       node.addEventListener('click', () => {
         const clsId = node.dataset.class;
+        this.selectIntroClass(clsId);
+      });
+    });
+    const randomBtn = this.root.querySelector('#dungeon-random-class');
+    if (randomBtn) {
+      randomBtn.addEventListener('click', () => {
+        const entries = Object.values(DungeonData.classes || {});
+        if (!entries.length) return;
+        const pick = entries[Math.floor(Math.random() * entries.length)];
+        this.selectIntroClass(pick.id);
+      });
+    }
+    const startBtn = this.root.querySelector('#dungeon-start-run');
+    if (startBtn) {
+      startBtn.addEventListener('click', () => {
         if (!this.admin.gameEnabled) {
           alert('古井入口正在维护，请稍后再尝试。');
           return;
         }
-        this.startRun(clsId, seed);
+        const clsId = this.introChoice?.classId;
+        if (!clsId) {
+          this.addLog('请先选择一名职业再启程。', 'warn');
+          return;
+        }
+        this.startRun(clsId, this.currentIntroSeed || Math.abs(Math.floor(Date.now() / 604800000)));
       });
+    }
+    if (this.introChoice?.classId) {
+      this.highlightIntroSelection(this.introChoice.classId);
+    }
+  }
+
+  selectIntroClass(classId) {
+    const cls = DungeonData.classes[classId];
+    if (!cls) return;
+    this.introChoice = { classId };
+    this.highlightIntroSelection(classId);
+    const startBtn = this.root.querySelector('#dungeon-start-run');
+    if (startBtn) {
+      startBtn.disabled = !this.admin.gameEnabled;
+    }
+    this.updateIntroPreview(cls);
+  }
+
+  highlightIntroSelection(classId) {
+    const cards = this.root.querySelectorAll('.dungeon-class-card');
+    cards.forEach(node => {
+      if (node.dataset.class === classId) {
+        node.classList.add('is-selected');
+        if (typeof node.focus === 'function') {
+          try {
+            node.focus({ preventScroll: true });
+          } catch (err) {
+            node.focus();
+          }
+        }
+      } else {
+        node.classList.remove('is-selected');
+      }
     });
-    window.AudioEngine?.decorateArea?.(this.root);
-    this.updateAudio();
+  }
+
+  updateIntroPreview(cls) {
+    const node = this.root.querySelector('#dungeon-class-preview');
+    if (!node || !cls) return;
+    const stats = cls.baseStats || {};
+    const skill = DungeonData.skills[cls.startingSkill];
+    const items = cls.startingItems.map(item => `<li>${item.name}</li>`).join('');
+    node.innerHTML = `
+      <div class="dungeon-preview-card">
+        <div class="dungeon-preview-card__head">
+          <div class="dungeon-preview-card__name">${cls.name}</div>
+          <div class="dungeon-preview-card__passive">${cls.passive}</div>
+        </div>
+        <div class="dungeon-preview-card__stats">
+          <div><span>生命</span><span>${stats.maxHP ?? '-'}</span></div>
+          <div><span>能量</span><span>${stats.maxEnergy ?? '-'}</span></div>
+          <div><span>攻击</span><span>${stats.attack ?? '-'}</span></div>
+          <div><span>防御</span><span>${stats.defense ?? '-'}</span></div>
+        </div>
+        <div class="dungeon-preview-card__lore">${cls.lore || '这位冒险者的经历仍是谜团。'}</div>
+        <div class="dungeon-preview-card__meta">
+          <div><span class="meta-label">起始技能</span><span>${skill?.name || '-'}</span></div>
+          <div><span class="meta-label">开局物品</span><ul>${items}</ul></div>
+        </div>
+      </div>
+    `;
   }
 
   applyAdminSettings(settings = {}) {
@@ -661,15 +940,35 @@ class DungeonGame {
   createFloorMap(floor, depth) {
     const size = floor.size || (depth === 2 ? 5 : 4);
     const cells = Array.from({ length: size }, () => Array.from({ length: size }, () => null));
-    const start = { x: Math.floor(size / 2), y: Math.floor(size / 2) };
+    const center = Math.floor(size / 2);
+    const startCandidates = [];
+    for (let y = Math.max(1, center - 1); y <= Math.min(size - 2, center + 1); y += 1) {
+      for (let x = Math.max(1, center - 1); x <= Math.min(size - 2, center + 1); x += 1) {
+        startCandidates.push({ x, y });
+      }
+    }
+    const start = this.rng.pick(startCandidates) || { x: center, y: center };
     const totalSlots = size * size - 1;
 
     const pool = [];
-    const events = this.rng.shuffle(floor.rooms.events.slice());
-    const eventSource = events.length ? events : Object.keys(DungeonData.events);
-    const eventCount = Math.max(3, Math.min(totalSlots, Math.ceil(totalSlots * 0.3)));
+    const baseEvents = Array.isArray(floor.rooms.events) ? floor.rooms.events.filter(id => DungeonData.events[id]) : [];
+    const allEvents = Object.keys(DungeonData.events);
+    const targetEventCount = Math.max(baseEvents.length, Math.max(3, Math.ceil(totalSlots * 0.3)));
+    const eventCount = Math.min(totalSlots, targetEventCount);
+    const eventChoices = baseEvents.slice();
+    const generalPool = this.rng.shuffle(allEvents.filter(id => !eventChoices.includes(id)));
+    while (eventChoices.length < eventCount && generalPool.length) {
+      const next = generalPool.shift();
+      if (next) eventChoices.push(next);
+    }
+    while (eventChoices.length < eventCount) {
+      const extra = this.rng.pick(allEvents);
+      if (!extra) break;
+      eventChoices.push(extra);
+    }
+    const randomizedEvents = this.rng.shuffle(eventChoices);
     for (let i = 0; i < eventCount; i += 1) {
-      const pick = eventSource[i % eventSource.length];
+      const pick = randomizedEvents[i % randomizedEvents.length];
       pool.push({ type: 'event', eventId: pick, id: `event-${depth}-${i}` });
     }
 
@@ -867,6 +1166,7 @@ class DungeonGame {
         this.updateAll();
         return;
       }
+      this.ensureEventState(cell);
       this.addLog(`〈${DungeonData.events[cell.eventId]?.name || "未知事件"}〉`, "title");
       this.state.phase = 'event';
       this.tutorial.stage = 'event';
@@ -1206,6 +1506,80 @@ class DungeonGame {
     window.AudioEngine?.decorateArea?.(node);
   }
 
+  ensureEventState(cell = this.run?.currentRoom) {
+    if (!cell || cell.type !== 'event') return null;
+    const event = DungeonData.events[cell.eventId];
+    if (!event) return null;
+    if (!cell.eventState || cell.eventState.eventId !== event.id) {
+      cell.eventState = {
+        eventId: event.id,
+        options: this.rollEventOptions(event),
+      };
+    }
+    return cell.eventState;
+  }
+
+  rollEventOptions(event) {
+    const base = Array.isArray(event?.options) && event.options.length
+      ? event.options
+      : this.defaultEventOptions(event);
+    const max = event?.maxOptions && event.maxOptions > 0
+      ? Math.min(event.maxOptions, base.length)
+      : base.length;
+    const picks = this.rng.shuffle(base).slice(0, max).map(opt => ({ ...opt }));
+    const hasSkip = picks.some(opt => opt && opt.skip);
+    if (!hasSkip) {
+      picks.push({ id: 'skip', label: '保持距离', preview: '离开房间，避免未知风险。', skip: true });
+    }
+    return picks;
+  }
+
+  defaultEventOptions(event) {
+    if (!event) {
+      return [{ id: 'ignore', label: '离开', skip: true }];
+    }
+    return [
+      { id: `${event.id}:interact`, label: '尝试互动', badge: 'mystic', preview: '面对未知的祭坛，结果难料。' },
+      { id: 'skip', label: '保持距离', skip: true, preview: '谨慎离开，等待下次机会。' },
+    ];
+  }
+
+  choiceBadgeLabel(type) {
+    const map = {
+      danger: '风险',
+      mystic: '秘术',
+      blessing: '祝福',
+      trade: '交易',
+      support: '补给',
+    };
+    return map[type] || '';
+  }
+
+  isEventOptionDisabled(option) {
+    if (!option || !this.run?.player) return false;
+    if (option.requiresCurrency != null) {
+      return this.ensureCurrency() < Number(option.requiresCurrency);
+    }
+    if (option.requiresHeroism != null) {
+      return (this.run.player.heroism || 0) < Number(option.requiresHeroism);
+    }
+    if (option.requiresItem) {
+      return !this.run.player.inventory.some(item => item?.id === option.requiresItem && (item.charges == null || item.charges > 0));
+    }
+    return false;
+  }
+
+  eventOptionHint(option) {
+    if (!option) return '';
+    const hints = [];
+    if (option.preview) hints.push(option.preview);
+    if (option.requiresCurrency != null) hints.push(`需要灵魂碎片 ${option.requiresCurrency}`);
+    if (option.requiresHeroism != null) hints.push(`需要勇气 ${option.requiresHeroism}`);
+    if (option.requiresItemName) hints.push(`需要 ${option.requiresItemName}`);
+    if (this.isEventOptionDisabled(option)) hints.push('条件不足');
+    return hints.join(' · ');
+  }
+
   combatCommands() {
     const player = this.run.player;
     const healCd = player.cooldowns.__heal || 0;
@@ -1288,64 +1662,38 @@ class DungeonGame {
   }
 
   eventCommands() {
-    const event = DungeonData.events[this.run.currentRoom.eventId];
-    if (!event) return '<div class="command-group"><div class="command-row"><span class="muted">未知事件</span></div></div>';
-    const buttons = [];
-    switch (event.id) {
-      case 'blood_oath':
-        buttons.push(`<button data-cmd="event" data-arg="blood_oath:accept">献血签下誓约</button>`);
-        buttons.push(`<button data-cmd="skip-event">保持距离</button>`);
-        break;
-      case 'old_page':
-        buttons.push(`<button data-cmd="event" data-arg="old_page:study">研读纸页</button>`);
-        buttons.push(`<button data-cmd="skip-event">放下</button>`);
-        break;
-      case 'cracked_mirror':
-        buttons.push(`<button data-cmd="event" data-arg="cracked_mirror:touch">触摸裂纹</button>`);
-        buttons.push(`<button data-cmd="skip-event">避开</button>`);
-        break;
-      case 'damp_torch':
-        buttons.push(`<button data-cmd="event" data-arg="damp_torch:dry">烘干火把</button>`);
-        buttons.push(`<button data-cmd="skip-event">任其熄灭</button>`);
-        break;
-      case 'moth_eaten':
-        buttons.push(`<button data-cmd="event" data-arg="moth_eaten:search">翻找残页</button>`);
-        buttons.push(`<button data-cmd="skip-event">保持距离</button>`);
-        break;
-      case 'tide_chosen':
-        buttons.push(`<button data-cmd="event" data-arg="tide_chosen:accept">接纳潮汐</button>`);
-        buttons.push(`<button data-cmd="skip-event">拒绝改造</button>`);
-        break;
-      case 'mirror_sigil':
-        buttons.push(`<button data-cmd="event" data-arg="mirror_sigil:accept">刻下誓印</button>`);
-        buttons.push(`<button data-cmd="skip-event">退后</button>`);
-        break;
-      case 'tide_surge':
-        buttons.push(`<button data-cmd="event" data-arg="tide_surge:brace">稳住身形</button>`);
-        buttons.push(`<button data-cmd="event" data-arg="tide_surge:soak">任其冲刷</button>`);
-        break;
-      case 'silhouette_lock':
-        buttons.push(`<button data-cmd="event" data-arg="silhouette_lock:attempt">按影敲击</button>`);
-        buttons.push(`<button data-cmd="skip-event">暂且离开</button>`);
-        break;
-      case 'mirror_maze':
-        buttons.push(`<button data-cmd="event" data-arg="mirror_maze:inspect">记下路线</button>`);
-        buttons.push(`<button data-cmd="event" data-arg="mirror_maze:dash">强行穿行</button>`);
-        buttons.push(`<button data-cmd="skip-event">原路返回</button>`);
-        break;
-      case 'dry_well_echo':
-        buttons.push(`<button data-cmd="event" data-arg="dry_well_echo:listen">聆听回声</button>`);
-        buttons.push(`<button data-cmd="skip-event">继续前进</button>`);
-        break;
-      case 'altar_shadow':
-        buttons.push(`<button data-cmd="event" data-arg="altar_shadow:offer">献上贡品</button>`);
-        buttons.push(`<button data-cmd="skip-event">拒绝阴影</button>`);
-        break;
-      default:
-        buttons.push(`<button data-cmd="skip-event">继续前进</button>`);
-        break;
+    const room = this.run.currentRoom;
+    const event = DungeonData.events[room.eventId];
+    if (!event) {
+      return '<div class="command-group"><div class="command-row"><span class="muted">未知事件</span></div></div>';
     }
-    return `<div class="command-group"><div class="command-title">事件抉择</div><div class="command-row">${buttons.join('')}</div></div>`;
+    const state = this.ensureEventState(room);
+    const options = Array.isArray(state?.options) ? state.options : [];
+    const rows = options.map(option => {
+      const hint = this.eventOptionHint(option);
+      if (option.skip) {
+        return `
+          <div class="event-choice">
+            <button data-cmd="skip-event">${option.label || '离开'}</button>
+            ${hint ? `<div class="event-choice__hint">${hint}</div>` : ''}
+          </div>
+        `;
+      }
+      const disabled = this.isEventOptionDisabled(option);
+      const badge = option.badge ? `<span class="choice-badge choice-${option.badge}">${this.choiceBadgeLabel(option.badge)}</span>` : '';
+      return `
+        <div class="event-choice">
+          <button data-cmd="event" data-arg="${event.id}:${option.id}" ${disabled ? 'disabled' : ''}>${option.label || '选择'}${badge}</button>
+          ${hint ? `<div class="event-choice__hint">${hint}</div>` : ''}
+        </div>
+      `;
+    }).join('');
+    return `
+      <div class="command-group event-command-group">
+        <div class="command-title">事件抉择</div>
+        <div class="event-choice-list">${rows || '<div class="muted">暂无可行选项</div>'}</div>
+      </div>
+    `;
   }
 
   merchantCommands() {
@@ -2286,7 +2634,10 @@ class DungeonGame {
         break;
       case 'skip-event':
         this.addLog('你选择保持谨慎，暂不触碰。', 'info');
-        if (this.run.currentRoom) this.run.currentRoom.resolved = true;
+        if (this.run.currentRoom) {
+          this.run.currentRoom.resolved = true;
+          if (this.run.currentRoom.eventState) this.run.currentRoom.eventState.resolved = 'skip';
+        }
         this.state.phase = 'explore';
         this.tutorial.stage = 'explore';
         this.updateAll();
@@ -2827,6 +3178,25 @@ class DungeonGame {
       .filter(Boolean);
   }
 
+  revealAdjacentRooms(floor, coords) {
+    if (!floor?.map?.cells || !coords) return;
+    const deltas = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ];
+    deltas.forEach(([dx, dy]) => {
+      const nx = coords.x + dx;
+      const ny = coords.y + dy;
+      const row = floor.map.cells[ny];
+      const cell = row ? row[nx] : null;
+      if (cell && !cell.revealed) {
+        cell.revealed = true;
+      }
+    });
+  }
+
   cellTypeLabel(cell, { reveal = false } = {}) {
     if (!cell) return '未知';
     if (!cell.revealed && !reveal) return '未知';
@@ -2917,123 +3287,297 @@ class DungeonGame {
     this.updateAll();
   }
 
+  grantConsumable(id, { logType = 'good', log = true } = {}) {
+    const item = DungeonData.consumables[id];
+    if (!item || !this.run?.player) return null;
+    const entry = { ...item, charges: item.effect?.charges || 1 };
+    this.run.player.inventory.push(entry);
+    if (log) this.addLog(`获得消耗品【${item.name || id}】。`, logType);
+    return entry;
+  }
+
+  grantEquipment(id, { logType = 'good', log = true } = {}) {
+    const equip = DungeonData.equipments[id];
+    if (!equip || !this.run?.player) return null;
+    const entry = { ...equip, charges: 1 };
+    this.run.player.inventory.push(entry);
+    if (log) this.addLog(`获得装备【${equip.name || id}】。`, logType);
+    return entry;
+  }
+
+  grantRelic(id, { logType = 'goal', log = true } = {}) {
+    const relic = DungeonData.relics[id];
+    if (!relic || !this.run?.player) return null;
+    if (this.run.player.relics.includes(id)) {
+      if (log) {
+        this.addLog(`遗物【${relic.name || id}】的力量与现有共鸣，转化为灵魂碎片。`, 'info');
+      }
+      this.run.currency = this.ensureCurrency() + 25;
+      return relic;
+    }
+    this.run.player.relics.push(id);
+    if (log) this.addLog(`获得遗物【${relic.name || id}】。`, logType);
+    return relic;
+  }
+
   resolveEvent(arg) {
     const [id, action = 'accept'] = (arg || '').split(':');
     let advance = true;
     let scoreGain = 0;
     const player = this.run.player;
+    const room = this.run.currentRoom;
+    this.ensureEventState(room);
     switch (id) {
-      case 'blood_oath':
-        if (action === 'accept') {
+      case 'blood_oath': {
+        if (action === 'pledge') {
           player.maxHP = Math.max(10, player.maxHP - 5);
           if (player.hp > player.maxHP) player.hp = player.maxHP;
-          if (!player.relics.includes('bloodlust')) player.relics.push('bloodlust');
+          this.grantRelic('bloodlust', { log: false });
           this.addLog('鲜血滴在石台上，誓约生效：获得【嗜血】。', 'goal');
-          scoreGain += 90;
-        }
-        break;
-      case 'old_page':
-        if (action === 'study') {
+          if (this.rng.random() < 0.5) {
+            player.heroism += 1;
+            this.addLog('誓约回馈战意，勇气+1。', 'goal');
+          } else {
+            this.applyStatus(player, 'bleed', 1, 3);
+            this.addLog('鲜血未止，你陷入轻微流血。', 'warn');
+          }
+          scoreGain += 120;
+        } else if (action === 'temper') {
+          if (this.ensureCurrency() < 35) {
+            this.addLog('灵魂碎片不足以稳定仪式。', 'warn');
+            advance = false;
+            break;
+          }
+          this.run.currency = Math.max(0, this.ensureCurrency() - 35);
+          player.maxHP = Math.max(12, player.maxHP - 2);
+          if (player.hp > player.maxHP) player.hp = player.maxHP;
+          this.grantRelic('bloodlust', { log: false });
+          this.addLog('碎片化作护符，你仅失去少量体魄。', 'good');
+          player.heroism += 1;
+          this.addLog('你把握住仪式的节奏，勇气+1。', 'goal');
+          scoreGain += 110;
+        } else if (action === 'observe') {
+          const before = player.codex.size;
           this.learnRandomSkill();
-          scoreGain += 70;
-        }
-        break;
-      case 'cracked_mirror': {
-        if (action === 'touch') {
-          const before = this.run.player.statuses?.length || 0;
-          this.crackedMirrorEffect();
-          if ((this.run.player.statuses?.length || 0) <= before) scoreGain += 60;
+          if (player.codex.size === before) {
+            player.heroism += 1;
+            this.addLog('誓文提醒了旧日技巧，勇气+1。', 'good');
+          }
+          this.run.currency = this.ensureCurrency() + 20;
+          this.addLog('你整理誓文的笔记，灵魂碎片 +20。', 'score');
+          scoreGain += 80;
         }
         break;
       }
-      case 'damp_torch':
+      case 'old_page': {
+        if (action === 'study') {
+          this.learnRandomSkill();
+          if (this.rng.random() < 0.4) this.grantConsumable('ether');
+          scoreGain += 90;
+        } else if (action === 'copy') {
+          player.heroism += 1;
+          player.energy = Math.min(player.maxEnergy, player.energy + 2);
+          this.addLog('你抄录要点，勇气+1，能量+2。', 'good');
+          scoreGain += 70;
+        } else if (action === 'torch') {
+          const healed = this.healPlayer(8, { context: 'event' });
+          this.adjustCorruption(-1);
+          this.addLog(`纸页化作暖焰，恢复 ${healed} 点生命并降低1点腐蚀。`, 'good');
+          scoreGain += 60;
+        }
+        break;
+      }
+      case 'cracked_mirror': {
+        if (action === 'touch') {
+          this.crackedMirrorEffect();
+          scoreGain += 80;
+        } else if (action === 'shatter') {
+          const dmg = this.applyPlayerDamage(5);
+          this.removeNegative(player, 2);
+          const suffix = dmg === 0 && this.admin?.invincible ? '（无敌）' : '';
+          this.addLog(`镜片碎裂时反噬了你，受到 ${dmg} 点伤害${suffix}，但负面被震散。`, dmg > 0 ? 'warn' : 'good');
+          if (this.handlePlayerDown()) { advance = false; break; }
+          scoreGain += 70;
+        } else if (action === 'meditate') {
+          this.adjustCorruption(-1);
+          player.energy = Math.min(player.maxEnergy, player.energy + 1);
+          this.addLog('你凝神望向镜面，腐蚀下降，能量+1。', 'good');
+          scoreGain += 60;
+        }
+        break;
+      }
+      case 'damp_torch': {
         if (action === 'dry') {
           player.energy = Math.min(player.maxEnergy, player.energy + 2);
           player.imbue = 'ember';
           this.addLog('你烘干火把，暖光裹住双手，获得火焰附魔与能量。', 'good');
-          scoreGain += 45;
+          if (this.rng.random() < 0.4) this.grantConsumable('ember_oil');
+          scoreGain += 70;
+        } else if (action === 'split') {
+          this.grantConsumable('ember_oil');
+          this.grantConsumable('guard_tonic');
+          this.addLog('你小心收集火油，得到了两瓶补给。', 'goal');
+          scoreGain += 80;
+        } else if (action === 'extinguish') {
+          this.adjustCorruption(-1);
+          if (player.heroism > 0) player.heroism -= 1;
+          this.addLog('你让火焰熄灭，腐蚀下降，但勇气被浇熄了一分。', 'info');
+          scoreGain += 50;
         }
         break;
-      case 'moth_eaten':
+      }
+      case 'moth_eaten': {
         if (action === 'search') {
           if (this.rng.random() < 0.65) {
             this.learnRandomSkill();
-            this.addLog('虫蛀的纸页仍藏锋利，你掌握了新技巧。', 'goal');
-            scoreGain += 60;
+            if (this.rng.random() < 0.3) this.grantConsumable('small_heal');
+            scoreGain += 70;
           } else {
             this.applyStatus(player, 'poison', 1, 3);
             this.addLog('尘埃呛入口鼻，你被中毒。', 'warn');
           }
+        } else if (action === 'press') {
+          this.grantConsumable('mending_salve');
+          if (this.rng.random() < 0.4) this.grantConsumable('small_heal');
+          this.addLog('你从虫蛀纸堆中压出药汁，得到治疗用品。', 'good');
+          scoreGain += 65;
+        } else if (action === 'brew') {
+          player.energy = Math.min(player.maxEnergy, player.energy + 2);
+          this.adjustCorruption(1);
+          this.addLog('苦茶提振精神，能量+2，但腐蚀上涨。', 'info');
+          scoreGain += 55;
         }
         break;
-      case 'tide_chosen':
+      }
+      case 'tide_chosen': {
         if (action === 'accept') {
-          if (!player.relics.includes('tide_codex')) player.relics.push('tide_codex');
+          this.grantRelic('tide_codex', { log: false });
+          player.flags = player.flags || {};
           player.flags.tideWeak = true;
           this.addLog('潮水符纹缠绕你：施法附带潮湿，但雷鸣会更加刺骨。', 'goal');
-          scoreGain += 100;
+          if (this.rng.random() < 0.5) {
+            player.heroism += 1;
+            this.addLog('潮水的呼唤激励你，勇气+1。', 'good');
+          }
+          scoreGain += 110;
+        } else if (action === 'etch') {
+          if ((player.heroism || 0) < 1) {
+            this.addLog('需要至少1点勇气才能刻下防护符。', 'warn');
+            advance = false;
+            break;
+          }
+          player.heroism -= 1;
+          this.grantRelic('tide_codex');
+          player.flags = player.flags || {};
+          player.flags.tideWeak = false;
+          this.applyStatus(player, 'guard', 1, 1);
+          this.addLog('你以勇气稳住潮力，获得守备并避免副作用。', 'goal');
+          scoreGain += 120;
+        } else if (action === 'walk') {
+          const healed = this.healPlayer(6, { context: 'event' });
+          this.adjustCorruption(-1);
+          this.addLog(`你观察潮汐的律动，恢复 ${healed} 点生命并降低腐蚀。`, 'good');
+          scoreGain += 60;
         }
         break;
-      case 'mirror_sigil':
+      }
+      case 'mirror_sigil': {
         if (action === 'accept') {
-          if (!player.relics.includes('mirror_sigil')) player.relics.push('mirror_sigil');
+          this.grantRelic('mirror_sigil');
+          player.flags = player.flags || {};
           player.flags.mirrorPenalty = true;
           this.addLog('誓印贴上皮肤，阴影在耳边低语。普通战可能失去护甲。', 'goal');
-          scoreGain += 120;
+          scoreGain += 130;
+        } else if (action === 'reflect') {
+          this.grantRelic('mirror_sigil', { log: false });
+          if (this.rng.random() < 0.6) {
+            player.heroism += 1;
+            this.addLog('镜像低语中蕴含力量，勇气+1。', 'goal');
+          } else {
+            this.applyStatus(player, 'corrupt', 1, 3);
+            this.addLog('镜像反噬，你被腐蚀缠绕。', 'warn');
+          }
+          scoreGain += 100;
+        } else if (action === 'retreat') {
+          player.energy = Math.min(player.maxEnergy, player.energy + 1);
+          this.adjustCorruption(-1);
+          this.addLog('你谨慎退后，整理心绪，能量+1，腐蚀-1。', 'info');
+          scoreGain += 40;
         }
         break;
+      }
       case 'tide_surge': {
         if (action === 'brace') {
           const applied = this.applyPlayerDamage(4);
           this.applyStatus(player, 'guard', 1, 1);
           const suffix = applied === 0 && this.admin?.invincible ? '（无敌）' : '';
           this.addLog(`潮水拍打你造成 ${applied} 点伤害，但你稳住了身形。${suffix}`, 'warn');
-          if (this.handlePlayerDown()) {
-            advance = false;
-            break;
-          }
+          if (this.handlePlayerDown()) { advance = false; break; }
+          scoreGain += 40;
         } else if (action === 'soak') {
           const applied = this.applyPlayerDamage(7);
           if (applied > 0) this.applyStatus(player, 'wet', 1, 2);
           const suffix = applied === 0 && this.admin?.invincible ? '（无敌）' : '';
           this.addLog(`你任潮水冲刷，承受 ${applied} 点伤害。${suffix}`, 'warn');
-          if (this.handlePlayerDown()) {
-            advance = false;
-            break;
-          }
-          if (player.hp > 0) {
+          if (this.handlePlayerDown()) { advance = false; break; }
+          scoreGain += 30;
+        } else if (action === 'channel') {
+          if (this.rng.random() < 0.6) {
+            player.energy = Math.min(player.maxEnergy, player.energy + 2);
             player.heroism += 1;
-            this.run.heroicPromise += 1;
-            this.addLog('疼痛换来了勇气：勇气+1，下一场战利品更丰。', 'goal');
-            scoreGain += 55;
+            this.addLog('你引导潮力进入体内，能量+2，勇气+1。', 'goal');
+            scoreGain += 70;
+          } else {
+            const applied = this.applyPlayerDamage(5);
+            this.applyStatus(player, 'wet', 1, 2);
+            const suffix = applied === 0 && this.admin?.invincible ? '（无敌）' : '';
+            this.addLog(`潮力失控，造成 ${applied} 点伤害并令你潮湿。${suffix}`, 'warn');
+            if (this.handlePlayerDown()) { advance = false; break; }
           }
         }
         break;
       }
-      case 'silhouette_lock':
+      case 'silhouette_lock': {
         if (action === 'attempt') {
-          const base = this.rng.random();
-          const successRate = player.flags.mazeHint ? 0.85 : 0.6;
-          if (base < successRate) {
-            const lootPool = ['breaker_hammer', 'ruby_ring', 'tide_staff'];
-            const pick = this.rng.pick(lootPool);
-            const item = DungeonData.equipments[pick];
-            if (item) {
-              player.inventory.push({ ...item, charges: 1 });
-              this.addLog(`剪影锁打开，你获得了装备【${item.name}】。`, 'good');
-              scoreGain += 110;
-            }
+          if (this.rng.random() < 0.5) {
+            this.run.currency = this.ensureCurrency() + 35;
+            this.addLog('剪影锁被你巧手打开，灵魂碎片 +35。', 'goal');
+            scoreGain += 70;
           } else {
-            this.applyStatus(player, 'bleed', 1, 2);
-            this.addLog('剪影锁的暗刃反噬，你被割伤。', 'warn');
+            const dmg = this.applyPlayerDamage(5);
+            this.addLog(`机关反噬，你受到 ${dmg} 点伤害。`, 'warn');
+            if (this.handlePlayerDown()) { advance = false; break; }
+          }
+        } else if (action === 'decode') {
+          if ((player.heroism || 0) < 1) {
+            this.addLog('你需要1点勇气来解析锁上的符号。', 'warn');
+            advance = false;
+            break;
+          }
+          player.heroism -= 1;
+          this.grantConsumable('valor_banner');
+          this.run.currency = this.ensureCurrency() + 30;
+          this.addLog('你读懂剪影顺序，得到战旗与碎片奖励。', 'goal');
+          scoreGain += 90;
+        } else if (action === 'force') {
+          if (this.rng.random() < 0.5) {
+            const equipId = this.rng.pick(Object.keys(DungeonData.equipments));
+            this.grantEquipment(equipId);
+            scoreGain += 85;
+          } else {
+            const dmg = this.applyPlayerDamage(6);
+            this.addLog(`撬锁触发陷阱，你受到 ${dmg} 点伤害。`, 'warn');
+            if (this.handlePlayerDown()) { advance = false; break; }
           }
         }
         break;
-      case 'mirror_maze':
+      }
+      case 'mirror_maze': {
         if (action === 'inspect') {
-          player.flags.mazeHint = true;
-          this.addLog('你记下镜面回声给出的正确顺序。', 'good');
-          scoreGain += 40;
+          this.revealAdjacentRooms(this.currentFloor, room?.coords);
+          player.heroism += 1;
+          this.addLog('你记下镜面折射，临近房间显露，勇气+1。', 'goal');
+          scoreGain += 70;
         } else if (action === 'dash') {
           if (this.rng.random() < 0.5) {
             player.heroism += 1;
@@ -3044,21 +3588,46 @@ class DungeonGame {
             const applied = this.applyPlayerDamage(6);
             const suffix = applied === 0 && this.admin?.invincible ? '（无敌）' : '';
             this.addLog(`镜面碎裂反噬，你受 ${applied} 点伤害。${suffix}`, 'warn');
-            if (this.handlePlayerDown()) {
-              advance = false;
-            }
+            if (this.handlePlayerDown()) { advance = false; break; }
           }
+        } else if (action === 'chalk') {
+          if (this.ensureCurrency() < 10) {
+            this.addLog('粉笔标记需要 10 灵魂碎片。', 'warn');
+            advance = false;
+            break;
+          }
+          this.run.currency = Math.max(0, this.ensureCurrency() - 10);
+          this.revealAdjacentRooms(this.currentFloor, room?.coords);
+          this.addLog('你在镜面上画下符号，附近道路被标记出来。', 'good');
+          scoreGain += 60;
         }
         break;
-      case 'dry_well_echo':
+      }
+      case 'dry_well_echo': {
         if (action === 'listen') {
           player.heroism += 1;
           this.run.heroicPromise += 1;
           this.addLog('井底回声化作鼓舞：勇气+1，下一场必有战利品。', 'goal');
           scoreGain += 70;
+        } else if (action === 'hum') {
+          this.adjustCorruption(-1);
+          player.energy = Math.min(player.maxEnergy, player.energy + 1);
+          this.addLog('你与回声合鸣，腐蚀下降，能量+1。', 'good');
+          scoreGain += 60;
+        } else if (action === 'descend') {
+          if (this.rng.random() < 0.5) {
+            this.run.currency = this.ensureCurrency() + 45;
+            this.addLog('你顺着回声找到一袋碎片，灵魂碎片 +45。', 'goal');
+            scoreGain += 80;
+          } else {
+            const dmg = this.applyPlayerDamage(6);
+            this.addLog(`你误入陷阱，受到 ${dmg} 点伤害。`, 'warn');
+            if (this.handlePlayerDown()) { advance = false; break; }
+          }
         }
         break;
-      case 'altar_shadow':
+      }
+      case 'altar_shadow': {
         if (action === 'offer') {
           if (!player.inventory.length) {
             this.addLog('你身无长物，阴影不满地缠上腐蚀。', 'warn');
@@ -3069,26 +3638,138 @@ class DungeonGame {
             if (this.rng.random() < 0.7) {
               const relicOptions = ['veil', 'cleric_pendant', 'time_hourglass'];
               const pick = this.rng.pick(relicOptions);
-              if (!player.relics.includes(pick)) player.relics.push(pick);
-              this.addLog(`阴影回赠遗物【${DungeonData.relics[pick]?.name || pick}】。`, 'goal');
+              this.grantRelic(pick);
               scoreGain += 130;
             } else {
               this.applyStatus(player, 'corrupt', 1, 4);
               this.addLog('阴影发出低笑，腐化在体内蔓延。', 'warn');
             }
           }
+        } else if (action === 'resist') {
+          if ((player.heroism || 0) < 1) {
+            this.addLog('你需要1点勇气才能正面抵御阴影。', 'warn');
+            advance = false;
+            break;
+          }
+          player.heroism -= 1;
+          this.adjustCorruption(-2);
+          const dmg = this.applyPlayerDamage(3);
+          this.addLog(`你高举火焰抵御阴影，腐蚀-2，但受到 ${dmg} 点灼伤。`, 'info');
+          if (this.handlePlayerDown()) { advance = false; break; }
+          scoreGain += 75;
+        } else if (action === 'trade') {
+          if (this.ensureCurrency() < 40) {
+            this.addLog('灵魂碎片不足以完成交易。', 'warn');
+            advance = false;
+            break;
+          }
+          this.run.currency = Math.max(0, this.ensureCurrency() - 40);
+          if (this.rng.random() < 0.5) {
+            const relicOptions = ['veil', 'echo_lantern', 'mirror_sigil'];
+            const pick = this.rng.pick(relicOptions);
+            this.grantRelic(pick);
+          } else {
+            const equipId = this.rng.pick(Object.keys(DungeonData.equipments));
+            this.grantEquipment(equipId);
+          }
+          scoreGain += 120;
         }
         break;
+      }
+      case 'glimmering_pool': {
+        if (action === 'drink') {
+          if (this.rng.random() < 0.55) {
+            const healed = this.healPlayer(10, { context: 'event' });
+            this.applyStatus(player, 'inspire', 1, 3);
+            this.addLog(`池水回荡暖意，恢复 ${healed} 点生命并获得【激励】。`, 'good');
+            scoreGain += 90;
+          } else {
+            const dmg = this.applyPlayerDamage(6);
+            this.applyStatus(player, 'wet', 1, 3);
+            this.addLog(`寒潮瞬间入体，造成 ${dmg} 点伤害并令你潮湿。`, 'warn');
+            if (this.handlePlayerDown()) { advance = false; break; }
+          }
+        } else if (action === 'bottle') {
+          if (this.ensureCurrency() < 10) {
+            this.addLog('舀取池水需要 10 灵魂碎片。', 'warn');
+            advance = false;
+            break;
+          }
+          this.run.currency = Math.max(0, this.ensureCurrency() - 10);
+          const options = ['ether', 'guard_tonic', 'ember_oil', 'mending_salve'];
+          const pick = this.rng.pick(options);
+          this.grantConsumable(pick);
+          scoreGain += 70;
+        } else if (action === 'wash') {
+          this.removeNegative(player, 1);
+          this.adjustCorruption(-1);
+          const healed = this.healPlayer(6, { context: 'event' });
+          this.addLog(`你净手静坐，恢复 ${healed} 点生命并降低腐蚀。`, 'good');
+          scoreGain += 60;
+        }
+        break;
+      }
+      case 'rusted_armory': {
+        if (action === 'force') {
+          if (this.rng.random() < 0.6) {
+            const equipId = this.rng.pick(Object.keys(DungeonData.equipments));
+            this.grantEquipment(equipId);
+            scoreGain += 100;
+          } else {
+            const dmg = this.applyPlayerDamage(7);
+            this.addLog(`铁锈崩裂砸向你，造成 ${dmg} 点伤害。`, 'warn');
+            if (this.handlePlayerDown()) { advance = false; break; }
+          }
+        } else if (action === 'salvage') {
+          this.run.currency = this.ensureCurrency() + 35;
+          if (this.rng.random() < 0.4) this.grantConsumable('guard_tonic');
+          this.addLog('你拆解旧件，获得灵魂碎片与备用零件。', 'good');
+          scoreGain += 75;
+        } else if (action === 'catalog') {
+          this.learnRandomSkill();
+          player.heroism += 1;
+          this.addLog('你记录下军械铭文，勇气+1。', 'goal');
+          scoreGain += 95;
+        }
+        break;
+      }
+      case 'echo_shrine': {
+        if (action === 'kneel') {
+          const healed = this.healPlayer(14, { context: 'event' });
+          this.removeNegative(player, 1);
+          this.addLog(`回声祭坛回应你的祈祷，恢复 ${healed} 点生命并净化负面。`, 'good');
+          scoreGain += 85;
+        } else if (action === 'chant') {
+          if ((player.heroism || 0) < 1) {
+            this.addLog('吟唱古语需要消耗1点勇气。', 'warn');
+            advance = false;
+            break;
+          }
+          player.heroism -= 1;
+          const relicOptions = ['veil', 'echo_lantern', 'cleric_pendant'];
+          const pick = this.rng.pick(relicOptions);
+          this.grantRelic(pick);
+          scoreGain += 130;
+        } else if (action === 'steal') {
+          this.run.currency = this.ensureCurrency() + 50;
+          this.adjustCorruption(2);
+          this.applyStatus(player, 'corrupt', 1, 3);
+          this.addLog('你顺走供品，灵魂碎片 +50，但阴影愤怒地灌入腐蚀。', 'warn');
+          scoreGain += 90;
+        }
+        break;
+      }
       default:
         this.addLog('事件尚未实现。', 'warn');
         break;
     }
+    if (room?.eventState) room.eventState.resolved = action;
     if (scoreGain > 0) {
       if (player.relics.includes('echo_lantern')) scoreGain += 20;
       this.addScore(scoreGain, '事件奖励', { log: true });
     }
     if (advance && !this._finished) {
-      if (this.run.currentRoom) this.run.currentRoom.resolved = true;
+      if (room) room.resolved = true;
       this.state.phase = 'explore';
       this.tutorial.stage = 'explore';
       this.updateAll();
