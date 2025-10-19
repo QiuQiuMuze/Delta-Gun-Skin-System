@@ -243,6 +243,7 @@ class DungeonGame {
     this.state = { phase: "intro", overlay: null };
     this.logEntries = [];
     this._tutorialTimer = null;
+    this._audioPhase = null;
     const storedAdmin = DungeonStorage.loadAdminSettings();
     this.admin = { gameEnabled: true, invincible: false, ...storedAdmin };
     this.scores = DungeonStorage.loadScores();
@@ -261,6 +262,7 @@ class DungeonGame {
       window.removeEventListener('dungeon-admin-updated', this._handleAdminBroadcast);
     }
     this.clearTutorialTimer();
+    this.stopAudio(true);
     this.root.innerHTML = "";
   }
 
@@ -285,12 +287,14 @@ class DungeonGame {
           <div>提示：首层前两场战斗必掉职业相关装备。</div>
           <div class="dungeon-seed">本周种子：<span id="dungeon-seed"></span></div>
         </div>
+        <div class="dungeon-panel dungeon-intro-scores" id="dungeon-intro-scores" data-context="intro"></div>
         ${this.admin.gameEnabled ? '' : '<div class="dungeon-maintenance">古井入口暂时关闭，请等待管理员重新开启。</div>'}
       </div>
     `;
     const seed = Math.abs(Math.floor(Date.now() / 604800000));
     const seedNode = this.root.querySelector('#dungeon-seed');
     if (seedNode) seedNode.textContent = seed;
+    this.renderScoreboard('dungeon-intro-scores');
     this.root.querySelectorAll('.dungeon-class').forEach(node => {
       node.addEventListener('click', () => {
         const clsId = node.dataset.class;
@@ -301,6 +305,8 @@ class DungeonGame {
         this.startRun(clsId, seed);
       });
     });
+    window.AudioEngine?.decorateArea?.(this.root);
+    this.updateAudio();
   }
 
   applyAdminSettings(settings = {}) {
@@ -368,7 +374,7 @@ class DungeonGame {
     this.renderLayout();
     this.enterFloor(0);
     this.addLog(`你选择了${cls.name}，握紧武器，火光在指间跳动。`, "info");
-    this.addLog('【教学】右侧“新手指引”会根据阶段给出建议，可随时查看。', 'announce');
+    this.addLog('【教学】指令区下方的“新手指引”会根据阶段给出建议，可随时查看。', 'announce');
   }
 
   generateFloors() {
@@ -453,6 +459,7 @@ class DungeonGame {
           <div class="dungeon-panel" id="dungeon-panel-status"></div>
           <div class="dungeon-panel" id="dungeon-panel-room"></div>
           <div class="dungeon-commands" id="dungeon-commands"></div>
+          <div class="dungeon-panel dungeon-guide" id="dungeon-inline-guide"></div>
         </div>
         <div class="dungeon-right">
           <div class="dungeon-panel" id="dungeon-panel-inventory"></div>
@@ -460,8 +467,6 @@ class DungeonGame {
             <div class="panel-title">冒险回声</div>
             <div class="dungeon-log" id="dungeon-log"></div>
           </div>
-          <div class="dungeon-panel" id="dungeon-panel-score"></div>
-          <div class="dungeon-panel dungeon-guide" id="dungeon-panel-guide"></div>
         </div>
       </div>
       <div class="dungeon-overlay is-hidden" id="dungeon-overlay"></div>
@@ -474,10 +479,55 @@ class DungeonGame {
     this.renderRoom();
     this.renderCommands();
     this.renderInventory();
-    this.renderScoreboard();
     this.renderGuide();
     this.renderLog();
     this.renderOverlay();
+    this.updateAudio();
+  }
+
+  audioPhaseKey() {
+    if (this.state.phase === 'intro' || !this.run) return 'lobby';
+    if (this.state.phase === 'ended') {
+      return this.run?.result === 'victory' ? 'victory' : 'defeat';
+    }
+    if (this.state.phase === 'combat') return 'combat';
+    if (['event', 'merchant', 'camp'].includes(this.state.phase)) return 'event';
+    return 'explore';
+  }
+
+  updateAudio() {
+    if (typeof window === 'undefined') return;
+    const engine = window.AudioEngine;
+    if (!engine || typeof engine.playPreset !== 'function') return;
+    const phase = this.audioPhaseKey();
+    if (phase === this._audioPhase) return;
+    this._audioPhase = phase;
+    switch (phase) {
+      case 'lobby':
+        engine.playPreset('dungeon', 'dungeon-lobby');
+        break;
+      case 'combat':
+        engine.playPreset('dungeon', 'dungeon-combat');
+        break;
+      case 'event':
+        engine.playPreset('dungeon', 'dungeon-event');
+        break;
+      case 'victory':
+        engine.playPreset('dungeon', 'dungeon-victory');
+        break;
+      case 'defeat':
+        engine.playPreset('dungeon', 'dungeon-defeat');
+        break;
+      case 'explore':
+      default:
+        engine.playPreset('dungeon', 'dungeon-explore');
+        break;
+    }
+  }
+
+  stopAudio(immediate = false) {
+    window.AudioEngine?.stopChannel?.('dungeon', immediate);
+    this._audioPhase = null;
   }
 
   get currentFloor() {
@@ -883,6 +933,7 @@ class DungeonGame {
         this.handleCommand(cmd, btn.dataset.arg || null);
       });
     });
+    window.AudioEngine?.decorateArea?.(node);
   }
 
   combatCommands() {
@@ -1066,8 +1117,11 @@ class DungeonGame {
     `;
   }
 
-  renderScoreboard() {
-    const node = this.root.querySelector('#dungeon-panel-score');
+  renderScoreboard(targetId) {
+    let node = null;
+    if (targetId) node = this.root.querySelector(`#${targetId}`);
+    if (!node) node = this.root.querySelector('#dungeon-panel-score');
+    if (!node) node = this.root.querySelector('#dungeon-intro-scores');
     if (!node) return;
     const recent = this.scores.slice(0, 5);
     const top = [...this.scores].sort((a, b) => b.score - a.score).slice(0, 5);
@@ -1078,9 +1132,13 @@ class DungeonGame {
       return `<li><span class="score-value">${entry.score}</span>${badge}<span class="muted"> 第${entry.floor}层 · ${time}</span></li>`;
     };
     const topFormat = entry => `<li><span class="score-rank">${entry.score}</span><span class="muted"> ${entry.victory ? '通关' : '未竟'} · 勇气${entry.heroism}</span></li>`;
+    const context = node.dataset?.context || 'run';
+    const currentBlock = context === 'intro'
+      ? ''
+      : `<div class="score-current">本次积分：<span class="hl-score">${this.run?.score || 0}</span></div>`;
     node.innerHTML = `
       <div class="panel-title">积分记录</div>
-      <div class="score-current">本次积分：<span class="hl-score">${this.run?.score || 0}</span></div>
+      ${currentBlock}
       <div class="score-section">
         <div class="score-section__title">最近记录</div>
         <ul>${recent.map(format).join('') || '<li class="muted">暂无记录</li>'}</ul>
@@ -1242,6 +1300,7 @@ class DungeonGame {
       btn.addEventListener('click', () => this.closeOverlay());
     });
     this.bindOverlayInteractions(type, node);
+    window.AudioEngine?.decorateArea?.(node);
   }
 
   overlayContent(type, payload = {}) {
@@ -1316,6 +1375,14 @@ class DungeonGame {
     const afterTier = this.corruptionTierFor(next);
     this.run.player.flags = this.run.player.flags || {};
     this.run.player.flags.corruptionTier = afterTier;
+    if (next >= max) {
+      if (!this.run.player.flags.maxCorruptActive) {
+        this.run.player.flags.maxCorruptActive = true;
+        this.applyMaxCorruptionPenalty();
+      }
+    } else {
+      this.run.player.flags.maxCorruptActive = false;
+    }
     if (afterTier !== beforeTier) {
       this.applyCorruptionEffects(beforeTier, afterTier);
     }
@@ -1711,7 +1778,7 @@ class DungeonGame {
   }
 
   renderGuide() {
-    const node = this.root.querySelector('#dungeon-panel-guide');
+    const node = this.root.querySelector('#dungeon-inline-guide');
     if (!node) return;
     if (this.tutorial?.expiresAt && !this.tutorial.hidden && Date.now() >= this.tutorial.expiresAt) {
       this.dismissTutorial('time');
@@ -1794,6 +1861,24 @@ class DungeonGame {
       this.addLog(`${prefix}：${effects.join('，')}。`, 'warn');
     }
     return false;
+  }
+
+  applyMaxCorruptionPenalty() {
+    const player = this.run?.player;
+    if (!player) return;
+    const effects = [];
+    if (player.energy > 0) {
+      const drained = Math.min(2, player.energy);
+      player.energy -= drained;
+      if (drained > 0) effects.push(`能量 -${drained}`);
+    }
+    const damage = this.applyPlayerDamage(6, { silent: true });
+    if (damage > 0) effects.push(`受到 ${damage} 点伤害`);
+    this.applyStatus(player, 'slow', 1, 2);
+    this.applyStatus(player, 'corrupt', 1, 3);
+    effects.push('陷入【缓速】【腐化】');
+    this.addLog(`腐蚀条爆满，追猎者咬噬：${effects.join('，')}。`, 'danger');
+    this.handlePlayerDown();
   }
 
   progressMarkup() {

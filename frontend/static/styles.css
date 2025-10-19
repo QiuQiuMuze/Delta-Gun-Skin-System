@@ -1137,6 +1137,10 @@ h3 + .muted.small { margin-top:-6px; }
 .dungeon-class .label { display: inline-block; min-width: 72px; color: #8ca8d8; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; margin-right: 6px; }
 .dungeon-intro__meta { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 14px; color: #9db3d8; }
 .dungeon-seed span { color: #ffd27d; font-weight: 600; }
+.dungeon-intro-scores { background: linear-gradient(160deg, rgba(20,32,58,0.9), rgba(12,18,34,0.92)); border: 1px solid rgba(94,142,214,0.45); box-shadow: 0 18px 34px rgba(8,12,26,0.55); }
+.dungeon-intro-scores .panel-title { font-size: 15px; color: #bfd1f7; letter-spacing: 0.06em; }
+.dungeon-intro-scores .score-section__title { color: #92b4f0; }
+.dungeon-intro-scores .score-section li { color: #e1ebff; }
 
 .dungeon-layout { display: flex; gap: 20px; padding: 24px; }
 .dungeon-left { flex: 2; display: flex; flex-direction: column; gap: 16px; }
