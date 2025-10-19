@@ -302,14 +302,14 @@ class DungeonGame {
           <div class="dungeon-panel" id="dungeon-panel-status"></div>
           <div class="dungeon-panel" id="dungeon-panel-room"></div>
           <div class="dungeon-commands" id="dungeon-commands"></div>
+          <div class="dungeon-panel dungeon-guide" id="dungeon-panel-guide"></div>
           <div class="dungeon-log" id="dungeon-log"></div>
         </div>
         <div class="dungeon-right">
-          <div class="dungeon-panel dungeon-guide" id="dungeon-panel-guide"></div>
+          <div class="dungeon-panel dungeon-progress" id="dungeon-panel-progress"></div>
           <div class="dungeon-panel" id="dungeon-panel-inventory"></div>
           <div class="dungeon-panel" id="dungeon-panel-bestiary"></div>
           <div class="dungeon-panel" id="dungeon-panel-relics"></div>
-          <div class="dungeon-panel" id="dungeon-panel-map"></div>
         </div>
       </div>
     `;
@@ -324,7 +324,7 @@ class DungeonGame {
     this.renderBestiary();
     this.renderRelics();
     this.renderGuide();
-    this.renderMap();
+    this.renderProgress();
     this.renderLog();
   }
 
@@ -831,17 +831,101 @@ class DungeonGame {
     `;
   }
 
-  renderMap() {
-    const node = this.root.querySelector('#dungeon-panel-map');
+  renderProgress() {
+    const node = this.root.querySelector('#dungeon-panel-progress');
     if (!node) return;
-    const floors = this.run.floors.map((floor, idx) => {
-      const prefix = idx === this.run.floorIndex ? '▶' : '·';
-      return `<li>${prefix} ${floor.name} - 进度 ${floor.index}/${floor.generatedRooms.length}</li>`;
-    }).join("");
+    const floorsHtml = this.run.floors.map((floor, idx) => {
+      const total = floor.generatedRooms.length || 1;
+      const visited = Math.min(floor.index, total);
+      const percent = Math.min(100, Math.round((visited / total) * 100));
+      let stateLabel = '待探索';
+      let stateClass = '';
+      if (idx < this.run.floorIndex) {
+        stateLabel = '已通关';
+        stateClass = 'is-cleared';
+      } else if (idx === this.run.floorIndex) {
+        stateLabel = `进行中 ${visited}/${total}`;
+        stateClass = 'is-active';
+      }
+      const currentIdx = idx === this.run.floorIndex ? (floor.index > 0 ? floor.index - 1 : 0) : -1;
+      const track = floor.generatedRooms.map((room, roomIdx) => {
+        const info = this.roomTypeInfo(room);
+        let cls = 'progress-room';
+        if (idx < this.run.floorIndex || (idx === this.run.floorIndex && roomIdx < currentIdx)) {
+          cls += ' is-cleared';
+        } else if (idx === this.run.floorIndex && roomIdx === currentIdx) {
+          cls += ' is-current';
+        } else if (idx === this.run.floorIndex && roomIdx === currentIdx + 1) {
+          cls += ' is-next';
+        }
+        return `<span class="${cls}" title="${info.label}">${info.icon}</span>`;
+      }).join('');
+      const nextInfo = idx === this.run.floorIndex ? this.describeUpcomingRoom(floor) : '';
+      const nextHtml = nextInfo ? `<div class="progress-next">${nextInfo}</div>` : '';
+      return `
+        <div class="progress-floor ${stateClass}">
+          <div class="progress-floor__header">
+            <div class="progress-floor__name">第${idx + 1}层 · ${floor.name}</div>
+            <div class="progress-floor__state">${stateLabel}</div>
+          </div>
+          <div class="progress-floor__bar">
+            <div class="progress-bar"><div class="progress-bar__fill" style="width: ${percent}%"></div></div>
+            <div class="progress-bar__value">${percent}%</div>
+          </div>
+          <div class="progress-track">${track}</div>
+          ${nextHtml}
+          <div class="progress-ambience">${floor.ambience}</div>
+        </div>
+      `;
+    }).join('');
     node.innerHTML = `
-      <div class="panel-title">地图</div>
-      <ul>${floors}</ul>
+      <div class="panel-title">关卡进度</div>
+      <div class="progress-floors">${floorsHtml}</div>
     `;
+  }
+
+  roomTypeInfo(room) {
+    if (!room) return { icon: '❔', label: '未知房间' };
+    const typeMap = {
+      normal: { icon: '⚔️', label: '普通战' },
+      elite: { icon: '👑', label: '精英战' },
+      boss: { icon: '🛡️', label: '层主' },
+      event: { icon: '📜', label: '事件' },
+      merchant: { icon: '💰', label: '商人' },
+      camp: { icon: '🔥', label: '营地' },
+    };
+    const base = typeMap[room.type] || { icon: '❔', label: '未知房间' };
+    let detail = '';
+    if (room.enemyId) {
+      const enemy = DungeonData.enemies[room.enemyId];
+      if (enemy) detail = enemy.name;
+    }
+    if (room.eventId) {
+      const event = DungeonData.events[room.eventId];
+      if (event) detail = event.name;
+    }
+    const label = detail ? `${base.label}：${detail}` : base.label;
+    return { icon: base.icon, label };
+  }
+
+  describeUpcomingRoom(floor) {
+    if (!floor || !floor.generatedRooms?.length) return '';
+    const parts = [];
+    if (floor.index > 0) {
+      const currentRoom = floor.generatedRooms[Math.min(floor.index - 1, floor.generatedRooms.length - 1)];
+      if (currentRoom) {
+        const info = this.roomTypeInfo(currentRoom);
+        parts.push(`当前：${info.label}`);
+      }
+    }
+    const upcoming = floor.generatedRooms[floor.index];
+    if (upcoming) {
+      const info = this.roomTypeInfo(upcoming);
+      parts.push(`下一个：${info.label}`);
+    } else if (floor.index >= floor.generatedRooms.length) {
+      parts.push('前方：楼梯 / 层主');
+    }
+    return parts.join(' ｜ ');
   }
 
   renderLog() {
