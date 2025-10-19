@@ -5,6 +5,8 @@ const Nav = {
     const hasCookie = !!API._features?.cookie_factory?.available;
     const hasCultivation = !!API._features?.cultivation?.available;
     const hasStarfall = !!API._features?.starfall?.available;
+    const hasDungeonFeature = API._features?.dungeon?.available;
+    const hasDungeon = hasDungeonFeature === undefined ? true : !!hasDungeonFeature;
     const links = [
       ["home","主页"],
       ...(authed ? [
@@ -12,6 +14,7 @@ const Nav = {
         ...(hasCookie ? [["cookie","饼干工厂"]] : []),
         ...((hasStarfall || isAdmin) ? [["starfall","星际余生"]] : []),
         ...(hasCultivation ? [["cultivation","修仙历练"]] : []),
+        ...(hasDungeon ? [["dungeon","古井探险"]] : []),
         ["friends","好友"],
         ["inventory","背包"], ["craft","合成"], ["market","交易行"]
       ] : [["auth","登录/注册"]]),
