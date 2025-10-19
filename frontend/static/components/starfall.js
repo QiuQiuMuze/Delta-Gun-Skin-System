@@ -5408,6 +5408,21 @@ const StarfallPage = {
     }
     try {
       window.AudioEngine.ensure?.();
+      if (!this._audioPrewarmed) {
+        this._audioPrewarmed = true;
+        const presets = [
+          "starfall-prelude",
+          "starfall-countdown",
+          "starfall-deep",
+          "starfall-hope",
+          "starfall-neutral",
+          "starfall-mystic",
+          "starfall-void",
+        ];
+        try {
+          window.AudioEngine.prewarmPresets?.(presets, { priority: "low" });
+        } catch (_) {}
+      }
     } catch (_) {
       return false;
     }
