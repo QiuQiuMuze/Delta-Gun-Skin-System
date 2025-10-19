@@ -1,4 +1,14 @@
 /* eslint-disable */
+const escapeHtml = value => {
+  if (value == null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
 const DungeonData = (() => {
   const statuses = {
     bleed: { id: "bleed", name: "流血", type: "debuff", maxStacks: 3, icon: "🩸", description: "回合末受伤，最高叠3。" },
@@ -26,6 +36,7 @@ const DungeonData = (() => {
     smite: { id: "smite", name: "惩戒", cooldown: 2, cost: 1, type: "holy", tags: ["神圣", "腐化克制"], description: "圣光斩击，对腐化目标更痛。", flavor: "银白轨迹掠过空气。" },
     shadowstep: { id: "shadowstep", name: "影遁", cooldown: 3, cost: 1, type: "trick", tags: ["回避", "激励"], description: "隐入阴影，提升回避并激励。", flavor: "呼吸与黑暗合而为一。" },
     poison_edge: { id: "poison_edge", name: "毒刃", cooldown: 2, cost: 1, type: "trick", tags: ["中毒", "持续伤害"], description: "短刃涂毒，使目标中毒。", flavor: "绿色液滴沿刃滴落。" },
+    hex_bolt: { id: "hex_bolt", name: "咒缚电矢", cooldown: 2, cost: 2, type: "arcane", tags: ["腐化", "缓速"], description: "释放束缚性的咒雷，使敌人腐化并可能减速。", flavor: "紫色雷光盘旋，带着低语的符印。" },
   };
 
   const consumables = {
@@ -124,6 +135,36 @@ const DungeonData = (() => {
       startingItems: [consumables.bomb, equipments.ranger_cloak],
       lore: "被潮湿森林养出的追迹者，射术与侦察兼备。靠控制敌人节奏来取胜。",
     },
+    warden: {
+      id: "warden",
+      name: "守卫",
+      passive: "御壁：防御时额外恢复少量生命",
+      passiveId: "bulwark",
+      baseStats: { maxHP: 48, maxEnergy: 5, attack: 5, defense: 3 },
+      startingSkill: "whirlwind",
+      startingItems: [consumables.guard_tonic, equipments.guardian_plate],
+      lore: "古井入口的老兵，习惯用厚重护甲抵挡潮水与利齿。他的盾墙像城门般稳固。",
+    },
+    elementalist: {
+      id: "elementalist",
+      name: "灵术师",
+      passive: "灵纹：施法会拖慢敌人并附带潮湿",
+      passiveId: "elemental_focus",
+      baseStats: { maxHP: 36, maxEnergy: 7, attack: 5, defense: 1 },
+      startingSkill: "frost_ring",
+      startingItems: [consumables.ether, equipments.tide_staff],
+      lore: "潮汐学院的离经弟子，能操纵寒霜与海风。她依赖远程施法与状态控制。",
+    },
+    occultist: {
+      id: "occultist",
+      name: "秘术师",
+      passive: "咒缚：首次命中敌人时附加腐化",
+      passiveId: "hexweave",
+      baseStats: { maxHP: 38, maxEnergy: 6, attack: 5, defense: 2 },
+      startingSkill: "hex_bolt",
+      startingItems: [consumables.smoke, equipments.ruby_ring],
+      lore: "研究无面遗痕的术士，用束缚与腐化削弱敌人，再以暗雷终结战斗。",
+    },
   };
 
   const enemies = {
@@ -131,19 +172,19 @@ const DungeonData = (() => {
     rat: { id: "rat", name: "洞鼠", tier: "normal", hp: 22, attack: 6, defense: 0, speed: 8, weakness: ["恐惧", "群攻"], flavor: "鼠群在石缝间穿梭，偷袭你的行囊。", tags: ["轻巧", "偷窃"] },
     skeleton: { id: "skeleton", name: "骷髅兵", tier: "normal", hp: 28, attack: 6, defense: 2, speed: 4, weakness: ["钝击", "破甲"], flavor: "骨骼的碰撞声在井壁回响，眼眶微微发光。", tags: ["不死", "顽固"] },
     bone_captain: { id: "bone_captain", name: "骸骨队长", tier: "elite", hp: 48, attack: 8, defense: 4, speed: 5, weakness: ["破甲", "打断怒吼"], flavor: "骨盔刻着古旧军徽，怒吼震得火把摇晃。", tags: ["护甲", "怒吼"] },
-    muck_beast: { id: "muck_beast", name: "淤泥巨兽", tier: "boss", hp: 130, attack: 10, defense: 4, speed: 4, weakness: ["雷震", "持续燃烧"], flavor: "巨大的泥团包裹着骨片，张开的巨口要吞下光亮。", tags: ["读条吞噬", "召唤小史莱姆"] },
+    muck_beast: { id: "muck_beast", name: "淤泥巨兽", tier: "boss", hp: 112, attack: 9, defense: 3, speed: 4, weakness: ["雷震", "持续燃烧"], flavor: "巨大的泥团包裹着骨片，张开的巨口要吞下光亮。", tags: ["读条吞噬", "召唤小史莱姆"] },
     spider: { id: "spider", name: "毒蛛", tier: "normal", hp: 24, attack: 6, defense: 1, speed: 7, weakness: ["火", "净化"], flavor: "毒液滴在地面冒泡，蛛丝拉成了网。", tags: ["中毒", "织网"] },
     cultist: { id: "cultist", name: "邪教徒", tier: "normal", hp: 30, attack: 7, defense: 1, speed: 5, weakness: ["打断祈祷", "神圣"], flavor: "低语声在耳边缠绕，他举起骨刃划出符文。", tags: ["腐化", "召唤"] },
     gargoyle: { id: "gargoyle", name: "石像鬼", tier: "normal", hp: 32, attack: 8, defense: 5, speed: 3, weakness: ["破甲", "雷震"], flavor: "粗糙的石翼展开，碎屑不断落下。", tags: ["高防", "反震"] },
     chanter: { id: "chanter", name: "吟咒者", tier: "elite", hp: 55, attack: 7, defense: 2, speed: 6, weakness: ["打断", "静默"], flavor: "吟咏如潮，令空气震颤。", tags: ["控场", "恐惧"] },
     spider_queen: { id: "spider_queen", name: "蛛后", tier: "elite", hp: 66, attack: 8, defense: 3, speed: 5, weakness: ["火焰", "猎网"], flavor: "巨大的腹部悬着蛋囊，蛛足踏在蛛丝上发出滴答声。", tags: ["召唤幼蛛", "织网覆盖"] },
-    twilight_priestess: { id: "twilight_priestess", name: "暮光女祭司", tier: "boss", hp: 150, attack: 11, defense: 4, speed: 6, weakness: ["打断祈月", "驱散腐化"], flavor: "她背对火盆祈祷，暮光在指间凝成利刃。", tags: ["净化光束", "腐化祈祷"] },
+    twilight_priestess: { id: "twilight_priestess", name: "暮光女祭司", tier: "boss", hp: 138, attack: 10, defense: 3, speed: 6, weakness: ["打断祈月", "驱散腐化"], flavor: "她背对火盆祈祷，暮光在指间凝成利刃。", tags: ["净化光束", "腐化祈祷"] },
     shadow: { id: "shadow", name: "掠食影", tier: "normal", hp: 28, attack: 9, defense: 1, speed: 9, weakness: ["标记", "群控"], flavor: "影子拉长又断裂，尖笑声像刀刮玻璃。", tags: ["高回避", "暴击"] },
     stone_colossus: { id: "stone_colossus", name: "石甲魔像", tier: "normal", hp: 46, attack: 9, defense: 6, speed: 2, weakness: ["破甲", "雷震"], flavor: "巨石缝隙闪烁蓝光。", tags: ["极高防御"] },
     cult_deacon: { id: "cult_deacon", name: "邪教执事", tier: "normal", hp: 38, attack: 8, defense: 2, speed: 5, weakness: ["驱散", "打断祝祷"], flavor: "执事的面具无口，却能发出刺耳吟唱。", tags: ["群体腐化"] },
     twin_assassins: { id: "twin_assassins", name: "双影刺客", tier: "elite", hp: 64, attack: 10, defense: 2, speed: 8, weakness: ["拆分击杀", "控场"], flavor: "影与影交错，刀光成双。", tags: ["协同出手"] },
     mirror_guard: { id: "mirror_guard", name: "镜像守卫", tier: "elite", hp: 72, attack: 9, defense: 4, speed: 5, weakness: ["破除增益", "标记"], flavor: "它复制你的姿态，甚至模仿呼吸。", tags: ["复制buff"] },
-    faceless_duke: { id: "faceless_duke", name: "无面公爵", tier: "boss", hp: 170, attack: 12, defense: 5, speed: 7, weakness: ["破镜", "控制镜像"], flavor: "面皮如蜡，声音像多个人同时说话。", tags: ["镜像", "偷取增益"] },
+    faceless_duke: { id: "faceless_duke", name: "无面公爵", tier: "boss", hp: 152, attack: 11, defense: 4, speed: 6, weakness: ["破镜", "控制镜像"], flavor: "面皮如蜡，声音像多个人同时说话。", tags: ["镜像", "偷取增益"] },
   };
 
   const events = {
@@ -344,6 +385,25 @@ const DungeonStorage = {
       // ignore
     }
   },
+  loadProfile() {
+    if (typeof window === 'undefined') return {};
+    try {
+      const raw = window.localStorage.getItem('dungeon-profile');
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (err) {
+      return {};
+    }
+  },
+  saveProfile(profile) {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem('dungeon-profile', JSON.stringify(profile || {}));
+    } catch (err) {
+      // ignore
+    }
+  },
   loadAdminSettings() {
     if (typeof window === 'undefined') return {};
     try {
@@ -435,10 +495,14 @@ class DungeonGame {
     this._tutorialTimer = null;
     this._audioPhase = null;
     this._restoring = false;
-    this.introChoice = { classId: null };
+    const storedProfile = DungeonStorage.loadProfile();
+    const storedName = this.sanitizeName(storedProfile?.name || '');
+    this.profile = { name: storedName };
+    this.introChoice = { classId: null, name: storedName };
     const storedAdmin = DungeonStorage.loadAdminSettings();
     this.admin = { gameEnabled: true, invincible: false, ...storedAdmin };
-    this.scores = DungeonStorage.loadScores();
+    this.scores = this.normalizeScoreList(DungeonStorage.loadScores());
+    DungeonStorage.saveScores(this.scores);
     this._handleAdminBroadcast = (event) => {
       if (!event?.detail) return;
       this.applyAdminSettings(event.detail);
@@ -701,7 +765,7 @@ class DungeonGame {
     this.state.overlay = null;
     const classes = Object.values(DungeonData.classes);
     const selected = classes.find(cls => cls.id === this.introChoice?.classId);
-    if (!selected) this.introChoice = { classId: null };
+    if (!selected) this.introChoice = { ...this.introChoice, classId: null };
     const classCards = classes.map(cls => {
       const stats = cls.baseStats || {};
       const selectedClass = this.introChoice?.classId === cls.id ? ' is-selected' : '';
@@ -729,6 +793,7 @@ class DungeonGame {
     ].map(text => `<li>${text}</li>`).join('');
     const seed = Math.abs(Math.floor(Date.now() / 604800000));
     this.currentIntroSeed = seed;
+    const heroName = escapeHtml(this.introChoice?.name || '');
     this.root.innerHTML = `
       <div class="dungeon-intro">
         <div class="dungeon-intro__layout">
@@ -740,6 +805,11 @@ class DungeonGame {
           <div class="dungeon-intro__preview" id="dungeon-class-preview">
             <div class="dungeon-preview-placeholder">选择一名职业即可查看详细介绍与建议。</div>
           </div>
+        </div>
+        <div class="dungeon-intro__name">
+          <label for="dungeon-hero-name">先锋代号</label>
+          <input type="text" id="dungeon-hero-name" maxlength="12" placeholder="起一个代号" value="${heroName}">
+          <div class="dungeon-intro__name-hint">将记录在排行榜中，仅保留你的最高成绩（最多12字符）。</div>
         </div>
         <div class="dungeon-class-grid">${classCards}</div>
         <div class="dungeon-intro__actions">
@@ -771,6 +841,15 @@ class DungeonGame {
         this.selectIntroClass(clsId);
       });
     });
+    const nameInput = this.root.querySelector('#dungeon-hero-name');
+    if (nameInput) {
+      nameInput.addEventListener('input', () => {
+        this.updateIntroName(nameInput.value);
+      });
+      nameInput.addEventListener('blur', () => {
+        this.updateIntroName(nameInput.value, { persist: true });
+      });
+    }
     const randomBtn = this.root.querySelector('#dungeon-random-class');
     if (randomBtn) {
       randomBtn.addEventListener('click', () => {
@@ -787,6 +866,7 @@ class DungeonGame {
           alert('古井入口正在维护，请稍后再尝试。');
           return;
         }
+        if (nameInput) this.updateIntroName(nameInput.value, { persist: true });
         const clsId = this.introChoice?.classId;
         if (!clsId) {
           this.addLog('请先选择一名职业再启程。', 'warn');
@@ -800,10 +880,23 @@ class DungeonGame {
     }
   }
 
+  updateIntroName(value, { persist = false } = {}) {
+    const sanitized = this.sanitizeName(value);
+    if (!this.introChoice) this.introChoice = { classId: null };
+    this.introChoice = { ...this.introChoice, name: sanitized };
+    const input = this.root.querySelector('#dungeon-hero-name');
+    if (input && input.value !== sanitized) input.value = sanitized;
+    if (!this.profile) this.profile = {};
+    if (persist) {
+      this.profile.name = sanitized;
+      DungeonStorage.saveProfile(this.profile);
+    }
+  }
+
   selectIntroClass(classId) {
     const cls = DungeonData.classes[classId];
     if (!cls) return;
-    this.introChoice = { classId };
+    this.introChoice = { ...this.introChoice, classId };
     this.highlightIntroSelection(classId);
     const startBtn = this.root.querySelector('#dungeon-start-run');
     if (startBtn) {
@@ -869,12 +962,18 @@ class DungeonGame {
   startRun(classId, seed) {
     const cls = DungeonData.classes[classId];
     if (!cls) return;
+    const aliasRaw = this.sanitizeName(this.introChoice?.name || this.profile?.name || '');
+    const alias = aliasRaw || '无名冒险者';
+    this.profile = { ...this.profile, name: aliasRaw };
+    this.introChoice = { ...this.introChoice, name: aliasRaw };
+    DungeonStorage.saveProfile(this.profile);
     this.rng = new DungeonRng(seed + classId.length * 17);
     this._finished = false;
     this.logEntries = [];
     const player = {
       classId,
       name: cls.name,
+      nickname: alias,
       passiveId: cls.passiveId,
       level: 5,
       hp: cls.baseStats.maxHP,
@@ -921,7 +1020,7 @@ class DungeonGame {
     this.state.phase = "explore";
     this.renderLayout();
     this.enterFloor(0);
-    this.addLog(`你选择了${cls.name}，握紧武器，火光在指间跳动。`, "info");
+    this.addLog(`你以代号“${alias}”踏入古井，选择了${cls.name}，握紧武器，火光在指间跳动。`, "info");
     this.addLog('【教学】指令区下方的“新手指引”会根据阶段给出建议，可随时查看。', 'announce');
   }
 
@@ -1043,6 +1142,7 @@ class DungeonGame {
   }
 
   updateAll() {
+    this.markAdjacentThreats(this.currentFloor, this.run?.currentRoom?.coords);
     this.renderStatus();
     this.renderRoom();
     this.renderCommands();
@@ -1120,6 +1220,7 @@ class DungeonGame {
     startCell.revealed = true;
     startCell.resolved = true;
     this.run.currentRoom = startCell;
+    this.markAdjacentThreats(floor, startCell.coords);
     this.closeOverlay();
     this.addLog(`【第${index + 1}层：${floor.name}】${floor.ambience}`, "announce");
     this.state.phase = 'explore';
@@ -1153,6 +1254,7 @@ class DungeonGame {
     const floor = this.currentFloor;
     if (!floor.path) floor.path = [];
     floor.path.push(cell.id);
+    this.markAdjacentThreats(floor, cell.coords);
     if (["normal", "elite", "boss"].includes(cell.type)) {
       const enemy = DungeonData.enemies[cell.enemyId];
       this.addLog(`〈${this.randomRoomTitle(enemy)}〉`, "title");
@@ -1305,9 +1407,11 @@ class DungeonGame {
     const tierLabel = this.corruptionStateLabel();
     const badge = `<span class="status-badge tier-${tier}">${tierLabel}</span>`;
     const currency = this.ensureCurrency();
+    const alias = escapeHtml(p.nickname || this.profile?.name || '无名冒险者');
+    const className = escapeHtml(p.name || '未知');
     node.innerHTML = `
       <div class="dungeon-status-line">【等级】${p.level} 【HP】<span class="hl-hp">${p.hp}/${p.maxHP}</span> 【能量】<span class="hl-energy">${p.energy}/${p.maxEnergy}</span> 【腐蚀】<span class="hl-corrupt">${this.run.corruption}/${this.run.maxCorruption}</span>${badge}</div>
-      <div class="dungeon-status-line">【职业】${p.name} 【被动】${this.describePassive()} 【货币】<span class="hl-coin">${currency}</span></div>
+      <div class="dungeon-status-line">【先锋】${alias} ｜ 【职业】${className} ｜ 【被动】${this.describePassive()} ｜ 【货币】<span class="hl-coin">${currency}</span></div>
       <div class="dungeon-status-line">【所在】${floor?.name || "未知"} · ${cellLabel} ｜ 坐标 (${coord}) 【连胜】${p.streak} 【勇气】<span class="hl-heroism">${p.heroism}</span> 【积分】<span class="hl-score">${this.run.score || 0}</span></div>
     `;
   }
@@ -1319,6 +1423,9 @@ class DungeonGame {
       manareturn: "回流",
       sanctify: "安魂",
       tracker: "追踪",
+      bulwark: "御壁",
+      elemental_focus: "灵纹",
+      hexweave: "咒缚",
     };
     return map[this.run.player.passiveId] || "未知";
   }
@@ -1638,7 +1745,11 @@ class DungeonGame {
 
   exploreCommands() {
     const moves = this.availableMoves();
-    const moveButtons = moves.map(move => `<button data-cmd="move" data-arg="${move.dir}" title="前往：${this.cellPreview(move.cell)}">${move.label}</button>`).join('');
+    const moveButtons = moves.map(move => {
+      const caution = move.caution ? ' ⚠️' : '';
+      const cautionClass = move.caution ? ' class="move-warn"' : '';
+      return `<button${cautionClass} data-cmd="move" data-arg="${move.dir}" title="前往：${this.cellPreview(move.cell)}">${move.label}${caution}</button>`;
+    }).join('');
     return `
       <div class="command-group">
         <div class="command-title">移动</div>
@@ -1735,6 +1846,60 @@ class DungeonGame {
     `;
   }
 
+  sanitizeName(raw) {
+    if (raw == null) return '';
+    let text = String(raw).replace(/[\u0000-\u001f]+/g, '').replace(/\s+/g, ' ').trim();
+    if (text.length > 12) text = text.slice(0, 12);
+    return text;
+  }
+
+  nameKey(name) {
+    const cleaned = this.sanitizeName(name);
+    return cleaned ? cleaned.toLowerCase() : '__anon__';
+  }
+
+  normalizeScoreEntry(entry = {}) {
+    if (!entry || typeof entry !== 'object') return null;
+    const score = Math.max(0, Math.round(Number(entry.score) || 0));
+    const heroism = Math.max(0, Math.round(Number(entry.heroism) || 0));
+    const floor = Math.max(1, Math.round(Number(entry.floor) || 1));
+    const victory = !!entry.victory;
+    const timestamp = Number.isFinite(Number(entry.timestamp)) ? Number(entry.timestamp) : Date.now();
+    const classId = typeof entry.classId === 'string' ? entry.classId : null;
+    let name = this.sanitizeName(entry.name || entry.playerName || '');
+    if (!name) {
+      const clsName = classId ? DungeonData.classes[classId]?.name : '';
+      name = clsName ? `${clsName}先锋` : '无名冒险者';
+    }
+    return { score, heroism, floor, victory, timestamp, classId, name };
+  }
+
+  normalizeScoreList(list) {
+    if (!Array.isArray(list)) return [];
+    return list.map(entry => this.normalizeScoreEntry(entry)).filter(Boolean).slice(0, 40);
+  }
+
+  uniqueTopScores(limit = 5) {
+    const sorted = this.scores
+      .slice()
+      .sort((a, b) => {
+        if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+        if ((b.victory ? 1 : 0) !== (a.victory ? 1 : 0)) return (b.victory ? 1 : 0) - (a.victory ? 1 : 0);
+        if ((b.floor || 0) !== (a.floor || 0)) return (b.floor || 0) - (a.floor || 0);
+        if ((b.heroism || 0) !== (a.heroism || 0)) return (b.heroism || 0) - (a.heroism || 0);
+        return (b.timestamp || 0) - (a.timestamp || 0);
+      });
+    const seen = new Set();
+    const top = [];
+    sorted.forEach(entry => {
+      const key = this.nameKey(entry.name);
+      if (seen.has(key)) return;
+      seen.add(key);
+      top.push(entry);
+    });
+    return top.slice(0, limit);
+  }
+
   renderScoreboard(targetId) {
     let node = null;
     if (targetId) node = this.root.querySelector(`#${targetId}`);
@@ -1742,14 +1907,25 @@ class DungeonGame {
     if (!node) node = this.root.querySelector('#dungeon-intro-scores');
     if (!node) return;
     const recent = this.scores.slice(0, 5);
-    const top = [...this.scores].sort((a, b) => b.score - a.score).slice(0, 5);
+    const top = this.uniqueTopScores(5);
     const format = entry => {
       const date = new Date(entry.timestamp);
       const time = Number.isFinite(date.getTime()) ? date.toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' }) : '-';
       const badge = entry.victory ? '<span class="score-badge victory">通关</span>' : '<span class="score-badge defeat">殒落</span>';
-      return `<li><span class="score-value">${entry.score}</span>${badge}<span class="muted"> 第${entry.floor}层 · ${time}</span></li>`;
+      const name = `<span class="score-name">${escapeHtml(entry.name)}</span>`;
+      const className = entry.classId ? DungeonData.classes[entry.classId]?.name : '';
+      const classLabel = className ? `<span class="score-class">${escapeHtml(className)}</span>` : '';
+      const meta = `<span class="score-meta">第${entry.floor}层 · ${time}</span>`;
+      return `<li><span class="score-value">${entry.score}</span>${name}${classLabel}${badge}${meta}</li>`;
     };
-    const topFormat = entry => `<li><span class="score-rank">${entry.score}</span><span class="muted"> ${entry.victory ? '通关' : '未竟'} · 勇气${entry.heroism}</span></li>`;
+    const topFormat = (entry, idx) => {
+      const name = `<span class="score-name">${escapeHtml(entry.name)}</span>`;
+      const className = entry.classId ? DungeonData.classes[entry.classId]?.name : '';
+      const classLabel = className ? `<span class="score-class">${escapeHtml(className)}</span>` : '';
+      const status = entry.victory ? '通关' : '未竟';
+      const meta = `<span class="score-meta">#${idx + 1} · 第${entry.floor}层 · ${status} · 勇气${entry.heroism}</span>`;
+      return `<li><span class="score-rank">${entry.score}</span>${name}${classLabel}${meta}</li>`;
+    };
     const context = node.dataset?.context || 'run';
     const currentBlock = context === 'intro'
       ? ''
@@ -1763,7 +1939,7 @@ class DungeonGame {
       </div>
       <div class="score-section">
         <div class="score-section__title">排行榜</div>
-        <ul>${top.map(topFormat).join('') || '<li class="muted">暂无高分</li>'}</ul>
+        <ul>${top.map((entry, idx) => topFormat(entry, idx)).join('') || '<li class="muted">暂无高分</li>'}</ul>
       </div>
     `;
   }
@@ -1781,15 +1957,19 @@ class DungeonGame {
   }
 
   recordScore(entry) {
-    const payload = {
-      score: Math.max(0, Math.round(entry.score || 0)),
+    const payload = this.normalizeScoreEntry({
+      ...entry,
+      score: entry.score,
       victory: !!entry.victory,
-      floor: entry.floor || (this.run?.floorIndex + 1) || 0,
-      heroism: entry.heroism || 0,
+      floor: entry.floor || (this.run?.floorIndex + 1) || 1,
+      heroism: entry.heroism != null ? entry.heroism : (this.run?.player?.heroism || 0),
       timestamp: entry.timestamp || Date.now(),
-    };
+      name: entry.name || this.run?.player?.nickname || this.profile?.name,
+      classId: entry.classId || this.run?.player?.classId || null,
+    });
+    if (!payload) return;
     this.scores.unshift(payload);
-    this.scores = this.scores.slice(0, 12);
+    this.scores = this.scores.slice(0, 16);
     DungeonStorage.saveScores(this.scores);
     this.renderScoreboard();
   }
@@ -2510,6 +2690,7 @@ class DungeonGame {
         const cellsHtml = row.map((cell, x) => {
           const classes = ['map-cell', `type-${cell.type}`];
           if (!cell.revealed && cell.type !== 'start') classes.push('is-hidden');
+          if (!cell.revealed && cell.hint) classes.push('has-hint');
           if (cell.resolved) classes.push('is-resolved');
           if (active && floor.position?.x === x && floor.position?.y === y) classes.push('is-current');
           const title = this.cellTypeLabel(cell, { reveal: cell.revealed });
@@ -2707,6 +2888,9 @@ class DungeonGame {
     if (enemy.hp <= 0) {
       this.finishCombat(true);
     } else {
+      if (player.passiveId === 'hexweave' && !this.hasStatus(enemy, 'corrupt')) {
+        this.applyStatus(enemy, 'corrupt', 1, 3);
+      }
       this.enemyTurn();
     }
   }
@@ -2719,6 +2903,10 @@ class DungeonGame {
     if (player.passiveId === 'steadfast') {
       player.armor += 1;
       this.addLog('稳固生效：你获得1层护甲。', 'buff');
+    }
+    if (player.passiveId === 'bulwark') {
+      const healed = this.healPlayer(2, { source: 'bulwark', context: 'combat' });
+      if (healed > 0) this.addLog(`御壁：防御恢复 ${healed} 点生命。`, 'good');
     }
     this.addLog('你举盾守备，呼吸沉稳。', 'player');
     this.enemyTurn();
@@ -2909,13 +3097,37 @@ class DungeonGame {
       if (this.equipmentBonus('applyWet')) this.applyStatus(combat.enemy, 'wet', 1, 2);
       this.addLog('火花溅射，潮湿表面被点燃。', 'player');
     }
+    if (skillId === 'whirlwind') {
+      dmg = Math.round(dmg * 1.1);
+      this.applyStatus(combat.enemy, 'shattered', 1, 2);
+      this.addLog('回旋斩撕裂了敌人的护甲。', 'player');
+    }
+    if (skillId === 'frost_ring') {
+      dmg = Math.round(dmg * 0.95) + 2;
+      if (!this.hasStatus(combat.enemy, 'slow')) this.applyStatus(combat.enemy, 'slow', 1, 2);
+      this.applyStatus(combat.enemy, 'wet', 1, 2);
+      this.addLog('冰环冻结空气，敌人动作迟缓。', 'player');
+    }
+    if (skillId === 'hex_bolt') {
+      dmg = Math.round(dmg * 0.9) + 4;
+      if (!this.hasStatus(combat.enemy, 'corrupt')) this.applyStatus(combat.enemy, 'corrupt', 1, 3);
+      if (this.rng.random() < 0.35) this.applyStatus(combat.enemy, 'slow', 1, 2);
+      this.addLog('咒缚电矢撕裂了敌人的意志。', 'player');
+    }
     if (skillId === 'smite') {
       if (this.hasStatus(combat.enemy, 'corrupt')) dmg = Math.round(dmg * 1.25);
       this.addLog('圣光惩戒，驱散腐化。', 'player');
     }
+    if (this.run.player.passiveId === 'elemental_focus' && skill.type === 'arcane') {
+      if (!this.hasStatus(combat.enemy, 'slow')) this.applyStatus(combat.enemy, 'slow', 1, 2);
+      if (!this.hasStatus(combat.enemy, 'wet')) this.applyStatus(combat.enemy, 'wet', 1, 2);
+    }
     dmg = this.applyArmor(combat.enemy, dmg);
     combat.enemy.hp -= dmg;
     this.addLog(`${skill.name} → 造成 ${dmg} 伤。`, 'player');
+    if (this.run.player.passiveId === 'hexweave' && !this.hasStatus(combat.enemy, 'corrupt')) {
+      this.applyStatus(combat.enemy, 'corrupt', 1, 3);
+    }
     if (combat.enemy.hp <= 0) {
       this.finishCombat(true);
     } else {
@@ -3173,9 +3385,41 @@ class DungeonGame {
         const ny = pos.y + opt.dy;
         if (nx < 0 || ny < 0 || nx >= size || ny >= size) return null;
         const cell = floor.map.cells[ny][nx];
-        return { ...opt, x: nx, y: ny, cell };
+        const caution = cell && !cell.revealed && !cell.resolved && cell.hint === 'threat';
+        return { ...opt, x: nx, y: ny, cell, caution };
       })
       .filter(Boolean);
+  }
+
+  markAdjacentThreats(floor, coords) {
+    if (!floor?.map?.cells) return;
+    floor.map.cells.forEach(row => {
+      row.forEach(cell => {
+        if (!cell) return;
+        if (cell.revealed || cell.resolved) {
+          cell.hint = null;
+        } else if (cell.hint) {
+          cell.hint = null;
+        }
+      });
+    });
+    if (!coords) return;
+    const deltas = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ];
+    deltas.forEach(([dx, dy]) => {
+      const nx = coords.x + dx;
+      const ny = coords.y + dy;
+      const row = floor.map.cells[ny];
+      const cell = row ? row[nx] : null;
+      if (!cell || cell.revealed || cell.resolved) return;
+      if (['normal', 'elite', 'boss'].includes(cell.type)) {
+        cell.hint = 'threat';
+      }
+    });
   }
 
   revealAdjacentRooms(floor, coords) {
@@ -3194,12 +3438,19 @@ class DungeonGame {
       if (cell && !cell.revealed) {
         cell.revealed = true;
       }
+      if (cell && cell.revealed) {
+        cell.hint = null;
+      }
     });
+    this.markAdjacentThreats(floor, coords);
   }
 
   cellTypeLabel(cell, { reveal = false } = {}) {
     if (!cell) return '未知';
-    if (!cell.revealed && !reveal) return '未知';
+    if (!cell.revealed && !reveal) {
+      if (cell.hint === 'threat') return '未知（有敌人气息）';
+      return '未知';
+    }
     const map = {
       start: '入口',
       normal: '普通战',
@@ -3222,7 +3473,10 @@ class DungeonGame {
   }
 
   cellIcon(cell) {
-    if (!cell || (!cell.revealed && cell.type !== 'start')) return '？';
+    if (!cell) return '？';
+    if (!cell.revealed && cell.type !== 'start') {
+      return cell.hint === 'threat' ? '⚠️' : '？';
+    }
     const icons = {
       start: 'ⓢ',
       normal: '⚔️',
@@ -3238,7 +3492,9 @@ class DungeonGame {
 
   cellPreview(cell) {
     if (!cell) return '未知';
-    if (!cell.revealed) return '未知房';
+    if (!cell.revealed) {
+      return cell.hint === 'threat' ? '未知房（敌意涌动）' : '未知房';
+    }
     return this.cellTypeLabel(cell, { reveal: true });
   }
 
@@ -3777,7 +4033,7 @@ class DungeonGame {
   }
 
   learnRandomSkill() {
-    const pool = ['smite', 'whirlwind', 'frost_ring'];
+    const pool = ['smite', 'whirlwind', 'frost_ring', 'hex_bolt'];
     const unknown = pool.filter(id => !this.run.player.codex.has(id));
     const pick = this.rng.pick(unknown.length ? unknown : pool);
     this.run.player.codex.add(pick);
@@ -3935,6 +4191,8 @@ class DungeonGame {
       victory,
       floor: floorsCleared,
       heroism: this.run.player.heroism,
+      name: this.run.player.nickname,
+      classId: this.run.player.classId,
     });
     this.addLog(`最终积分：${this.run.score || 0} ｜ 勇气 ${this.run.player.heroism}`, 'score');
     if (victory) {
