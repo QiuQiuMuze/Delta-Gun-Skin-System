@@ -523,7 +523,10 @@ const OrientationHelper = {
       const factor = this._resolutionMode === "manual" ? this._resolutionScale : 1;
       typographySource = Math.min(1, Math.max(0.3, landscapeBase * factor));
     }
-    docEl.style.setProperty("--orientation-resolution", typographySource.toFixed(2));
+    const resolutionValue = Math.min(1, Math.max(0.2, typographySource));
+    const inverse = resolutionValue > 0.001 ? Math.min(5, 1 / resolutionValue) : 1;
+    docEl.style.setProperty("--orientation-resolution", resolutionValue.toFixed(2));
+    docEl.style.setProperty("--orientation-resolution-inverse", inverse.toFixed(3));
     docEl.style.setProperty("--orientation-effective-scale", safeEffective.toFixed(3));
   },
   updateFloatingRotation() {
