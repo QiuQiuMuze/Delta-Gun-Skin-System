@@ -751,7 +751,7 @@ const GachaPage = {
       }
       const item = document.createElement("div");
       item.className = "glow orange fade-in";
-      item.style.marginBottom = "10px";
+      item.style.marginBottom = "calc(10px * var(--orientation-resolution, 1))";
       box.appendChild(item);
 
       const titleRow = document.createElement("div");

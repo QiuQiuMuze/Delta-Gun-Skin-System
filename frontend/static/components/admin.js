@@ -25,8 +25,8 @@ const AdminPage = {
         <div class="input-row">
           <input id="maintenance-message" placeholder="维护说明（可选，展示给被维护的玩家）"/>
         </div>
-        <div class="input-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-          <input id="maintenance-code" placeholder="维护验证码（admin-maintenance）" style="flex:1 1 220px; min-width:200px;" />
+        <div class="input-row" style="gap: calc(8px * var(--orientation-resolution, 1)); flex-wrap:wrap; align-items:center;">
+          <input id="maintenance-code" placeholder="维护验证码（admin-maintenance）" style="flex: 1 1 calc(220px * var(--orientation-resolution, 1)); min-width: calc(200px * var(--orientation-resolution, 1));" />
           <button class="btn" id="maintenance-request">获取验证码</button>
           <button class="btn danger" id="maintenance-apply">更新维护状态</button>
         </div>
@@ -38,9 +38,9 @@ const AdminPage = {
         <div class="input-row">
           <textarea id="announcement-message" rows="2" placeholder="公告内容（将在所有玩家界面展示约 1 分钟）"></textarea>
         </div>
-        <div class="input-row" style="align-items:center; gap:8px; flex-wrap:wrap;">
+        <div class="input-row" style="align-items:center; gap: calc(8px * var(--orientation-resolution, 1)); flex-wrap:wrap;">
           <span class="muted">展示时长（秒）</span>
-          <input id="announcement-duration" type="number" min="10" max="60" value="60" style="width:120px" />
+          <input id="announcement-duration" type="number" min="10" max="60" value="60" style="width: calc(120px * var(--orientation-resolution, 1))" />
           <button class="btn" id="announcement-send">发送公告</button>
           <button class="btn" id="announcement-clear">清除公告</button>
         </div>
@@ -53,11 +53,11 @@ const AdminPage = {
           <label><input type="checkbox" id="cookie-toggle"/> 对玩家开放饼干工厂</label>
         </div>
         <div class="muted" id="cookie-toggle-desc">加载中...</div>
-        <div class="input-row" style="margin-top:8px;">
+        <div class="input-row" style="margin-top: calc(8px * var(--orientation-resolution, 1));">
           <label><input type="checkbox" id="cultivation-toggle"/> 开启“模拟修仙”随机剧情玩法</label>
         </div>
         <div class="muted" id="cultivation-toggle-desc">加载中...</div>
-        <div class="input-row" style="margin-top:8px;">
+        <div class="input-row" style="margin-top: calc(8px * var(--orientation-resolution, 1));">
           <label><input type="checkbox" id="starfall-toggle"/> 对玩家开放《星际余生》</label>
         </div>
         <div class="muted" id="starfall-toggle-desc">加载中...</div>
@@ -93,7 +93,7 @@ const AdminPage = {
         </div>
 
         <!-- 分页控制：一组 5 个 -->
-        <div class="input-row" style="align-items:center;gap:8px;">
+        <div class="input-row" style="align-items:center;gap: calc(8px * var(--orientation-resolution, 1));">
           <button class="btn" id="pg-prev">上一组</button>
           <span id="pg-info" class="muted"></span>
           <button class="btn" id="pg-next">下一组</button>
@@ -182,7 +182,7 @@ const AdminPage = {
             <option value="reset">reset（重置密码）</option>
             <option value="wallet-topup">wallet-topup（充值）</option>
           </select>
-          <input id="sms-limit" type="number" min="1" max="1000" value="200" style="width:120px" />
+          <input id="sms-limit" type="number" min="1" max="1000" value="200" style="width: calc(120px * var(--orientation-resolution, 1))" />
           <button class="btn" id="sms-refresh">刷新</button>
         </div>
         <div id="sms-list"></div>
@@ -713,7 +713,7 @@ const AdminPage = {
           <td>${escapeHtml(lastLoginText)}</td>
           <td>
             <div class="admin-note-box">
-              <textarea class="admin-note" data-username="${encoded}" rows="2" maxlength="500" placeholder="为该用户添加备注" style="width:100%;min-height:48px;">${escapeHtml(u.admin_note || "")}</textarea>
+              <textarea class="admin-note" data-username="${encoded}" rows="2" maxlength="500" placeholder="为该用户添加备注" style="width:100%;min-height:calc(48px * var(--orientation-resolution, 1));">${escapeHtml(u.admin_note || "")}</textarea>
               <div class="admin-note__actions"><button class="btn btn-mini" data-action="save-note" data-username="${encoded}">保存备注</button></div>
             </div>
           </td>

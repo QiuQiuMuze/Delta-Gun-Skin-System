@@ -326,7 +326,7 @@
         btn('绿皮', v.rarity==='GREEN', 'data-sel="rarity" data-val="GREEN"');
 
       const row2 = (v.rarity==='BRICK')
-        ? ('<span style="margin-left:8px;">' +
+        ? ('<span style="margin-left: calc(8px * var(--orientation-resolution, 1));">' +
              btn('全部', v.exqMode==='ANY',  'data-sel="exq" data-val="ANY"') +
              btn('极品', v.exqMode==='EXQ',  'data-sel="exq" data-val="EXQ"') +
              btn('优品', v.exqMode==='PREM', 'data-sel="exq" data-val="PREM"') +
@@ -334,7 +334,7 @@
         : '';
 
       const row3 =
-        '<span style="margin-left:8px;">排序：</span>' +
+        '<span style="margin-left: calc(8px * var(--orientation-resolution, 1));">排序：</span>' +
         btn('磨损 ↑', v.sortWear==='asc',  'data-sel="sort" data-val="asc"') +
         btn('磨损 ↓', v.sortWear==='desc', 'data-sel="sort" data-val="desc"');
 

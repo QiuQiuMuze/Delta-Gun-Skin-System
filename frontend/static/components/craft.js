@@ -48,13 +48,13 @@ const CraftPage = {
           <button class="btn" data-r="BLUE">蓝皮 → 紫皮</button>
           <button class="btn" data-r="PURPLE">紫皮 → 砖皮</button>
         </div>
-        <div class="input-row" style="gap:12px; flex-wrap:wrap;">
+        <div class="input-row" style="gap: calc(12px * var(--orientation-resolution, 1)); flex-wrap:wrap;">
           <label class="input-label" for="craft-season-filter">赛季筛选</label>
           <select id="craft-season-filter">${seasonOptions}</select>
         </div>
 
         <!-- 顶部：合成摘要 + 合成按钮 + 跳过动画 -->
-        <div id="craft-summary" class="card" style="position:sticky; top:64px; z-index:5;"></div>
+        <div id="craft-summary" class="card" style="position:sticky; top: calc(64px * var(--orientation-resolution, 1)); z-index:5;"></div>
 
         <!-- 顶部：动画/结果呈现区（保留，不随库存刷新而清空） -->
         <div id="craft-stage"></div>
@@ -208,9 +208,9 @@ const CraftPage = {
         }).join("")
       : `<span class="badge">（空）</span>`;
     box.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap: calc(12px * var(--orientation-resolution, 1));flex-wrap:wrap;">
         <div>已选：<strong>${sel.length}</strong> / ${need}</div>
-        <div class="craft-selected-list" style="display:flex;gap:6px;flex-wrap:wrap;max-height:100px;overflow:auto;">
+        <div class="craft-selected-list" style="display:flex;gap: calc(6px * var(--orientation-resolution, 1));flex-wrap:wrap;max-height: calc(100px * var(--orientation-resolution, 1));overflow:auto;">
           ${chipsHtml}
         </div>
         <div>
@@ -238,13 +238,13 @@ const CraftPage = {
     const box = byId("craft-toolbar");
     box.style.display = "block";
     box.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap: calc(12px * var(--orientation-resolution, 1));flex-wrap:wrap;">
         <div>
           <strong>从 <span class="${this._rarityClass(this._rarity)}">${rarityLabel}</span> 合成 → <span class="${this._rarityClass(target)}">${targetLabel}</span></strong>
           <div class="muted small">赛季筛选：${this._seasonFilter === "ALL" ? "全部" : this._seasonLabel(this._seasonFilter)}</div>
         </div>
         <div class="input-row" style="margin:0;">
-          <input id="seq-input" placeholder="按序号（当前页）：如 1,3,5-12,20" style="min-width:280px"/>
+          <input id="seq-input" placeholder="按序号（当前页）：如 1,3,5-12,20" style="min-width:calc(280px * var(--orientation-resolution, 1))"/>
           <button class="btn" id="seq-apply">添加</button>
           <button class="btn" id="auto-low">自动放置（磨损最低 20）</button>
           <button class="btn" id="auto-high">自动放置（磨损最高 20）</button>
@@ -361,7 +361,7 @@ const CraftPage = {
         <button class="btn" data-act="first" ${page<=1?"disabled":""}>首页</button>
         <button class="btn" data-act="prev" ${page<=1?"disabled":""}>上一页</button>
         <span>第 ${page} / ${totalPages} 页</span>
-        <input data-act="page" placeholder="跳转页码" style="width:110px"/>
+        <input data-act="page" placeholder="跳转页码" style="width:calc(110px * var(--orientation-resolution, 1))"/>
         <button class="btn" data-act="go">跳转</button>
         <button class="btn" data-act="next" ${page>=totalPages?"disabled":""}>下一页</button>
         <button class="btn" data-act="last" ${page>=totalPages?"disabled":""}>末页</button>

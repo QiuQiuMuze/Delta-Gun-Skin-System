@@ -922,6 +922,84 @@ main#page { padding:24px 20px 48px; max-width:1120px; margin:0 auto; }
   mix-blend-mode:soft-light;
   pointer-events:none;
 }
+
+@media (max-width: 900px) {
+  html.mobile-landscape .spinner {
+    width: calc(18px * var(--orientation-resolution));
+    height: calc(18px * var(--orientation-resolution));
+    border: calc(2px * var(--orientation-resolution)) solid #2a3951;
+    border-top-color: #9ecbff;
+    margin-right: calc(8px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .glow {
+    padding: calc(10px * var(--orientation-resolution)) calc(12px * var(--orientation-resolution));
+    border-radius: calc(10px * var(--orientation-resolution));
+    margin-top: calc(8px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .suspense-glow {
+    gap: calc(6px * var(--orientation-resolution));
+    padding: calc(8px * var(--orientation-resolution)) calc(12px * var(--orientation-resolution));
+    border-radius: calc(10px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .badge-lock {
+    margin-left: calc(6px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .btn.btn-mini {
+    padding: calc(4px * var(--orientation-resolution)) calc(8px * var(--orientation-resolution));
+    font-size: calc(12px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .admin-inventory {
+    margin-top: calc(8px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .admin-inventory .muted {
+    margin-bottom: calc(8px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .admin-inventory table {
+    margin-top: calc(8px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .admin-presence {
+    margin-top: calc(16px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .admin-presence__head {
+    gap: calc(12px * var(--orientation-resolution));
+    margin-bottom: calc(8px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .admin-presence__meta,
+  html.mobile-landscape .admin-presence__table {
+    font-size: calc(13px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .admin-presence__body {
+    max-height: calc(280px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .skin-preview {
+    padding: calc(10px * var(--orientation-resolution));
+    border-radius: calc(12px * var(--orientation-resolution));
+    min-width: calc((var(--preview-width, 240px) + 24px) * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .skin-preview--compact {
+    padding: calc(8px * var(--orientation-resolution));
+    min-width: calc((var(--preview-width, 220px) + 18px) * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .skin-preview__canvas {
+    width: calc(var(--preview-width, 240px) * var(--orientation-resolution));
+    height: calc(var(--preview-height, 86px) * var(--orientation-resolution));
+    border-radius: calc(12px * var(--orientation-resolution));
+  }
+}
 .skin-preview__svg {
   width:100%;
   height:100%;
