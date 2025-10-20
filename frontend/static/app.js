@@ -13,6 +13,23 @@ const OrientationHelper = {
   _autoTried: false,
   _dismissed: false,
   _fallbackActive: false,
+  _baseScale: 1,
+  _resolutionScale: 1,
+  _resolutionOptions: [
+    { value: 1, label: "100% · 默认" },
+    { value: 0.95, label: "95% · 高清" },
+    { value: 0.9, label: "90% · 标准" },
+    { value: 0.85, label: "85% · 舒适" },
+    { value: 0.8, label: "80% · 紧凑" },
+    { value: 0.75, label: "75% · 精简" },
+    { value: 0.7, label: "70% · 超紧凑" },
+    { value: 0.65, label: "65% · 进阶" },
+    { value: 0.6, label: "60% · 极限" }
+  ],
+  _resolutionPanel: null,
+  _resolutionSelect: null,
+  _pendingViewportTask: 0,
+  _landscapeLike: false,
   button: null,
   hint: null,
   wrapper: null,
@@ -24,11 +41,18 @@ const OrientationHelper = {
     }
     this._initialized = true;
     this.ensureWrapper();
+    this._baseScale = this.computeBaseScale();
     this.createUI();
+    this.createResolutionUI();
+    this.syncResolutionVariable();
+    this.updateResolutionVisibility(false);
     this.update();
     window.addEventListener("resize", () => this.update());
     window.addEventListener("orientationchange", () => this.update());
     document.addEventListener("fullscreenchange", () => this.update());
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", () => this.handleViewportResize());
+    }
   },
   isMobile() {
     const ua = (navigator.userAgent || "").toLowerCase();
@@ -115,6 +139,33 @@ const OrientationHelper = {
     this.hint = hint;
     this.updateButtonState();
   },
+  createResolutionUI() {
+    if (this._resolutionPanel || !document.body) return;
+    const panel = document.createElement("div");
+    panel.className = "orientation-resolution";
+    const selectId = "orientation-resolution-select";
+    panel.innerHTML = `
+      <div class="orientation-resolution__label">横屏分辨率</div>
+      <label class="sr-only" for="${selectId}">横屏分辨率</label>
+      <select id="${selectId}" class="orientation-resolution__select" aria-label="横屏分辨率">
+        ${this._resolutionOptions.map((item) => `<option value="${item.value}">${item.label}</option>`).join("")}
+      </select>
+    `;
+    const select = panel.querySelector("select");
+    if (select) {
+      select.value = String(this._resolutionScale);
+      select.addEventListener("change", () => {
+        const val = parseFloat(select.value);
+        if (!isFinite(val) || val <= 0) return;
+        this._resolutionScale = Math.min(1, Math.max(0.5, val));
+        this.syncResolutionVariable();
+        this.applyFallbackScale(true);
+      });
+      this._resolutionSelect = select;
+    }
+    document.body.appendChild(panel);
+    this._resolutionPanel = panel;
+  },
   showHint() {
     if (!this.hint || this._dismissed) return;
     this.hint.classList.add("show");
@@ -129,9 +180,12 @@ const OrientationHelper = {
     this._fallbackActive = !!active;
     if (this._fallbackActive) {
       this.hideHint();
+      this.updateBaseScale(true);
+      this.applyFallbackScale(true);
     }
     this.updateButtonState();
     this.applyDocumentState(this.isMobile(), this.isPortrait());
+    this.updateResolutionVisibility(this._landscapeLike);
   },
   updateButtonState() {
     if (!this.button) return;
@@ -147,6 +201,7 @@ const OrientationHelper = {
     const docEl = document.documentElement;
     if (!docEl) return;
     const landscapeLike = mobile && (!portrait || this._fallbackActive);
+    this._landscapeLike = !!landscapeLike;
     docEl.classList.toggle("orientation-mobile", !!mobile);
     docEl.classList.toggle("orientation-portrait", !!mobile && !!portrait);
     docEl.classList.toggle("orientation-fallback-active", this._fallbackActive);
@@ -154,14 +209,60 @@ const OrientationHelper = {
     if (this.wrapper) {
       this.wrapper.classList.toggle("orientation-content--fallback", this._fallbackActive);
       if (this._fallbackActive) {
-        const vw = Math.max(window.innerWidth || 0, 1);
-        const vh = Math.max(window.innerHeight || 0, 1);
-        const scale = Math.min(1, vw / vh);
-        this.wrapper.style.setProperty("--orientation-fallback-scale", scale.toFixed(4));
+        this.applyFallbackScale();
       } else {
         this.wrapper.style.removeProperty("--orientation-fallback-scale");
       }
     }
+  },
+  computeBaseScale() {
+    const viewport = window.visualViewport;
+    const vw = Math.max(1, viewport ? viewport.width : window.innerWidth || 1);
+    const vh = Math.max(1, viewport ? viewport.height : window.innerHeight || 1);
+    const ratio = vw / vh;
+    return Math.min(1, Math.max(0.4, ratio));
+  },
+  updateBaseScale(force = false) {
+    const next = this.computeBaseScale();
+    if (force || Math.abs(next - this._baseScale) > 0.01) {
+      this._baseScale = next;
+    }
+  },
+  applyFallbackScale(forceBase = false) {
+    if (!this.wrapper || !this._fallbackActive) return;
+    if (forceBase) {
+      this.updateBaseScale(true);
+    } else {
+      this.updateBaseScale(false);
+    }
+    const effectiveScale = Math.min(1, Math.max(0.3, this._baseScale * this._resolutionScale));
+    this.wrapper.style.setProperty("--orientation-fallback-scale", effectiveScale.toFixed(4));
+  },
+  updateResolutionVisibility(landscapeLike) {
+    const show = !!landscapeLike;
+    if (this._resolutionPanel) {
+      this._resolutionPanel.classList.toggle("show", show);
+    }
+    if (this._resolutionSelect) {
+      this._resolutionSelect.value = String(this._resolutionScale);
+    }
+    this.syncResolutionVariable();
+  },
+  handleViewportResize() {
+    if (!this._fallbackActive) return;
+    if (this._pendingViewportTask) {
+      cancelAnimationFrame(this._pendingViewportTask);
+    }
+    this._pendingViewportTask = requestAnimationFrame(() => {
+      this._pendingViewportTask = 0;
+      this.applyFallbackScale(true);
+    });
+  },
+  syncResolutionVariable() {
+    const docEl = document.documentElement;
+    if (!docEl) return;
+    const safe = Math.min(1, Math.max(0.5, this._resolutionScale));
+    docEl.style.setProperty("--orientation-resolution", safe.toFixed(2));
   },
   async lockLandscape(fromUser = false) {
     if (!this.isMobile() || !this.supportsLock()) {
@@ -228,6 +329,10 @@ const OrientationHelper = {
       this.setFallback(false);
     }
     this.applyDocumentState(mobile, portrait);
+    if (this._fallbackActive) {
+      this.applyFallbackScale();
+    }
+    this.updateResolutionVisibility(this._landscapeLike);
     if (portrait) {
       if (this._fallbackActive) {
         this.hideHint();
