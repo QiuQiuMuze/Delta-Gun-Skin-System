@@ -975,11 +975,11 @@ class DungeonGame {
       `;
     }).join('');
     const featureList = [
-      '起点与房间分布会随周种子刷新，每次深入都是全新路线。',
+      '每次进入古井都会重新生成地图，怪物与事件完全随机分布。',
       '事件拥有多重抉择，成功或失败会影响状态、物品与遗物。',
       '奖励不止积分，还可能获得装备、药剂、勇气与灵魂碎片。',
     ].map(text => `<li>${text}</li>`).join('');
-    const seed = Math.abs(Math.floor(Date.now() / 604800000));
+    const seed = Math.floor(Date.now() + Math.random() * 1_000_000);
     this.currentIntroSeed = seed;
     const heroName = dungeonEscapeHtml(this.introChoice?.name || '');
     this.root.innerHTML = `
@@ -1004,9 +1004,9 @@ class DungeonGame {
           <button type="button" class="dungeon-intro__start" id="dungeon-start-run" ${(!this.admin.gameEnabled || !selected) ? 'disabled' : ''}>准备下井</button>
           <button type="button" class="dungeon-intro__random" id="dungeon-random-class">随机推荐</button>
         </div>
-        <div class="dungeon-intro__meta">
+          <div class="dungeon-intro__meta">
           <div>提示：首层前两场战斗必掉职业相关装备。</div>
-          <div class="dungeon-seed">本周种子：<span id="dungeon-seed">${seed}</span></div>
+          <div class="dungeon-seed">本次探险种子：<span id="dungeon-seed">${seed}</span></div>
         </div>
         <div class="dungeon-panel dungeon-intro-scores" id="dungeon-intro-scores" data-context="intro"></div>
         ${this.admin.gameEnabled ? '' : '<div class="dungeon-maintenance">古井入口暂时关闭，请等待管理员重新开启。</div>'}
@@ -1060,7 +1060,8 @@ class DungeonGame {
           this.addLog('请先选择一名职业再启程。', 'warn');
           return;
         }
-        this.startRun(clsId, this.currentIntroSeed || Math.abs(Math.floor(Date.now() / 604800000)));
+        const fallbackSeed = Math.floor(Date.now() + Math.random() * 1_000_000);
+        this.startRun(clsId, this.currentIntroSeed || fallbackSeed);
       });
     }
     if (this.introChoice?.classId) {
@@ -1448,6 +1449,12 @@ class DungeonGame {
     floor.path.push(cell.id);
     this.markAdjacentThreats(floor, cell.coords);
     if (["normal", "elite", "boss"].includes(cell.type)) {
+      if (cell.resolved) {
+        this.addLog('战斗痕迹犹在，此处暂时空无一人。', 'info');
+        this.state.phase = 'explore';
+        this.updateAll();
+        return;
+      }
       const enemy = DungeonData.enemies[cell.enemyId];
       this.addLog(`〈${this.randomRoomTitle(enemy)}〉`, "title");
       this.startCombat(cell);
@@ -2057,15 +2064,15 @@ class DungeonGame {
     `;
   }
 
-  sanitizeName(raw) {
+  sanitizeName(raw, maxLen = 12) {
     if (raw == null) return '';
     let text = String(raw).replace(/[\u0000-\u001f]+/g, '').replace(/\s+/g, ' ').trim();
-    if (text.length > 12) text = text.slice(0, 12);
+    if (maxLen && text.length > maxLen) text = text.slice(0, maxLen);
     return text;
   }
 
-  nameKey(name) {
-    const cleaned = this.sanitizeName(name);
+  nameKey(name, maxLen = 12) {
+    const cleaned = this.sanitizeName(name, maxLen);
     return cleaned ? cleaned.toLowerCase() : '__anon__';
   }
 
@@ -2077,12 +2084,21 @@ class DungeonGame {
     const victory = !!entry.victory;
     const timestamp = Number.isFinite(Number(entry.timestamp)) ? Number(entry.timestamp) : Date.now();
     const classId = typeof entry.classId === 'string' ? entry.classId : null;
-    let name = this.sanitizeName(entry.name || entry.playerName || '');
-    if (!name) {
-      const clsName = classId ? DungeonData.classes[classId]?.name : '';
-      name = clsName ? `${clsName}先锋` : '无名冒险者';
+    const aliasRaw = entry.alias != null ? entry.alias : (entry.playerName != null ? entry.playerName : entry.name);
+    const accountRaw = entry.username != null ? entry.username : (entry.accountName != null ? entry.accountName : entry.name);
+    const alias = this.sanitizeName(aliasRaw || '', 12);
+    let display = this.sanitizeName(accountRaw || '', 32);
+    if (!display) {
+      display = alias;
     }
-    return { score, heroism, floor, victory, timestamp, classId, name };
+    if (!display) {
+      const clsName = classId ? DungeonData.classes[classId]?.name : '';
+      display = clsName ? `${clsName}先锋` : '无名冒险者';
+    }
+    const accountKey = (accountRaw && typeof accountRaw === 'string')
+      ? accountRaw.trim().toLowerCase()
+      : (display ? display.toLowerCase() : null);
+    return { score, heroism, floor, victory, timestamp, classId, name: display, alias, accountKey };
   }
 
   normalizeScoreList(list) {
@@ -2103,7 +2119,7 @@ class DungeonGame {
     const seen = new Set();
     const top = [];
     sorted.forEach(entry => {
-      const key = this.nameKey(entry.name);
+      const key = entry.accountKey || this.nameKey(entry.name, 32);
       if (seen.has(key)) return;
       seen.add(key);
       top.push(entry);
@@ -2124,18 +2140,20 @@ class DungeonGame {
       const time = Number.isFinite(date.getTime()) ? date.toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' }) : '-';
       const badge = entry.victory ? '<span class="score-badge victory">通关</span>' : '<span class="score-badge defeat">殒落</span>';
       const name = `<span class="score-name">${dungeonEscapeHtml(entry.name)}</span>`;
+      const alias = entry.alias && entry.alias !== entry.name ? `<span class="score-alias">（${dungeonEscapeHtml(entry.alias)}）</span>` : '';
       const className = entry.classId ? DungeonData.classes[entry.classId]?.name : '';
       const classLabel = className ? `<span class="score-class">${dungeonEscapeHtml(className)}</span>` : '';
       const meta = `<span class="score-meta">第${entry.floor}层 · ${time}</span>`;
-      return `<li><span class="score-value">${entry.score}</span>${name}${classLabel}${badge}${meta}</li>`;
+      return `<li><span class="score-value">${entry.score}</span>${name}${alias}${classLabel}${badge}${meta}</li>`;
     };
     const topFormat = (entry, idx) => {
       const name = `<span class="score-name">${dungeonEscapeHtml(entry.name)}</span>`;
+      const alias = entry.alias && entry.alias !== entry.name ? `<span class="score-alias">（${dungeonEscapeHtml(entry.alias)}）</span>` : '';
       const className = entry.classId ? DungeonData.classes[entry.classId]?.name : '';
       const classLabel = className ? `<span class="score-class">${dungeonEscapeHtml(className)}</span>` : '';
       const status = entry.victory ? '通关' : '未竟';
       const meta = `<span class="score-meta">#${idx + 1} · 第${entry.floor}层 · ${status} · 勇气${entry.heroism}</span>`;
-      return `<li><span class="score-rank">${entry.score}</span>${name}${classLabel}${meta}</li>`;
+      return `<li><span class="score-rank">${entry.score}</span>${name}${alias}${classLabel}${meta}</li>`;
     };
     const context = node.dataset?.context || 'run';
     const currentBlock = context === 'intro'
@@ -2168,6 +2186,12 @@ class DungeonGame {
   }
 
   recordScore(entry) {
+    const alias = entry && entry.alias != null
+      ? entry.alias
+      : (this.run?.player?.nickname || this.profile?.name);
+    const username = entry && entry.username != null
+      ? entry.username
+      : ((typeof API !== 'undefined' && API._me && API._me.username) ? API._me.username : (entry && entry.name));
     const payload = this.normalizeScoreEntry({
       ...entry,
       score: entry.score,
@@ -2175,7 +2199,8 @@ class DungeonGame {
       floor: entry.floor || (this.run?.floorIndex + 1) || 1,
       heroism: entry.heroism != null ? entry.heroism : (this.run?.player?.heroism || 0),
       timestamp: entry.timestamp || Date.now(),
-      name: entry.name || this.run?.player?.nickname || this.profile?.name,
+      alias,
+      username,
       classId: entry.classId || this.run?.player?.classId || null,
     });
     if (!payload) return;

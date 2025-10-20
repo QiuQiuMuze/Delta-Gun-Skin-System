@@ -159,6 +159,14 @@ class SmsCode(Base):
     code_hash = Column(String)
     expire_ts = Column(Integer)
 
+
+class AdminMaintenanceCode(Base):
+    __tablename__ = "admin_maintenance_codes"
+    username = Column(String, primary_key=True)
+    code = Column(String, nullable=False)
+    expire_at = Column(Integer, nullable=False)
+    requested_at = Column(Integer, default=lambda: int(time.time()))
+
 class MarketItem(Base):
     __tablename__ = "market"
     id = Column(Integer, primary_key=True, index=True)
@@ -811,6 +819,14 @@ def user_from_token(creds: HTTPAuthorizationCredentials = Depends(http_bearer),
     # ★ 关键：单点登录校验
     if int(user.session_ver or 0) != token_sv:
         raise HTTPException(status_code=401, detail="SESSION_REVOKED")
+    state = maintenance_state(db)
+    if state.get("active") and not getattr(user, "is_admin", False):
+        detail = {
+            "code": "MAINTENANCE_MODE",
+            "message": state.get("message") or "网站维护中，请稍后再试。",
+            "updated_at": state.get("updated_at"),
+        }
+        raise HTTPException(status_code=503, detail=detail)
     return user
 
 
@@ -1973,6 +1989,8 @@ def ensure_visual(inv: Inventory, skin: Optional[Skin] = None) -> Dict[str, obje
 COOKIE_FACTORY_SETTING_KEY = "cookie_factory_enabled"
 COOKIE_CULTIVATION_SETTING_KEY = "cookie_cultivation_enabled"
 STARFALL_SETTING_KEY = "starfall_enabled"
+MAINTENANCE_SETTING_KEY = "site_maintenance"
+ANNOUNCEMENT_SETTING_KEY = "site_announcement"
 COOKIE_WEEKLY_CAP = 100
 COOKIE_DELTA_BONUS = 0.05
 COOKIE_DELTA_BONUS_CAP = 1.25
@@ -6140,6 +6158,153 @@ def set_starfall_game_enabled(db: Session, enabled: bool) -> None:
     db.flush()
 
 
+def maintenance_state(db: Session) -> Dict[str, Any]:
+    row = db.query(SystemSetting).filter_by(key=MAINTENANCE_SETTING_KEY).first()
+    data = _json_object(row.value if row else "", {})
+    active = bool(data.get("active"))
+    message = str(data.get("message") or "")
+    updated_at = _coerce_int(data.get("updated_at"), 0)
+    if updated_at <= 0 and active:
+        updated_at = int(time.time())
+    token = str(data.get("token") or data.get("id") or "")
+    actor = str(data.get("by") or "")
+    return {
+        "active": active,
+        "message": message,
+        "updated_at": updated_at,
+        "token": token,
+        "by": actor,
+    }
+
+
+def set_maintenance_state(
+    db: Session,
+    active: bool,
+    message: str = "",
+    actor: Optional[str] = None,
+) -> Dict[str, Any]:
+    now = int(time.time())
+    payload: Dict[str, Any] = {
+        "active": bool(active),
+        "message": message or "",
+        "updated_at": now,
+        "by": actor or "",
+    }
+    if active:
+        payload["activated_at"] = now
+        payload["token"] = f"{now}-{secrets.token_hex(4)}"
+    row = db.query(SystemSetting).filter_by(key=MAINTENANCE_SETTING_KEY).first()
+    raw = _json_dump(payload)
+    if row:
+        row.value = raw
+    else:
+        db.add(SystemSetting(key=MAINTENANCE_SETTING_KEY, value=raw))
+    db.flush()
+    return maintenance_state(db)
+
+
+def announcement_state(db: Session) -> Dict[str, Any]:
+    row = db.query(SystemSetting).filter_by(key=ANNOUNCEMENT_SETTING_KEY).first()
+    data = _json_object(row.value if row else "", {})
+    message = str(data.get("message") or "")
+    if not message:
+        return {"active": False}
+    now = int(time.time())
+    created_at = _coerce_int(data.get("created_at"), 0)
+    duration = max(0, min(_coerce_int(data.get("duration"), 0), 60))
+    expires_at = _coerce_int(data.get("expires_at"), 0)
+    if duration and not expires_at:
+        expires_at = created_at + duration
+    visible = True
+    if expires_at:
+        visible = expires_at >= now
+    if not visible:
+        return {"active": False}
+    ann_id = str(data.get("id") or data.get("token") or "")
+    return {
+        "active": True,
+        "message": message,
+        "created_at": created_at,
+        "duration": duration or 60,
+        "expires_at": expires_at,
+        "id": ann_id,
+        "by": str(data.get("by") or ""),
+    }
+
+
+def set_announcement_state(
+    db: Session,
+    message: str,
+    duration: int = 60,
+    actor: Optional[str] = None,
+) -> Dict[str, Any]:
+    text = (message or "").strip()
+    if not text:
+        row = db.query(SystemSetting).filter_by(key=ANNOUNCEMENT_SETTING_KEY).first()
+        if row:
+            db.delete(row)
+            db.flush()
+        return {"active": False}
+    seconds = max(10, min(int(duration or 60), 60))
+    now = int(time.time())
+    payload = {
+        "id": f"{now}-{secrets.token_hex(4)}",
+        "message": text,
+        "created_at": now,
+        "duration": seconds,
+        "expires_at": now + seconds,
+        "by": actor or "",
+    }
+    raw = _json_dump(payload)
+    row = db.query(SystemSetting).filter_by(key=ANNOUNCEMENT_SETTING_KEY).first()
+    if row:
+        row.value = raw
+    else:
+        db.add(SystemSetting(key=ANNOUNCEMENT_SETTING_KEY, value=raw))
+    db.flush()
+    return announcement_state(db)
+
+
+def issue_admin_maintenance_code(db: Session, username: str) -> Dict[str, int]:
+    tag = (username or "").strip()
+    if not tag:
+        raise HTTPException(400, "用户名无效")
+    _sms_rate_guard("admin-maintenance", tag)
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    now = int(time.time())
+    expire_at = now + 10 * 60
+    db.query(AdminMaintenanceCode).filter_by(username=tag).delete(synchronize_session=False)
+    db.add(AdminMaintenanceCode(username=tag, code=code, expire_at=expire_at, requested_at=now))
+    db.flush()
+    try:
+        write_sms_line(tag, code, "admin-maintenance")
+    except Exception:
+        pass
+    return {"expire_at": expire_at}
+
+
+def consume_admin_maintenance_code(db: Session, username: str, code: str) -> None:
+    tag = (username or "").strip()
+    submitted = (code or "").strip()
+    if not tag:
+        raise HTTPException(400, "用户名无效")
+    if not submitted:
+        raise HTTPException(400, "需要维护验证码")
+    entry = db.query(AdminMaintenanceCode).filter_by(username=tag).first()
+    if not entry:
+        raise HTTPException(400, "请先申请维护验证码")
+    now = int(time.time())
+    if int(entry.expire_at or 0) < now:
+        db.delete(entry)
+        db.flush()
+        raise HTTPException(401, "维护验证码已过期")
+    if str(entry.code) != str(submitted):
+        raise HTTPException(401, "维护验证码错误")
+    db.delete(entry)
+    db.flush()
+
+
+
 def cookie_week_start(ts: Optional[int] = None) -> int:
     if ts is None:
         ts = int(time.time())
@@ -9442,6 +9607,14 @@ def login_start(data: LoginStartIn, db: Session = Depends(get_db)):
         u.password_plain = new_plain
         plain_changed = True
     free_mode = get_auth_free_mode(db)
+    state = maintenance_state(db)
+    if state.get("active") and not getattr(u, "is_admin", False):
+        detail = {
+            "code": "MAINTENANCE_MODE",
+            "message": state.get("message") or "网站维护中，请稍后再试。",
+            "updated_at": state.get("updated_at"),
+        }
+        raise HTTPException(status_code=503, detail=detail)
     if free_mode:
         u.last_login_ts = int(time.time())
         u.session_ver = int(u.session_ver or 0) + 1
@@ -9468,6 +9641,14 @@ def login_verify(data: LoginVerifyIn, db: Session = Depends(get_db)):
         raise HTTPException(401, "用户不存在")
     if get_auth_free_mode(db):
         raise HTTPException(400, "当前模式登录无需验证码，请直接登录")
+    state = maintenance_state(db)
+    if state.get("active") and not getattr(u, "is_admin", False):
+        detail = {
+            "code": "MAINTENANCE_MODE",
+            "message": state.get("message") or "网站维护中，请稍后再试。",
+            "updated_at": state.get("updated_at"),
+        }
+        raise HTTPException(status_code=503, detail=detail)
     phone = u.phone or ""
     if not PHONE_RE.fullmatch(phone):
         raise HTTPException(400, "账号未绑定有效手机号，请联系管理员")
@@ -10713,6 +10894,65 @@ def admin_starfall_toggle(payload: Dict[str, Any], user: User = Depends(user_fro
     return {"enabled": desired}
 
 
+@app.get("/admin/maintenance")
+def admin_maintenance_status(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(403, "需要管理员权限")
+    state = maintenance_state(db)
+    state["now"] = int(time.time())
+    return state
+
+
+@app.post("/admin/maintenance/request-code")
+def admin_maintenance_request_code(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(403, "需要管理员权限")
+    info = issue_admin_maintenance_code(db, user.username)
+    db.commit()
+    return {"ok": True, **info}
+
+
+@app.post("/admin/maintenance")
+def admin_maintenance_update(
+    payload: Dict[str, Any],
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(403, "需要管理员权限")
+    desired = bool((payload or {}).get("active", False))
+    message = str((payload or {}).get("message") or "").strip()
+    code = str((payload or {}).get("code") or "").strip()
+    consume_admin_maintenance_code(db, user.username, code)
+    state = set_maintenance_state(db, desired, message, actor=user.username)
+    db.commit()
+    return state
+
+
+@app.get("/admin/announcement")
+def admin_announcement_status(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(403, "需要管理员权限")
+    state = announcement_state(db)
+    state["now"] = int(time.time())
+    return state
+
+
+@app.post("/admin/announcement")
+def admin_announcement_publish(
+    payload: Dict[str, Any],
+    user: User = Depends(user_from_token),
+    db: Session = Depends(get_db),
+):
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(403, "需要管理员权限")
+    message = str((payload or {}).get("message") or "")
+    duration = int((payload or {}).get("duration") or 60)
+    state = set_announcement_state(db, message, duration, actor=user.username)
+    db.commit()
+    return state
+
+
 @app.post("/presence/update")
 def presence_update(
     inp: PresenceUpdateIn,
@@ -10720,8 +10960,12 @@ def presence_update(
     db: Session = Depends(get_db),
 ):
     update_presence(db, user, inp.page or "", inp.activity or "", inp.details or {})
+    ann = announcement_state(db)
     db.commit()
-    return {"ok": True, "now": int(time.time())}
+    payload: Dict[str, Any] = {"ok": True, "now": int(time.time())}
+    if ann.get("active"):
+        payload["announcement"] = ann
+    return payload
 
 
 @app.get("/admin/presence")
@@ -11847,6 +12091,22 @@ def _set_auth_mode_flag(flag: bool):
     )
     con.commit(); con.close()
 
+
+def _maintenance_state_snapshot() -> Dict[str, Any]:
+    try:
+        with SessionLocal() as db:
+            return maintenance_state(db)
+    except Exception:
+        return {"active": False, "message": ""}
+
+
+def _announcement_state_snapshot() -> Dict[str, Any]:
+    try:
+        with SessionLocal() as db:
+            return announcement_state(db)
+    except Exception:
+        return {"active": False}
+
 def _ts(): return int(_time.time())
 
 def _write_sms(tag, code, purpose, **extra):
@@ -11905,6 +12165,12 @@ def _migrate_ext():
       requested_by TEXT NOT NULL,
       expire_at INTEGER NOT NULL
     )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS admin_maintenance_codes(
+      username TEXT PRIMARY KEY,
+      code TEXT NOT NULL,
+      expire_at INTEGER NOT NULL,
+      requested_at INTEGER NOT NULL
+    )""")
 
     con.commit(); con.close()
 _migrate_ext()
@@ -11939,6 +12205,15 @@ def _require_user(cred: _Creds = _Depends(_auth)):
     # ★ 单点登录校验
     if int(u["session_ver"] or 0) != token_sv:
         raise _HTTPException(status_code=401, detail="SESSION_REVOKED")
+
+    state = _maintenance_state_snapshot()
+    if state.get("active") and not bool(u["is_admin"]):
+        detail = {
+            "code": "MAINTENANCE_MODE",
+            "message": state.get("message") or "网站维护中，请稍后再试。",
+            "updated_at": state.get("updated_at"),
+        }
+        raise _HTTPException(status_code=503, detail=detail)
 
     return u
 
