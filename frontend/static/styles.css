@@ -670,8 +670,9 @@ main#page > * {
     padding: clamp(10px, 14px * var(--orientation-resolution), 18px);
     box-sizing: border-box;
     align-items: stretch;
-    max-height: calc(100vh - clamp(12px, 22px * var(--orientation-resolution), 32px));
-    overflow: hidden;
+    max-height: none;
+    min-height: 100vh;
+    overflow: visible;
   }
 
   html.mobile-landscape .topbar {
@@ -732,8 +733,8 @@ main#page > * {
     border-radius: calc(16px * var(--orientation-resolution));
     background: linear-gradient(160deg, rgba(16,23,39,0.92), rgba(12,18,32,0.88));
     box-shadow: 0 14px 32px rgba(6, 10, 20, 0.55);
-    overflow-y: auto;
-    max-height: 100%;
+    overflow: visible;
+    max-height: none;
   }
 
   html.mobile-landscape main#page > * {
@@ -3242,4 +3243,71 @@ h3 + .muted.small { margin-top:-6px; }
   .command-board { flex-direction: column; }
   .command-preview { flex: 1 1 auto; }
   .command-preview .scene-preview { min-width: 100%; }
+}
+
+@media (max-width: 640px) {
+  html.mobile-landscape #app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "sidebar"
+      "main"
+      "footer";
+    gap: clamp(12px, 3vw, 18px);
+    max-width: calc(100vw - clamp(12px, 6vw, 28px));
+    min-height: 100vh;
+  }
+
+  html.mobile-landscape .topbar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    border-right: none;
+    border-bottom: 1px solid rgba(46, 60, 92, 0.55);
+    border-radius: clamp(14px, 4vw, 18px);
+    gap: clamp(10px, 3vw, 16px);
+    width: 100%;
+    padding: clamp(12px, 4vw, 18px) clamp(12px, 5vw, 20px);
+    max-height: none;
+    overflow: visible;
+  }
+
+  html.mobile-landscape .brand {
+    font-size: clamp(0.92rem, 2.8vw, 1.12rem);
+  }
+
+  html.mobile-landscape .nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: 100%;
+    gap: clamp(6px, 2vw, 12px);
+  }
+
+  html.mobile-landscape .nav a,
+  html.mobile-landscape .nav button {
+    flex: 1 1 calc(50% - clamp(6px, 2vw, 12px));
+    min-width: clamp(140px, 48%, 100%);
+    justify-content: center;
+    text-align: center;
+  }
+
+  html.mobile-landscape main#page {
+    grid-template-columns: 1fr;
+    padding: clamp(12px, 4vw, 20px) 0 clamp(28px, 7vw, 42px);
+    background: none;
+    box-shadow: none;
+    border-radius: clamp(16px, 5vw, 22px);
+  }
+
+  html.mobile-landscape main#page > .card,
+  html.mobile-landscape main#page > section,
+  html.mobile-landscape main#page > article {
+    width: 100%;
+  }
+
+  html.mobile-landscape .footer {
+    padding: clamp(16px, 5vw, 24px) clamp(12px, 5vw, 20px)
+      clamp(28px, 6vw, 44px);
+    text-align: center;
+  }
 }
