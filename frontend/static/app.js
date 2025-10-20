@@ -8,6 +8,140 @@ const escapeHtml = (s)=> String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt
 // ★★★ 关键：让 API 使用“每标签页独立会话”并迁移旧 token
 API.initSession();
 
+const OrientationHelper = {
+  _autoTried: false,
+  _dismissed: false,
+  button: null,
+  hint: null,
+  init() {
+    this.createUI();
+    this.update();
+    window.addEventListener("resize", () => this.update());
+    window.addEventListener("orientationchange", () => this.update());
+    document.addEventListener("fullscreenchange", () => this.update());
+  },
+  isMobile() {
+    const ua = (navigator.userAgent || "").toLowerCase();
+    if (/android|iphone|ipad|ipod|mobile/.test(ua)) return true;
+    if (window.matchMedia) {
+      const mq = window.matchMedia("(max-width: 900px)");
+      if (mq && typeof mq.matches === "boolean" && mq.matches) return true;
+    }
+    return false;
+  },
+  isPortrait() {
+    if (window.matchMedia) {
+      const mq = window.matchMedia("(orientation: portrait)");
+      if (mq && typeof mq.matches === "boolean") return mq.matches;
+    }
+    return window.innerHeight >= window.innerWidth;
+  },
+  supportsLock() {
+    return !!(window.screen && window.screen.orientation && typeof window.screen.orientation.lock === "function");
+  },
+  createUI() {
+    if (this.button || !document.body) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "orientation-toggle";
+    btn.innerHTML = `<span class="orientation-toggle__icon">📱</span><span class="orientation-toggle__label">横屏模式</span>`;
+    btn.addEventListener("click", () => {
+      this._dismissed = false;
+      this.lockLandscape(true);
+    });
+    document.body.appendChild(btn);
+    this.button = btn;
+
+    const hint = document.createElement("div");
+    hint.className = "orientation-hint";
+    hint.innerHTML = `
+      <div class="orientation-hint__card">
+        <div class="orientation-hint__title">推荐横屏游玩</div>
+        <p class="orientation-hint__text">为了在手机上获得更好的操作体验，我们建议使用横屏。可以点击“一键横屏”尝试自动切换，或手动旋转设备。</p>
+        <div class="orientation-hint__actions">
+          <button type="button" class="btn primary orientation-hint__apply">一键横屏</button>
+          <button type="button" class="btn ghost orientation-hint__dismiss">我知道了</button>
+        </div>
+      </div>
+    `;
+    const applyBtn = hint.querySelector(".orientation-hint__apply");
+    if (applyBtn) {
+      applyBtn.addEventListener("click", () => {
+        this._dismissed = false;
+        this.lockLandscape(true);
+      });
+    }
+    const dismissBtn = hint.querySelector(".orientation-hint__dismiss");
+    if (dismissBtn) {
+      dismissBtn.addEventListener("click", () => {
+        this._dismissed = true;
+        this.hideHint();
+      });
+    }
+    document.body.appendChild(hint);
+    this.hint = hint;
+  },
+  showHint() {
+    if (!this.hint || this._dismissed) return;
+    this.hint.classList.add("show");
+  },
+  hideHint() {
+    if (!this.hint) return;
+    this.hint.classList.remove("show");
+  },
+  async lockLandscape(fromUser = false) {
+    if (!this.isMobile() || !this.supportsLock()) {
+      this.showHint();
+      return false;
+    }
+    try {
+      const orientation = window.screen.orientation;
+      if (fromUser && !document.fullscreenElement && document.documentElement?.requestFullscreen) {
+        try {
+          await document.documentElement.requestFullscreen();
+        } catch (_) {
+          /* 忽略全屏失败，继续尝试锁定 */
+        }
+      }
+      await orientation.lock("landscape");
+      this.hideHint();
+      this._autoTried = true;
+      return true;
+    } catch (err) {
+      console.warn("orientation lock failed", err);
+      this.showHint();
+      return false;
+    }
+  },
+  update() {
+    const mobile = this.isMobile();
+    if (this.button) {
+      if (mobile) {
+        this.button.classList.add("show");
+      } else {
+        this.button.classList.remove("show");
+      }
+    }
+    if (!mobile) {
+      this.hideHint();
+      return;
+    }
+    const portrait = this.isPortrait();
+    if (portrait) {
+      this.showHint();
+      if (!this._autoTried) {
+        this._autoTried = true;
+        this.lockLandscape(false);
+      }
+    } else {
+      this.hideHint();
+    }
+  }
+};
+
+OrientationHelper.init();
+window.OrientationHelper = OrientationHelper;
+
 const PresenceTracker = {
   _route: "home",
   _activity: null,
