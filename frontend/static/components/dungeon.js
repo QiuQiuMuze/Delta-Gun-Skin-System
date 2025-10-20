@@ -2148,18 +2148,20 @@ class DungeonGame {
       const time = Number.isFinite(date.getTime()) ? date.toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' }) : '-';
       const badge = entry.victory ? '<span class="score-badge victory">通关</span>' : '<span class="score-badge defeat">殒落</span>';
       const name = `<span class="score-name">${dungeonEscapeHtml(entry.name)}</span>`;
+      const alias = entry.alias && entry.alias !== entry.name ? `<span class="score-alias">（${dungeonEscapeHtml(entry.alias)}）</span>` : '';
       const className = entry.classId ? DungeonData.classes[entry.classId]?.name : '';
       const classLabel = className ? `<span class="score-class">${dungeonEscapeHtml(className)}</span>` : '';
       const meta = `<span class="score-meta">第${entry.floor}层 · ${time}</span>`;
-      return `<li><span class="score-value">${entry.score}</span>${name}${classLabel}${badge}${meta}</li>`;
+      return `<li><span class="score-value">${entry.score}</span>${name}${alias}${classLabel}${badge}${meta}</li>`;
     };
     const topFormat = (entry, idx) => {
       const name = `<span class="score-name">${dungeonEscapeHtml(entry.name)}</span>`;
+      const alias = entry.alias && entry.alias !== entry.name ? `<span class="score-alias">（${dungeonEscapeHtml(entry.alias)}）</span>` : '';
       const className = entry.classId ? DungeonData.classes[entry.classId]?.name : '';
       const classLabel = className ? `<span class="score-class">${dungeonEscapeHtml(className)}</span>` : '';
       const status = entry.victory ? '通关' : '未竟';
       const meta = `<span class="score-meta">#${idx + 1} · 第${entry.floor}层 · ${status} · 勇气${entry.heroism}</span>`;
-      return `<li><span class="score-rank">${entry.score}</span>${name}${classLabel}${meta}</li>`;
+      return `<li><span class="score-rank">${entry.score}</span>${name}${alias}${classLabel}${meta}</li>`;
     };
     const context = node.dataset?.context || 'run';
     const currentBlock = context === 'intro'

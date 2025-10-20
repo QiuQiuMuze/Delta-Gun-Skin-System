@@ -1311,6 +1311,7 @@ h3 + .muted.small { margin-top:-6px; }
 .score-value { font-weight: 600; font-size: 16px; color: #7df5ff; min-width: 48px; }
 .score-rank { font-weight: 600; font-size: 15px; color: #ffe6a4; min-width: 48px; }
 .score-name { font-weight: 600; color: #f3f7ff; }
+.score-alias { margin-left: 6px; color: #9db5e6; font-size: 12px; }
 .score-class { font-size: 11px; padding: 2px 6px; border-radius: 999px; background: rgba(96,130,200,0.18); color: #b7caff; border: 1px solid rgba(128,164,232,0.35); }
 .score-meta { margin-left: auto; font-size: 12px; color: #8fa7d4; flex: 1 1 auto; text-align: right; }
 .score-section li .score-badge { margin-left: 4px; }
