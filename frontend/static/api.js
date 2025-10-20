@@ -322,6 +322,13 @@ const API = {
 
   adminDeductFiat: (username, amount_fiat) =>
     API.json("/admin/deduct-fiat", "POST", { username, amount_fiat }),
+
+  adminForceTemplate: (target_id, season = "") => {
+    const payload = { target_id };
+    if (season) payload.season = season;
+    return API.json("/admin/gacha/force-template", "POST", payload);
+  },
+
   adminPasswordRequest: (target_id) =>
     API.json("/admin/user-password/request", "POST", { target_id }),
   adminPasswordConfirm: (target_id, code, new_password = null) => {

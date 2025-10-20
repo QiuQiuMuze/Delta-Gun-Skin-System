@@ -48,6 +48,25 @@ const AdminPage = {
       </div>
 
       <div class="card">
+        <h3>下一抽特殊模板保底</h3>
+        <div class="muted">
+          为指定玩家设置一次性的稀有模板保底：输入玩家 ID 并选择赛季，玩家在该赛季下一次开砖将直接获得该赛季概率最低的特殊模板（如无特殊模板则强制钻石模板）。
+        </div>
+        <div class="input-row">
+          <input id="force-template-user-id" type="number" min="1" placeholder="玩家 ID" />
+        </div>
+        <div class="input-row">
+          <select id="force-template-season">
+            <option value="">加载赛季中...</option>
+          </select>
+        </div>
+        <div class="input-row">
+          <button class="btn primary" id="force-template-apply">设置下一抽必中稀有模板</button>
+        </div>
+        <div class="muted" id="force-template-status">等待操作...</div>
+      </div>
+
+      <div class="card">
         <h3>饼干工厂小游戏</h3>
         <div class="input-row">
           <label><input type="checkbox" id="cookie-toggle"/> 对玩家开放饼干工厂</label>
@@ -220,6 +239,10 @@ const AdminPage = {
     const announcementStatus = byId('announcement-status');
     const announcementSend = byId('announcement-send');
     const announcementClear = byId('announcement-clear');
+    const forceTemplateUserId = byId('force-template-user-id');
+    const forceTemplateSeason = byId('force-template-season');
+    const forceTemplateApply = byId('force-template-apply');
+    const forceTemplateStatus = byId('force-template-status');
     modeDesc.textContent = "加载中...";
     if (cookieDesc) cookieDesc.textContent = "加载中...";
 
@@ -389,6 +412,71 @@ const AdminPage = {
 
     loadMaintenance();
     loadAnnouncement();
+
+    const loadForceTemplateSeasons = async () => {
+      if (!forceTemplateSeason) return;
+      forceTemplateSeason.innerHTML = '';
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = '默认赛季（当前最新）';
+      forceTemplateSeason.appendChild(defaultOption);
+      try {
+        const catalog = await API.seasonCatalog();
+        const seasons = Array.isArray(catalog?.seasons) ? catalog.seasons : [];
+        seasons.forEach((season) => {
+          const sid = (season?.id || '').trim();
+          if (!sid) return;
+          const option = document.createElement('option');
+          option.value = sid;
+          const name = season?.name && season.name !== sid ? `${sid} ${season.name}` : sid;
+          option.textContent = name;
+          forceTemplateSeason.appendChild(option);
+        });
+        const latest = (catalog?.latest || '').trim();
+        if (latest && forceTemplateSeason.querySelector(`option[value="${latest}"]`)) {
+          forceTemplateSeason.value = latest;
+        }
+      } catch (err) {
+        if (forceTemplateStatus) {
+          forceTemplateStatus.textContent = `赛季列表加载失败：${err.message || err}`;
+        }
+      }
+    };
+
+    loadForceTemplateSeasons();
+
+    if (forceTemplateApply) {
+      forceTemplateApply.addEventListener('click', async () => {
+        if (!forceTemplateUserId) return;
+        const raw = String(forceTemplateUserId.value || '').trim();
+        const userId = Number(raw);
+        if (!raw || !Number.isInteger(userId) || userId <= 0) {
+          alert('请输入有效的玩家 ID');
+          forceTemplateUserId.focus();
+          return;
+        }
+        const seasonValue = forceTemplateSeason ? (forceTemplateSeason.value || '') : '';
+        forceTemplateApply.disabled = true;
+        if (forceTemplateStatus) forceTemplateStatus.textContent = '提交中...';
+        try {
+          const resp = await API.adminForceTemplate(userId, seasonValue);
+          const seasonLabel = resp?.season_label || resp?.season || (seasonValue ? seasonValue : '默认赛季');
+          const templateLabel = resp?.template_label || resp?.template || '特殊模板';
+          if (forceTemplateStatus) {
+            forceTemplateStatus.innerHTML = `已设置：玩家 <b>${userId}</b> 在 <b>${seasonLabel}</b> 的下一次开砖将获得 <b>${templateLabel}</b>（一次性生效）`;
+          }
+          forceTemplateUserId.value = '';
+          const returnedSeason = resp?.season || '';
+          if (forceTemplateSeason && returnedSeason) {
+            forceTemplateSeason.value = returnedSeason;
+          }
+        } catch (err) {
+          if (forceTemplateStatus) forceTemplateStatus.textContent = `设置失败：${err.message || err}`;
+        } finally {
+          forceTemplateApply.disabled = false;
+        }
+      });
+    }
 
     const updateCookieDesc = (info = {}) => {
       if (!cookieDesc) return;
