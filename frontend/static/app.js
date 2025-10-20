@@ -674,6 +674,9 @@ const OrientationHelper = {
     if (this._fallbackActive) {
       this.applyFallbackScale();
     }
+    const scale = this.getCurrentScale();
+    this.syncResolutionVariable(scale);
+    this.updateResolutionSummary(scale);
     this.syncResolutionShell();
     this.updateResolutionSummary();
     if (portrait) {

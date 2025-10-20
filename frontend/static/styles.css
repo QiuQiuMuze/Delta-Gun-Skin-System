@@ -501,12 +501,13 @@ main#page { padding:24px 20px 48px; max-width:1120px; margin:0 auto; }
 
   html.mobile-landscape .orientation-content__inner {
     display: block;
+    min-height: 100%;
   }
 
   html.mobile-landscape #app {
     display: grid;
     grid-template-columns:
-      minmax(160px, calc(220px * var(--orientation-resolution)))
+      minmax(180px, calc(240px * var(--orientation-resolution)))
       minmax(0, 1fr);
     grid-template-rows: auto 1fr auto;
     grid-template-areas:
@@ -524,6 +525,8 @@ main#page { padding:24px 20px 48px; max-width:1120px; margin:0 auto; }
     padding: clamp(10px, 14px * var(--orientation-resolution), 18px);
     box-sizing: border-box;
     align-items: stretch;
+    max-height: calc(100vh - clamp(12px, 22px * var(--orientation-resolution), 32px));
+    overflow: hidden;
   }
 
   html.mobile-landscape .topbar {
@@ -541,6 +544,8 @@ main#page { padding:24px 20px 48px; max-width:1120px; margin:0 auto; }
     align-items: flex-start;
     background: rgba(13, 17, 26, 0.82);
     min-width: 0;
+    overflow-y: auto;
+    max-height: 100%;
   }
 
   html.mobile-landscape .brand {
@@ -573,7 +578,7 @@ main#page { padding:24px 20px 48px; max-width:1120px; margin:0 auto; }
     display: grid;
     grid-template-columns: repeat(
       auto-fit,
-      minmax(clamp(220px, 30vw, 360px), 1fr)
+      minmax(clamp(210px, 32vw, 420px), 1fr)
     );
     grid-auto-rows: minmax(min-content, max-content);
     grid-auto-flow: dense;
@@ -582,6 +587,8 @@ main#page { padding:24px 20px 48px; max-width:1120px; margin:0 auto; }
     border-radius: calc(16px * var(--orientation-resolution));
     background: linear-gradient(160deg, rgba(16,23,39,0.92), rgba(12,18,32,0.88));
     box-shadow: 0 14px 32px rgba(6, 10, 20, 0.55);
+    overflow-y: auto;
+    max-height: 100%;
   }
 
   html.mobile-landscape main#page > * {
@@ -623,7 +630,7 @@ main#page { padding:24px 20px 48px; max-width:1120px; margin:0 auto; }
   html.mobile-landscape .input-row select,
   html.mobile-landscape .input-row textarea {
     padding: calc(8px * var(--orientation-resolution)) calc(10px * var(--orientation-resolution));
-    min-width: clamp(150px, 40vw, 220px);
+    min-width: clamp(160px, 38vw, 240px);
   }
 
   html.mobile-landscape .footer {
@@ -657,7 +664,7 @@ main#page { padding:24px 20px 48px; max-width:1120px; margin:0 auto; }
     display: grid;
     grid-template-columns: repeat(
       auto-fit,
-      minmax(clamp(220px, 46vw, 340px), 1fr)
+      minmax(clamp(220px, 42vw, 360px), 1fr)
     );
     gap: calc(10px * var(--orientation-resolution));
     grid-column: 1 / -1;
