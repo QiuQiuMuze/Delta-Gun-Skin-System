@@ -48,6 +48,7 @@ const OrientationHelper = {
   _observerReleaseTask: 0,
   _pendingViewportTask: 0,
   _landscapeLike: false,
+  _landscapeScale: 1,
   button: null,
   hint: null,
   wrapper: null,
@@ -251,7 +252,7 @@ const OrientationHelper = {
         if (raw === "auto") {
           this._resolutionMode = "auto";
           this.applyFallbackScale(true);
-          const scale = this._fallbackActive ? this._lastEffectiveScale : 1;
+          const scale = this.getCurrentScale();
           this.syncResolutionVariable(scale);
           this.updateResolutionSummary(scale);
           return;
@@ -261,7 +262,7 @@ const OrientationHelper = {
         this._resolutionMode = "manual";
         this._resolutionScale = Math.min(1, Math.max(0.3, val));
         this.applyFallbackScale(true);
-        const scale = this._fallbackActive ? this._lastEffectiveScale : 1;
+        const scale = this.getCurrentScale();
         this.syncResolutionVariable(scale);
         this.updateResolutionSummary(scale);
       });
@@ -297,7 +298,7 @@ const OrientationHelper = {
     this._resolutionTrigger = trigger;
   },
   updateResolutionSummary(scale) {
-    const effective = typeof scale === "number" && isFinite(scale) ? scale : (this._fallbackActive ? this._lastEffectiveScale : 1);
+    const effective = typeof scale === "number" && isFinite(scale) ? scale : this.getCurrentScale();
     const percent = Math.round(Math.max(0.1, effective) * 100);
     if (this._resolutionValueEl) {
       this._resolutionValueEl.textContent = `${percent}%`;
@@ -393,6 +394,36 @@ const OrientationHelper = {
       }
     }
     this.updateFloatingRotation();
+    const currentScale = this.getCurrentScale();
+    this.syncResolutionVariable(currentScale);
+    this.updateResolutionSummary(currentScale);
+  },
+  computeLandscapeScale() {
+    if (!this._landscapeLike || this._fallbackActive) {
+      this._landscapeScale = 1;
+      return 1;
+    }
+    const viewport = window.visualViewport;
+    const vw = Math.max(1, viewport ? viewport.width : window.innerWidth || 1);
+    const vh = Math.max(1, viewport ? viewport.height : window.innerHeight || 1);
+    const referenceWidth = 1100;
+    const referenceHeight = 620;
+    const referenceArea = referenceWidth * referenceHeight;
+    const widthScale = Math.min(1, vw / referenceWidth);
+    const heightScale = Math.min(1, vh / referenceHeight);
+    const areaScale = Math.min(1, Math.sqrt((vw * vh) / referenceArea));
+    const computed = Math.min(widthScale * 1.05, heightScale * 1.08, areaScale * 1.02);
+    const clamped = Math.min(1, Math.max(0.48, computed));
+    this._landscapeScale = clamped;
+    return clamped;
+  },
+  getCurrentScale() {
+    if (this._fallbackActive) {
+      return Math.min(1, Math.max(0.2, this._lastEffectiveScale || 1));
+    }
+    const base = this._landscapeLike ? this.computeLandscapeScale() : 1;
+    const factor = this._resolutionMode === "manual" ? this._resolutionScale : 1;
+    return Math.min(1, Math.max(0.2, base * factor));
   },
   computeBaseScale() {
     const viewport = window.visualViewport;
@@ -457,7 +488,7 @@ const OrientationHelper = {
     if (this._resolutionSelect) {
       this._resolutionSelect.value = this._resolutionMode === "auto" ? "auto" : String(this._resolutionScale);
     }
-    const currentScale = this._fallbackActive ? this._lastEffectiveScale : 1;
+    const currentScale = this.getCurrentScale();
     this.syncResolutionVariable(currentScale);
     this.updateResolutionSummary(currentScale);
   },
@@ -475,13 +506,24 @@ const OrientationHelper = {
   syncResolutionVariable(effectiveScale = null) {
     const docEl = document.documentElement;
     if (!docEl) return;
-    const base = typeof effectiveScale === "number" && isFinite(effectiveScale)
-      ? effectiveScale
-      : (this._fallbackActive ? this._lastEffectiveScale : 1);
-    const typographySource = this._resolutionMode === "manual" ? this._resolutionScale : base;
-    const safeTypography = Math.min(1, Math.max(0.3, typographySource));
-    const safeEffective = Math.min(1, Math.max(0.2, base));
-    docEl.style.setProperty("--orientation-resolution", safeTypography.toFixed(2));
+    let baseScale;
+    if (typeof effectiveScale === "number" && isFinite(effectiveScale)) {
+      baseScale = effectiveScale;
+    } else if (this._fallbackActive) {
+      baseScale = this._lastEffectiveScale || 1;
+    } else {
+      baseScale = this.getCurrentScale();
+    }
+    const safeEffective = Math.min(1, Math.max(0.2, baseScale));
+    let typographySource;
+    if (this._fallbackActive) {
+      typographySource = safeEffective;
+    } else {
+      const landscapeBase = this._landscapeLike ? this._landscapeScale : 1;
+      const factor = this._resolutionMode === "manual" ? this._resolutionScale : 1;
+      typographySource = Math.min(1, Math.max(0.3, landscapeBase * factor));
+    }
+    docEl.style.setProperty("--orientation-resolution", typographySource.toFixed(2));
     docEl.style.setProperty("--orientation-effective-scale", safeEffective.toFixed(3));
   },
   updateFloatingRotation() {
@@ -502,13 +544,15 @@ const OrientationHelper = {
       this._resolutionExpanded = false;
     }
     if (!hidden && !this._resolutionExpanded) {
-      this.updateResolutionSummary(this._fallbackActive ? this._lastEffectiveScale : 1);
+      const scale = this.getCurrentScale();
+      this.updateResolutionSummary(scale);
     }
     this.syncResolutionShell(landscapeLikeOverride);
   },
   setResolutionExpanded(expanded, landscapeLikeOverride = null) {
     this._resolutionExpanded = !!expanded;
-    this.updateResolutionSummary(this._fallbackActive ? this._lastEffectiveScale : 1);
+    const scale = this.getCurrentScale();
+    this.updateResolutionSummary(scale);
     this.syncResolutionShell(landscapeLikeOverride);
   },
   syncResolutionShell(landscapeLikeOverride = null) {
@@ -612,6 +656,9 @@ const OrientationHelper = {
     if (this._fallbackActive) {
       this.applyFallbackScale();
     }
+    const scale = this.getCurrentScale();
+    this.syncResolutionVariable(scale);
+    this.updateResolutionSummary(scale);
     this.syncResolutionShell();
     if (portrait) {
       if (this._fallbackActive) {
