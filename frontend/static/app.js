@@ -49,6 +49,7 @@ const OrientationHelper = {
   _pendingViewportTask: 0,
   _landscapeLike: false,
   _landscapeScale: 1,
+  _dragGroups: {},
   button: null,
   hint: null,
   wrapper: null,
@@ -180,6 +181,7 @@ const OrientationHelper = {
     });
     document.body.appendChild(btn);
     this.button = btn;
+    this.makeDraggable(btn, { key: "orientation-toggle", margin: 8 });
 
     const hint = document.createElement("div");
     hint.className = "orientation-hint";
@@ -284,6 +286,7 @@ const OrientationHelper = {
     }
     document.body.appendChild(panel);
     this._resolutionPanel = panel;
+    this.makeDraggable(panel, { key: "resolution-control", handleSelector: ".orientation-resolution__head", margin: 8 });
 
     const trigger = document.createElement("button");
     trigger.type = "button";
@@ -296,6 +299,161 @@ const OrientationHelper = {
     });
     document.body.appendChild(trigger);
     this._resolutionTrigger = trigger;
+    this.makeDraggable(trigger, { key: "resolution-control", margin: 8 });
+  },
+  applyDragPosition(element, position) {
+    if (!element || !position) return;
+    element.style.left = `${position.left}px`;
+    element.style.top = `${position.top}px`;
+    element.style.right = "auto";
+    element.style.bottom = "auto";
+  },
+  computeDragBounds(width, height, margin = 12) {
+    const winWidth = window.innerWidth || document.documentElement?.clientWidth || 0;
+    const winHeight = window.innerHeight || document.documentElement?.clientHeight || 0;
+    const maxX = Math.max(margin, winWidth - width - margin);
+    const maxY = Math.max(margin, winHeight - height - margin);
+    return { minX: margin, minY: margin, maxX, maxY };
+  },
+  refreshDragBoundsForGroup(groupOrKey) {
+    const group = typeof groupOrKey === "string" ? this._dragGroups?.[groupOrKey] : groupOrKey;
+    if (!group || !group.position) return;
+    const margin = typeof group.margin === "number" ? group.margin : 12;
+    const elements = Array.from(group.elements || []).filter((el) => el && el.isConnected);
+    if (!elements.length) {
+      group.elements = new Set();
+      return;
+    }
+    group.elements = new Set(elements);
+    const sample = elements[0];
+    const rect = sample.getBoundingClientRect();
+    const bounds = this.computeDragBounds(rect.width, rect.height, margin);
+    const left = Math.min(bounds.maxX, Math.max(bounds.minX, group.position.left));
+    const top = Math.min(bounds.maxY, Math.max(bounds.minY, group.position.top));
+    group.position = { left, top, width: rect.width, height: rect.height, margin };
+    elements.forEach((el) => this.applyDragPosition(el, group.position));
+  },
+  refreshDragBounds() {
+    if (!this._dragGroups) return;
+    Object.keys(this._dragGroups).forEach((key) => this.refreshDragBoundsForGroup(key));
+  },
+  makeDraggable(element, options = {}) {
+    if (!element || !window || typeof window.addEventListener !== "function") return;
+    const key = typeof options.key === "string" && options.key ? options.key : null;
+    if (!key) return;
+    if (!this._dragGroups[key]) {
+      this._dragGroups[key] = {
+        position: null,
+        elements: new Set(),
+        margin: typeof options.margin === "number" ? options.margin : 12
+      };
+    }
+    const group = this._dragGroups[key];
+    if (typeof options.margin === "number") {
+      group.margin = options.margin;
+    }
+    if (!group.elements) {
+      group.elements = new Set();
+    }
+    if (!group.elements.has(element)) {
+      group.elements.add(element);
+    }
+    element.classList.add("orientation-draggable");
+    element.dataset.orientationDraggable = key;
+    if (!element.__orientationDragClickGuard) {
+      element.addEventListener("click", (ev) => {
+        if (element.__orientationDragSuppressClick) {
+          element.__orientationDragSuppressClick = false;
+          ev.preventDefault();
+          ev.stopImmediatePropagation();
+        }
+      }, true);
+      element.__orientationDragClickGuard = true;
+    }
+    const handle = options.handleSelector ? element.querySelector(options.handleSelector) : element;
+    if (!handle) return;
+    if (handle !== element) {
+      handle.classList.add("orientation-drag-handle");
+      handle.style.touchAction = "none";
+    } else {
+      element.style.touchAction = "none";
+    }
+    if (handle.__orientationDragAttached) {
+      return;
+    }
+    const onPointerDown = (event) => {
+      if (event.button != null && event.button !== 0) return;
+      const pointerId = event.pointerId;
+      const rect = element.getBoundingClientRect();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const margin = typeof group.margin === "number" ? group.margin : 12;
+      const basePosition = group.position || { left: rect.left, top: rect.top };
+      const width = rect.width;
+      const height = rect.height;
+      let dragging = false;
+      const activeElements = () => Array.from(group.elements || []).filter((el) => el && el.isConnected);
+      const updateElements = (position) => {
+        activeElements().forEach((el) => this.applyDragPosition(el, position));
+      };
+      const onPointerMove = (ev) => {
+        if (pointerId != null && ev.pointerId !== pointerId) return;
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        if (!dragging) {
+          if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
+            return;
+          }
+          dragging = true;
+          activeElements().forEach((el) => el.classList.add("is-dragging"));
+        }
+        ev.preventDefault();
+        const bounds = this.computeDragBounds(width, height, margin);
+        let left = basePosition.left + dx;
+        let top = basePosition.top + dy;
+        left = Math.min(bounds.maxX, Math.max(bounds.minX, left));
+        top = Math.min(bounds.maxY, Math.max(bounds.minY, top));
+        const position = { left, top, width, height, margin };
+        group.position = position;
+        updateElements(position);
+      };
+      const onPointerUp = (ev) => {
+        if (pointerId != null && ev.pointerId !== pointerId) return;
+        window.removeEventListener("pointermove", onPointerMove, true);
+        window.removeEventListener("pointerup", onPointerUp, true);
+        window.removeEventListener("pointercancel", onPointerUp, true);
+        if (handle.releasePointerCapture && pointerId != null) {
+          try { handle.releasePointerCapture(pointerId); } catch (_) { /* ignore */ }
+        }
+        const elements = activeElements();
+        elements.forEach((el) => el.classList.remove("is-dragging"));
+        if (dragging) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          element.__orientationDragSuppressClick = true;
+          setTimeout(() => {
+            if (element) element.__orientationDragSuppressClick = false;
+          }, 0);
+          if (group.position) {
+            group.position.width = width;
+            group.position.height = height;
+            group.position.margin = margin;
+            this.refreshDragBoundsForGroup(group);
+          }
+        }
+      };
+      window.addEventListener("pointermove", onPointerMove, true);
+      window.addEventListener("pointerup", onPointerUp, true);
+      window.addEventListener("pointercancel", onPointerUp, true);
+      if (handle.setPointerCapture && pointerId != null) {
+        try { handle.setPointerCapture(pointerId); } catch (_) { /* ignore */ }
+      }
+    };
+    handle.addEventListener("pointerdown", onPointerDown, { passive: true });
+    handle.__orientationDragAttached = true;
+    if (group.position) {
+      this.applyDragPosition(element, group.position);
+    }
   },
   updateResolutionSummary(scale) {
     const effective = typeof scale === "number" && isFinite(scale) ? scale : this.getCurrentScale();
@@ -523,7 +681,10 @@ const OrientationHelper = {
       const factor = this._resolutionMode === "manual" ? this._resolutionScale : 1;
       typographySource = Math.min(1, Math.max(0.3, landscapeBase * factor));
     }
-    docEl.style.setProperty("--orientation-resolution", typographySource.toFixed(2));
+    const resolutionValue = Math.min(1, Math.max(0.2, typographySource));
+    const inverse = resolutionValue > 0.001 ? Math.min(5, 1 / resolutionValue) : 1;
+    docEl.style.setProperty("--orientation-resolution", resolutionValue.toFixed(2));
+    docEl.style.setProperty("--orientation-resolution-inverse", inverse.toFixed(3));
     docEl.style.setProperty("--orientation-effective-scale", safeEffective.toFixed(3));
   },
   updateFloatingRotation() {
@@ -587,6 +748,7 @@ const OrientationHelper = {
     if (this._resolutionModeEl) {
       this._resolutionModeEl.setAttribute("aria-hidden", showPanel ? "false" : "true");
     }
+    this.refreshDragBoundsForGroup("resolution-control");
   },
   async lockLandscape(fromUser = false) {
     if (!this.isMobile() || !this.supportsLock()) {
@@ -660,6 +822,7 @@ const OrientationHelper = {
     this.syncResolutionVariable(scale);
     this.updateResolutionSummary(scale);
     this.syncResolutionShell();
+    this.refreshDragBounds();
     if (portrait) {
       if (this._fallbackActive) {
         this.hideHint();
