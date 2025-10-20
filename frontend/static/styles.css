@@ -1,6 +1,7 @@
 :root {
   --orientation-resolution: 1;
   --orientation-effective-scale: 1;
+  --mobile-landscape-width-factor: 1;
 }
 
 * { box-sizing: border-box; }
@@ -495,6 +496,7 @@ main#page { padding:24px 20px 48px; max-width:1120px; margin:0 auto; }
     justify-content: center;
     align-items: stretch;
     padding: clamp(4px, 8px * var(--orientation-resolution), 12px) 0;
+    overflow-x: hidden;
   }
 
   html.mobile-landscape .orientation-content__inner {
@@ -513,7 +515,11 @@ main#page { padding:24px 20px 48px; max-width:1120px; margin:0 auto; }
       "sidebar footer";
     gap: clamp(10px, 14px * var(--orientation-resolution), 20px);
     width: 100%;
-    max-width: min(calc(100vh * 1.65), 1380px);
+    max-width: min(
+      calc(100vh * 1.65 * var(--mobile-landscape-width-factor, 1)),
+      calc(100vw - clamp(0px, 24px * var(--orientation-resolution), 56px)),
+      1380px
+    );
     margin: 0 auto;
     padding: clamp(10px, 14px * var(--orientation-resolution), 18px);
     box-sizing: border-box;
@@ -683,6 +689,92 @@ main#page { padding:24px 20px 48px; max-width:1120px; margin:0 auto; }
 
   html.mobile-landscape .inventory-summary {
     font-size: calc(0.78rem * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .card {
+    padding: clamp(14px, 20px * var(--orientation-resolution), 28px);
+    border-radius: calc(16px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .card > h2,
+  html.mobile-landscape .card > h3 {
+    font-size: calc(22px * var(--orientation-resolution));
+    margin-bottom: calc(12px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .grid {
+    gap: calc(14px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .kv {
+    gap: calc(8px * var(--orientation-resolution));
+    padding: calc(12px * var(--orientation-resolution)) calc(14px * var(--orientation-resolution));
+    border-radius: calc(14px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .kv .k {
+    min-width: calc(120px * var(--orientation-resolution));
+    font-size: calc(12px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .kv .v {
+    font-size: calc(16px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .mailbox {
+    margin-top: calc(24px * var(--orientation-resolution));
+    padding-top: calc(20px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .mailbox-header {
+    gap: calc(12px * var(--orientation-resolution));
+    margin-bottom: calc(12px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .mailbox-tabs {
+    gap: calc(8px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .mailbox-tab {
+    padding: calc(8px * var(--orientation-resolution)) calc(14px * var(--orientation-resolution));
+    font-size: calc(14px * var(--orientation-resolution));
+    border-radius: calc(18px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .mailbox-panel {
+    gap: calc(16px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .mailbox-sub {
+    flex: 1 1 calc(280px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .mailbox-sub h4 {
+    font-size: calc(15px * var(--orientation-resolution));
+    margin-bottom: calc(8px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .mailbox-list {
+    gap: calc(8px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .mail-entry {
+    padding: calc(12px * var(--orientation-resolution)) calc(14px * var(--orientation-resolution));
+    border-radius: calc(14px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .mail-entry__head {
+    font-size: calc(12px * var(--orientation-resolution));
+    margin-bottom: calc(6px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .mail-entry__name {
+    font-size: calc(14px * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .mail-entry__meta,
+  html.mobile-landscape .mail-entry__qty {
+    font-size: calc(13px * var(--orientation-resolution));
   }
 }
 .btn {
