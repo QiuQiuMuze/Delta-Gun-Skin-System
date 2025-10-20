@@ -160,6 +160,20 @@ class SmsCode(Base):
     expire_ts = Column(Integer)
 
 
+class SeasonTemplateGrant(Base):
+    __tablename__ = "season_template_grants"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    season = Column(String, nullable=False)
+    template_key = Column(String, nullable=False)
+    force_exquisite = Column(Boolean, default=True)
+    skin_id = Column(String, default="")
+    created_at = Column(Integer, default=lambda: int(time.time()))
+    __table_args__ = (
+        UniqueConstraint("user_id", "season", name="uq_template_grant_user_season"),
+    )
+
+
 class AdminMaintenanceCode(Base):
     __tablename__ = "admin_maintenance_codes"
     username = Column(String, primary_key=True)
@@ -1487,6 +1501,10 @@ SPECIAL_PRICE_TEMPLATES = DIAMOND_TEMPLATE_KEYS | {
     "brick_prism2_flux",
 }
 
+SPECIAL_TEMPLATE_KEYSET = {key.lower() for key in SPECIAL_PRICE_TEMPLATES}
+EXQUISITE_ONLY_TEMPLATE_KEYS = {key.lower() for key in EXQUISITE_ONLY_TEMPLATES}
+DIAMOND_TEMPLATE_LIST = tuple(sorted(DIAMOND_TEMPLATE_KEYS))
+
 COLOR_NAME_MAP = {c["hex"].lower(): c["name"] for c in COLOR_PALETTE}
 
 
@@ -1584,6 +1602,66 @@ def default_brick_template(exquisite: bool) -> str:
         return "brick_laser_gradient"
     return "brick_normal"
 
+
+def season_rarest_template(season: str) -> Dict[str, Any]:
+    key = _normalize_season(season)
+    if not key:
+        key = _brick_season_key(None)
+    season_def = SEASON_LOOKUP.get(key)
+    candidates: List[Dict[str, Any]] = []
+    if season_def:
+        for brick in season_def.get("bricks", []) or []:
+            skin_id = str(brick.get("skin_id") or "").strip() or None
+            meta = brick.get("meta") or {}
+            rules = meta.get("template_rules") or []
+            for rule in rules:
+                template_key = str(rule.get("key") or "").strip()
+                if not template_key:
+                    continue
+                lower = template_key.lower()
+                if lower not in SPECIAL_TEMPLATE_KEYSET:
+                    continue
+                try:
+                    weight = int(rule.get("weight", 0) or 0)
+                except Exception:
+                    continue
+                if weight <= 0:
+                    continue
+                allow_exquisite = bool(rule.get("allow_exquisite", True))
+                allow_premium = bool(rule.get("allow_premium", True))
+                if not allow_exquisite and not allow_premium:
+                    continue
+                candidates.append({
+                    "template_key": template_key,
+                    "weight": weight,
+                    "skin_id": skin_id,
+                    "allow_exquisite": allow_exquisite,
+                })
+    if candidates:
+        min_weight = min(item["weight"] for item in candidates)
+        pool = [item for item in candidates if item["weight"] == min_weight]
+        chosen = secrets.choice(pool)
+        template_key = chosen["template_key"]
+        allow_exquisite = bool(chosen.get("allow_exquisite", True))
+        force_exquisite = True if allow_exquisite else False
+        if template_key in EXQUISITE_ONLY_TEMPLATES:
+            force_exquisite = True
+        return {
+            "template_key": template_key,
+            "force_exquisite": force_exquisite,
+            "skin_id": chosen.get("skin_id") or None,
+            "season": key,
+            "source": "season_rule",
+        }
+    fallback_key = secrets.choice(DIAMOND_TEMPLATE_LIST)
+    return {
+        "template_key": fallback_key,
+        "force_exquisite": True,
+        "skin_id": None,
+        "season": key,
+        "source": "fallback",
+    }
+
 def _pick_color() -> Dict[str, str]:
     base = secrets.choice(COLOR_PALETTE)
     return {"hex": base["hex"], "name": base["name"]}
@@ -1677,6 +1755,7 @@ def generate_visual_profile(
     *,
     model_key: str = "",
     skin: Optional[Skin] = None,
+    forced_template: Optional[str] = None,
 ) -> Dict[str, object]:
     rarity = (rarity or "").upper()
     meta = skin_meta_dict(skin)
@@ -1700,11 +1779,25 @@ def generate_visual_profile(
     template_label = ""
     hidden_template = False
     effects: List[str] = []
+    forced_template_key = (forced_template or "").strip()
+    forced_template_lower = forced_template_key.lower()
 
     if rarity == "BRICK":
         rule = None
         template_rules = meta.get("template_rules")
         if template_rules:
+            if forced_template_lower:
+                for rule_entry in template_rules:
+                    allow_exq = rule_entry.get("allow_exquisite", True)
+                    allow_prem = rule_entry.get("allow_premium", True)
+                    if exquisite and not allow_exq:
+                        continue
+                    if not exquisite and not allow_prem:
+                        continue
+                    key_lower = str(rule_entry.get("key") or "").strip().lower()
+                    if key_lower == forced_template_lower:
+                        rule = rule_entry
+                        break
             pool: List[Tuple[Dict[str, Any], int]] = []
             for rule_entry in template_rules:
                 allow_exq = rule_entry.get("allow_exquisite", True)
@@ -1717,13 +1810,19 @@ def generate_visual_profile(
                 if weight <= 0:
                     continue
                 pool.append((rule_entry, weight))
-            if pool:
+            if pool and not rule and not forced_template_lower:
                 total = sum(weight for _, weight in pool)
                 pick = secrets.randbelow(total)
                 cursor = 0
                 for rule_entry, weight in pool:
                     cursor += weight
                     if pick < cursor:
+                        rule = rule_entry
+                        break
+            if not rule and forced_template_lower and pool:
+                for rule_entry, _ in pool:
+                    key_lower = str(rule_entry.get("key") or "").strip().lower()
+                    if key_lower == forced_template_lower:
                         rule = rule_entry
                         break
         if rule:
@@ -1737,6 +1836,8 @@ def generate_visual_profile(
             if chosen_att:
                 attachments = chosen_att
             effects.extend(rule.get("effects", []))
+        elif forced_template_lower:
+            template_key = forced_template_key
         else:
             template_key = default_brick_template(bool(exquisite))
         effects.append("sheen")
@@ -11245,11 +11346,21 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
     results = []
     target_skin = (inp.target_skin_id or "").strip()
     pity_row = get_user_season_pity(db, user, season_key)
+    grant = db.query(SeasonTemplateGrant).filter_by(user_id=user.id, season=season_key).first()
+    grant_consumed = False
 
     for _ in range(inp.count):
         od = compute_odds(pity_row.pity_brick, pity_row.pity_purple, cfg)
+        forced_active = bool(grant) and not grant_consumed
+        forced_template_key = (grant.template_key if forced_active else "") if grant else ""
+        forced_template_key = (forced_template_key or "").strip()
+        forced_template_lower = forced_template_key.lower()
+        forced_skin_id = (grant.skin_id if forced_active else "") if grant else ""
+        forced_skin_id = (forced_skin_id or "").strip()
+        force_exquisite_flag = False
+
         # 决定稀有度
-        if od.force_brick_next:
+        if forced_active or od.force_brick_next:
             rarity = "BRICK"
         else:
             r = rng_ppm()
@@ -11263,7 +11374,14 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
                     r3 = rng_ppm()
                     rarity = "BLUE" if r3 < ppm(od.blue) else "GREEN"
 
-        if rarity == "BRICK":
+        if forced_active:
+            rarity = "BRICK"
+            pity_row.pity_brick = 0
+            pity_row.pity_purple = int(pity_row.pity_purple or 0) + 1
+            force_exquisite_flag = bool(grant.force_exquisite)
+            if forced_template_lower in EXQUISITE_ONLY_TEMPLATE_KEYS:
+                force_exquisite_flag = True
+        elif rarity == "BRICK":
             pity_row.pity_brick = 0
             pity_row.pity_purple = int(pity_row.pity_purple or 0) + 1
         elif rarity == "PURPLE":
@@ -11273,12 +11391,25 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
             pity_row.pity_brick = int(pity_row.pity_brick or 0) + 1
             pity_row.pity_purple = int(pity_row.pity_purple or 0) + 1
 
-        preferred = target_skin if rarity == "BRICK" and target_skin else None
+        preferred = None
+        if forced_active and forced_skin_id:
+            preferred = forced_skin_id
+        elif rarity == "BRICK" and target_skin:
+            preferred = target_skin
         skin = pick_skin(db, rarity, season=season_key, preferred_skin_id=preferred)
-        exquisite = (secrets.randbelow(100) < 15) if rarity == "BRICK" else False
+        if forced_active:
+            exquisite = True if (force_exquisite_flag or forced_template_lower in EXQUISITE_ONLY_TEMPLATE_KEYS) else False
+        else:
+            exquisite = (secrets.randbelow(100) < 15) if rarity == "BRICK" else False
         wear_bp = wear_random_bp()
         grade = grade_from_wear_bp(wear_bp)
-        profile = generate_visual_profile(skin.rarity, exquisite, model_key=skin.model_key, skin=skin)
+        profile = generate_visual_profile(
+            skin.rarity,
+            exquisite,
+            model_key=skin.model_key,
+            skin=skin,
+            forced_template=forced_template_key if forced_active else None,
+        )
 
         result_season = _brick_season_key(skin.season or season_key)
         inv = Inventory(
@@ -11330,6 +11461,11 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
                 "model": profile.get("model", skin.model_key or ""),
             },
         })
+
+        if forced_active:
+            grant_consumed = True
+            db.delete(grant)
+            grant = None
 
     apply_brick_market_influence(db, cfg, results)
     process_brick_buy_orders(db, cfg)
@@ -12538,6 +12674,61 @@ def admin_user_inventory(username: str, admin=_Depends(_require_admin)):
         "premium_count": premium,
         "items": items,
     }
+
+
+@ext.post("/admin/force-template")
+def admin_force_template(payload: dict, admin=_Depends(_require_admin)):
+    user_id = int((payload or {}).get("user_id") or 0)
+    season_raw = (payload or {}).get("season") or ""
+    if user_id <= 0:
+        raise _HTTPException(400, "user_id required")
+    season_key = _normalize_season(season_raw)
+    if not season_key:
+        raise _HTTPException(400, "无效的赛季")
+
+    with SessionLocal() as db:
+        user = db.query(User).filter_by(id=user_id).first()
+        if not user:
+            raise _HTTPException(404, "user not found")
+        selection = season_rarest_template(season_key)
+        template_key = (selection or {}).get("template_key")
+        if not template_key:
+            raise _HTTPException(400, "该赛季没有可用的特殊模板")
+        force_exquisite = bool(selection.get("force_exquisite", True))
+        target_skin = selection.get("skin_id") or ""
+        grant = db.query(SeasonTemplateGrant).filter_by(user_id=user_id, season=season_key).first()
+        now_ts = int(time.time())
+        if grant:
+            grant.template_key = template_key
+            grant.force_exquisite = force_exquisite
+            grant.skin_id = target_skin
+            grant.created_at = now_ts
+        else:
+            grant = SeasonTemplateGrant(
+                user_id=user_id,
+                season=season_key,
+                template_key=template_key,
+                force_exquisite=force_exquisite,
+                skin_id=target_skin,
+                created_at=now_ts,
+            )
+            db.add(grant)
+        db.commit()
+
+        label = BRICK_TEMPLATE_LABELS.get(
+            template_key,
+            TEMPLATE_LABEL_LOOKUP.get(str(template_key or "").lower(), template_key),
+        )
+        return {
+            "ok": True,
+            "user_id": user_id,
+            "season": season_key,
+            "season_label": _season_display_name(season_key),
+            "template": template_key,
+            "template_label": label,
+            "force_exquisite": bool(grant.force_exquisite),
+            "skin_id": grant.skin_id or None,
+        }
 
 # 管理员：发放法币
 @ext.post("/admin/grant-fiat")
