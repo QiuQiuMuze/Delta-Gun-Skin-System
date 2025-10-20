@@ -682,7 +682,8 @@ class DungeonGame {
     const storedProfile = DungeonStorage.loadProfile();
     const storedName = this.sanitizeName(storedProfile?.name || '');
     this.profile = { name: storedName };
-    this.introChoice = { classId: null, name: storedName };
+    this.accountDisplayName();
+    this.introChoice = { classId: null };
     const storedAdmin = DungeonStorage.loadAdminSettings();
     this.admin = { gameEnabled: true, invincible: false, ...storedAdmin };
     this.scores = this.normalizeScoreList(DungeonStorage.loadScores());
@@ -693,6 +694,19 @@ class DungeonGame {
     };
     if (typeof window !== 'undefined') {
       window.addEventListener('dungeon-admin-updated', this._handleAdminBroadcast);
+    }
+    if (typeof API !== 'undefined' && !API._me) {
+      Promise.resolve().then(async () => {
+        try {
+          await API.me();
+          this.accountDisplayName();
+          if (this.state?.phase === 'intro') {
+            this.renderIntro();
+          }
+        } catch (_) {
+          /* ignore */
+        }
+      });
     }
     const saved = DungeonStorage.loadRunState();
     if (saved && saved.run) {
@@ -975,13 +989,13 @@ class DungeonGame {
       `;
     }).join('');
     const featureList = [
-      '起点与房间分布会随周种子刷新，每次深入都是全新路线。',
+      '每次进入古井都会重新生成地图，怪物与事件完全随机分布。',
       '事件拥有多重抉择，成功或失败会影响状态、物品与遗物。',
       '奖励不止积分，还可能获得装备、药剂、勇气与灵魂碎片。',
     ].map(text => `<li>${text}</li>`).join('');
-    const seed = Math.abs(Math.floor(Date.now() / 604800000));
+    const seed = Math.floor(Date.now() + Math.random() * 1_000_000);
     this.currentIntroSeed = seed;
-    const heroName = dungeonEscapeHtml(this.introChoice?.name || '');
+    const heroName = dungeonEscapeHtml(this.accountDisplayName());
     this.root.innerHTML = `
       <div class="dungeon-intro">
         <div class="dungeon-intro__layout">
@@ -995,18 +1009,18 @@ class DungeonGame {
           </div>
         </div>
         <div class="dungeon-intro__name">
-          <label for="dungeon-hero-name">先锋代号</label>
-          <input type="text" id="dungeon-hero-name" maxlength="12" placeholder="起一个代号" value="${heroName}">
-          <div class="dungeon-intro__name-hint">将记录在排行榜中，仅保留你的最高成绩（最多12字符）。</div>
+          <div class="dungeon-intro__name-label">冒险者</div>
+          <div class="dungeon-intro__name-value">${heroName}</div>
+          <div class="dungeon-intro__name-hint">排行榜将以你的账号名称记录成绩。</div>
         </div>
         <div class="dungeon-class-grid">${classCards}</div>
         <div class="dungeon-intro__actions">
           <button type="button" class="dungeon-intro__start" id="dungeon-start-run" ${(!this.admin.gameEnabled || !selected) ? 'disabled' : ''}>准备下井</button>
           <button type="button" class="dungeon-intro__random" id="dungeon-random-class">随机推荐</button>
         </div>
-        <div class="dungeon-intro__meta">
+          <div class="dungeon-intro__meta">
           <div>提示：首层前两场战斗必掉职业相关装备。</div>
-          <div class="dungeon-seed">本周种子：<span id="dungeon-seed">${seed}</span></div>
+          <div class="dungeon-seed">本次探险种子：<span id="dungeon-seed">${seed}</span></div>
         </div>
         <div class="dungeon-panel dungeon-intro-scores" id="dungeon-intro-scores" data-context="intro"></div>
         ${this.admin.gameEnabled ? '' : '<div class="dungeon-maintenance">古井入口暂时关闭，请等待管理员重新开启。</div>'}
@@ -1029,15 +1043,6 @@ class DungeonGame {
         this.selectIntroClass(clsId);
       });
     });
-    const nameInput = this.root.querySelector('#dungeon-hero-name');
-    if (nameInput) {
-      nameInput.addEventListener('input', () => {
-        this.updateIntroName(nameInput.value);
-      });
-      nameInput.addEventListener('blur', () => {
-        this.updateIntroName(nameInput.value, { persist: true });
-      });
-    }
     const randomBtn = this.root.querySelector('#dungeon-random-class');
     if (randomBtn) {
       randomBtn.addEventListener('click', () => {
@@ -1054,30 +1059,17 @@ class DungeonGame {
           alert('古井入口正在维护，请稍后再尝试。');
           return;
         }
-        if (nameInput) this.updateIntroName(nameInput.value, { persist: true });
         const clsId = this.introChoice?.classId;
         if (!clsId) {
           this.addLog('请先选择一名职业再启程。', 'warn');
           return;
         }
-        this.startRun(clsId, this.currentIntroSeed || Math.abs(Math.floor(Date.now() / 604800000)));
+        const fallbackSeed = Math.floor(Date.now() + Math.random() * 1_000_000);
+        this.startRun(clsId, this.currentIntroSeed || fallbackSeed);
       });
     }
     if (this.introChoice?.classId) {
       this.highlightIntroSelection(this.introChoice.classId);
-    }
-  }
-
-  updateIntroName(value, { persist = false } = {}) {
-    const sanitized = this.sanitizeName(value);
-    if (!this.introChoice) this.introChoice = { classId: null };
-    this.introChoice = { ...this.introChoice, name: sanitized };
-    const input = this.root.querySelector('#dungeon-hero-name');
-    if (input && input.value !== sanitized) input.value = sanitized;
-    if (!this.profile) this.profile = {};
-    if (persist) {
-      this.profile.name = sanitized;
-      DungeonStorage.saveProfile(this.profile);
     }
   }
 
@@ -1150,18 +1142,14 @@ class DungeonGame {
   startRun(classId, seed) {
     const cls = DungeonData.classes[classId];
     if (!cls) return;
-    const aliasRaw = this.sanitizeName(this.introChoice?.name || this.profile?.name || '');
-    const alias = aliasRaw || '无名冒险者';
-    this.profile = { ...this.profile, name: aliasRaw };
-    this.introChoice = { ...this.introChoice, name: aliasRaw };
-    DungeonStorage.saveProfile(this.profile);
+    const displayName = this.accountDisplayName();
     this.rng = new DungeonRng(seed + classId.length * 17);
     this._finished = false;
     this.logEntries = [];
     const player = {
       classId,
       name: cls.name,
-      nickname: alias,
+      nickname: displayName,
       passiveId: cls.passiveId,
       level: 5,
       hp: cls.baseStats.maxHP,
@@ -1448,6 +1436,12 @@ class DungeonGame {
     floor.path.push(cell.id);
     this.markAdjacentThreats(floor, cell.coords);
     if (["normal", "elite", "boss"].includes(cell.type)) {
+      if (cell.resolved) {
+        this.addLog('战斗痕迹犹在，此处暂时空无一人。', 'info');
+        this.state.phase = 'explore';
+        this.updateAll();
+        return;
+      }
       const enemy = DungeonData.enemies[cell.enemyId];
       this.addLog(`〈${this.randomRoomTitle(enemy)}〉`, "title");
       this.startCombat(cell);
@@ -1602,11 +1596,11 @@ class DungeonGame {
     const tierLabel = this.corruptionStateLabel();
     const badge = `<span class="status-badge tier-${tier}">${tierLabel}</span>`;
     const currency = this.ensureCurrency();
-    const alias = dungeonEscapeHtml(p.nickname || this.profile?.name || '无名冒险者');
+    const displayName = dungeonEscapeHtml(this.accountDisplayName());
     const className = dungeonEscapeHtml(p.name || '未知');
     node.innerHTML = `
       <div class="dungeon-status-line">【等级】${p.level} 【HP】<span class="hl-hp">${p.hp}/${p.maxHP}</span> 【能量】<span class="hl-energy">${p.energy}/${p.maxEnergy}</span> 【腐蚀】<span class="hl-corrupt">${this.run.corruption}/${this.run.maxCorruption}</span>${badge}</div>
-      <div class="dungeon-status-line">【先锋】${alias} ｜ 【职业】${className} ｜ 【被动】${this.describePassive()} ｜ 【货币】<span class="hl-coin">${currency}</span></div>
+      <div class="dungeon-status-line">【冒险者】${displayName} ｜ 【职业】${className} ｜ 【被动】${this.describePassive()} ｜ 【货币】<span class="hl-coin">${currency}</span></div>
       <div class="dungeon-status-line">【所在】${floor?.name || "未知"} · ${cellLabel} ｜ 坐标 (${coord}) 【连胜】${p.streak} 【勇气】<span class="hl-heroism">${p.heroism}</span> 【积分】<span class="hl-score">${this.run.score || 0}</span></div>
     `;
   }
@@ -2057,16 +2051,34 @@ class DungeonGame {
     `;
   }
 
-  sanitizeName(raw) {
+  sanitizeName(raw, maxLen = 12) {
     if (raw == null) return '';
     let text = String(raw).replace(/[\u0000-\u001f]+/g, '').replace(/\s+/g, ' ').trim();
-    if (text.length > 12) text = text.slice(0, 12);
+    if (maxLen && text.length > maxLen) text = text.slice(0, maxLen);
     return text;
   }
 
-  nameKey(name) {
-    const cleaned = this.sanitizeName(name);
+  nameKey(name, maxLen = 12) {
+    const cleaned = this.sanitizeName(name, maxLen);
     return cleaned ? cleaned.toLowerCase() : '__anon__';
+  }
+
+  accountDisplayName(maxLen = 32) {
+    const apiName = (typeof API !== 'undefined' && API._me && API._me.username)
+      ? API._me.username
+      : '';
+    const fallback = this.profile?.name || '';
+    const raw = apiName || fallback || '';
+    const sanitized = this.sanitizeName(raw, maxLen);
+    if (sanitized) {
+      if (!this.profile) this.profile = {};
+      if (this.profile.name !== sanitized) {
+        this.profile = { ...this.profile, name: sanitized };
+        DungeonStorage.saveProfile(this.profile);
+      }
+      return sanitized;
+    }
+    return '无名冒险者';
   }
 
   normalizeScoreEntry(entry = {}) {
@@ -2077,12 +2089,24 @@ class DungeonGame {
     const victory = !!entry.victory;
     const timestamp = Number.isFinite(Number(entry.timestamp)) ? Number(entry.timestamp) : Date.now();
     const classId = typeof entry.classId === 'string' ? entry.classId : null;
-    let name = this.sanitizeName(entry.name || entry.playerName || '');
-    if (!name) {
-      const clsName = classId ? DungeonData.classes[classId]?.name : '';
-      name = clsName ? `${clsName}先锋` : '无名冒险者';
+    const aliasRaw = entry.alias != null ? entry.alias : (entry.playerName != null ? entry.playerName : entry.name);
+    const accountRaw = entry.username != null ? entry.username : (entry.accountName != null ? entry.accountName : entry.name);
+    const preferredRaw = entry.name != null ? entry.name : accountRaw;
+    const alias = this.sanitizeName(aliasRaw || '', 12);
+    let display = this.sanitizeName(preferredRaw || '', 32);
+    if (!display) {
+      display = this.sanitizeName(accountRaw || '', 32);
     }
-    return { score, heroism, floor, victory, timestamp, classId, name };
+    if (!display) {
+      display = alias;
+    }
+    if (!display) {
+      display = '无名冒险者';
+    }
+    const accountKey = (accountRaw && typeof accountRaw === 'string')
+      ? accountRaw.trim().toLowerCase()
+      : (display ? display.toLowerCase() : null);
+    return { score, heroism, floor, victory, timestamp, classId, name: display, alias, accountKey };
   }
 
   normalizeScoreList(list) {
@@ -2103,7 +2127,7 @@ class DungeonGame {
     const seen = new Set();
     const top = [];
     sorted.forEach(entry => {
-      const key = this.nameKey(entry.name);
+      const key = entry.accountKey || this.nameKey(entry.name, 32);
       if (seen.has(key)) return;
       seen.add(key);
       top.push(entry);
@@ -2168,6 +2192,12 @@ class DungeonGame {
   }
 
   recordScore(entry) {
+    const username = entry && entry.username != null
+      ? entry.username
+      : ((typeof API !== 'undefined' && API._me && API._me.username) ? API._me.username : (entry && entry.name));
+    const displayName = entry && entry.name != null
+      ? entry.name
+      : this.accountDisplayName();
     const payload = this.normalizeScoreEntry({
       ...entry,
       score: entry.score,
@@ -2175,7 +2205,9 @@ class DungeonGame {
       floor: entry.floor || (this.run?.floorIndex + 1) || 1,
       heroism: entry.heroism != null ? entry.heroism : (this.run?.player?.heroism || 0),
       timestamp: entry.timestamp || Date.now(),
-      name: entry.name || this.run?.player?.nickname || this.profile?.name,
+      alias: '',
+      username,
+      name: displayName,
       classId: entry.classId || this.run?.player?.classId || null,
     });
     if (!payload) return;

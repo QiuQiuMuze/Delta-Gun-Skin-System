@@ -54,6 +54,22 @@ const API = {
 
     if (!res.ok) {
       let msg = (data && (data.detail || data.msg)) || data?.raw || txt || "请求失败";
+      let maintenanceInfo = null;
+      if (res.status === 503) {
+        const detail = data?.detail;
+        if (detail && typeof detail === "object") {
+          if (detail.code === "MAINTENANCE_MODE") {
+            maintenanceInfo = {
+              message: detail.message || "网站维护中，请稍后再试。",
+              updated_at: detail.updated_at || null,
+            };
+            msg = maintenanceInfo.message;
+          }
+        } else if (detail === "MAINTENANCE_MODE" || msg === "MAINTENANCE_MODE") {
+          maintenanceInfo = { message: data?.message || "网站维护中，请稍后再试。" };
+          msg = maintenanceInfo.message;
+        }
+      }
 
       // ★ 被别处登录顶下线（后端返回 401 + "SESSION_REVOKED"）
       if (msg === "SESSION_REVOKED") {
@@ -69,6 +85,15 @@ const API = {
         msg = msg.map(i => (i && i.msg) ? i.msg : JSON.stringify(i)).join("；");
       } else if (typeof msg !== "string") {
         try { msg = JSON.stringify(msg); } catch (_) { msg = String(msg); }
+      }
+
+      if (maintenanceInfo) {
+        try { this.setToken(null); this._me = null; } catch (_) {}
+        try {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent('app-maintenance', { detail: maintenanceInfo }));
+          }
+        } catch (_) { /* ignore */ }
       }
 
       throw new Error(msg);
@@ -315,6 +340,14 @@ const API = {
   cookieAdminToggle: (enabled) => API.json("/admin/cookie-factory/toggle", "POST", { enabled }),
   cookieCultivationToggle: (enabled) => API.json("/admin/cookie-factory/cultivation-toggle", "POST", { enabled }),
   starfallAdminToggle: (enabled) => API.json("/admin/starfall/toggle", "POST", { enabled }),
+  adminMaintenanceStatus: () => API.json("/admin/maintenance"),
+  adminMaintenanceRequestCode: () =>
+    API.json("/admin/maintenance/request-code", "POST", {}),
+  adminMaintenanceSet: (active, message = "", code = "") =>
+    API.json("/admin/maintenance", "POST", { active, message, code }),
+  adminAnnouncementStatus: () => API.json("/admin/announcement"),
+  adminAnnouncementSend: (message, duration = 60) =>
+    API.json("/admin/announcement", "POST", { message, duration }),
 
 
   adminAuthModeGet: () => API.json("/admin/auth-mode"),

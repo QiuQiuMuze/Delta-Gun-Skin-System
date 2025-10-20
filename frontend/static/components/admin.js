@@ -18,6 +18,36 @@ const AdminPage = {
       </div>
 
       <div class="card">
+        <h3>网站维护模式</h3>
+        <div class="input-row">
+          <label><input type="checkbox" id="maintenance-toggle"/> 启用维护模式（非管理员将被强制下线）</label>
+        </div>
+        <div class="input-row">
+          <input id="maintenance-message" placeholder="维护说明（可选，展示给被维护的玩家）"/>
+        </div>
+        <div class="input-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+          <input id="maintenance-code" placeholder="维护验证码（admin-maintenance）" style="flex:1 1 220px; min-width:200px;" />
+          <button class="btn" id="maintenance-request">获取验证码</button>
+          <button class="btn danger" id="maintenance-apply">更新维护状态</button>
+        </div>
+        <div class="muted" id="maintenance-status">加载中...</div>
+      </div>
+
+      <div class="card">
+        <h3>全服公告</h3>
+        <div class="input-row">
+          <textarea id="announcement-message" rows="2" placeholder="公告内容（将在所有玩家界面展示约 1 分钟）"></textarea>
+        </div>
+        <div class="input-row" style="align-items:center; gap:8px; flex-wrap:wrap;">
+          <span class="muted">展示时长（秒）</span>
+          <input id="announcement-duration" type="number" min="10" max="60" value="60" style="width:120px" />
+          <button class="btn" id="announcement-send">发送公告</button>
+          <button class="btn" id="announcement-clear">清除公告</button>
+        </div>
+        <div class="muted" id="announcement-status">加载中...</div>
+      </div>
+
+      <div class="card">
         <h3>饼干工厂小游戏</h3>
         <div class="input-row">
           <label><input type="checkbox" id="cookie-toggle"/> 对玩家开放饼干工厂</label>
@@ -179,6 +209,17 @@ const AdminPage = {
     const dungeonGameToggle = byId('dungeon-toggle-game');
     const dungeonInvToggle = byId('dungeon-toggle-invincible');
     const dungeonToggleDesc = byId('dungeon-toggle-desc');
+    const maintenanceToggle = byId('maintenance-toggle');
+    const maintenanceMessage = byId('maintenance-message');
+    const maintenanceStatus = byId('maintenance-status');
+    const maintenanceCode = byId('maintenance-code');
+    const maintenanceRequest = byId('maintenance-request');
+    const maintenanceApply = byId('maintenance-apply');
+    const announcementMessage = byId('announcement-message');
+    const announcementDuration = byId('announcement-duration');
+    const announcementStatus = byId('announcement-status');
+    const announcementSend = byId('announcement-send');
+    const announcementClear = byId('announcement-clear');
     modeDesc.textContent = "加载中...";
     if (cookieDesc) cookieDesc.textContent = "加载中...";
 
@@ -215,6 +256,139 @@ const AdminPage = {
     };
 
     await loadAuthMode();
+
+    const loadMaintenance = async () => {
+      if (maintenanceStatus) maintenanceStatus.textContent = '加载中...';
+      try {
+        const state = await API.adminMaintenanceStatus();
+        const active = !!(state && state.active);
+        if (maintenanceToggle) maintenanceToggle.checked = active;
+        if (maintenanceMessage) {
+          maintenanceMessage.value = active && typeof state?.message === 'string' ? state.message : '';
+        }
+        if (!active && maintenanceMessage) {
+          maintenanceMessage.value = '';
+        }
+        if (maintenanceCode) maintenanceCode.value = '';
+        if (maintenanceStatus) {
+          maintenanceStatus.textContent = active
+            ? `维护模式已开启${state?.message ? `：${state.message}` : ''}`
+            : '维护模式未开启。操作前请点击“获取验证码”并在短信日志查看验证码。';
+        }
+      } catch (err) {
+        if (maintenanceStatus) maintenanceStatus.textContent = `加载失败：${err.message || err}`;
+      }
+    };
+
+    if (maintenanceApply) {
+      maintenanceApply.addEventListener('click', async () => {
+        if (!maintenanceToggle) return;
+        const active = !!maintenanceToggle.checked;
+        const message = maintenanceMessage ? maintenanceMessage.value.trim() : '';
+        const code = maintenanceCode ? maintenanceCode.value.trim() : '';
+        if (!code) {
+          if (maintenanceStatus) maintenanceStatus.textContent = '请先输入维护验证码';
+          return;
+        }
+        if (maintenanceStatus) maintenanceStatus.textContent = '提交中...';
+        try {
+          const state = await API.adminMaintenanceSet(active, message, code);
+          if (maintenanceStatus) {
+            maintenanceStatus.textContent = state.active
+              ? `维护模式已开启${state?.message ? `：${state.message}` : ''}`
+              : '维护模式未开启';
+          }
+          if (!state.active && maintenanceMessage) maintenanceMessage.value = '';
+          if (maintenanceCode) maintenanceCode.value = '';
+          alert(state.active ? '维护模式已开启，非管理员将无法登录。' : '维护模式已关闭。');
+          await loadMaintenance();
+        } catch (err) {
+          if (maintenanceStatus) maintenanceStatus.textContent = `操作失败：${err.message || err}`;
+        }
+      });
+    }
+
+    if (maintenanceRequest) {
+      maintenanceRequest.addEventListener('click', async () => {
+        if (maintenanceStatus) maintenanceStatus.textContent = '申请验证码中...';
+        try {
+          const info = await API.adminMaintenanceRequestCode();
+          const expireTs = Number(info?.expire_at || 0);
+          if (maintenanceStatus) {
+            if (expireTs) {
+              const expireTime = new Date(expireTs * 1000).toLocaleTimeString('zh-CN', { hour12: false });
+              maintenanceStatus.textContent = `验证码已生成，请在短信日志查看（有效至 ${expireTime}）。`;
+            } else {
+              maintenanceStatus.textContent = '验证码已生成，请在短信日志查看。';
+            }
+          }
+          if (maintenanceCode) {
+            maintenanceCode.value = '';
+            maintenanceCode.focus();
+          }
+        } catch (err) {
+          if (maintenanceStatus) maintenanceStatus.textContent = `申请失败：${err.message || err}`;
+        }
+      });
+    }
+
+    const loadAnnouncement = async () => {
+      if (announcementStatus) announcementStatus.textContent = '加载中...';
+      try {
+        const state = await API.adminAnnouncementStatus();
+        if (state && state.active) {
+          const seconds = Math.max(10, Math.min(Number(state.duration || 60), 60));
+          const time = state.created_at ? new Date(state.created_at * 1000).toLocaleString('zh-CN', { hour12: false }) : '-';
+          if (announcementStatus) {
+            announcementStatus.textContent = `最近公告：${state.message || ''}（约展示 ${seconds} 秒，可被玩家手动关闭 · 创建于 ${time}）`;
+          }
+        } else if (announcementStatus) {
+          announcementStatus.textContent = '当前暂无公告';
+        }
+      } catch (err) {
+        if (announcementStatus) announcementStatus.textContent = `加载失败：${err.message || err}`;
+      }
+    };
+
+    if (announcementSend) {
+      announcementSend.addEventListener('click', async () => {
+        const text = announcementMessage ? announcementMessage.value.trim() : '';
+        if (!text) {
+          alert('请输入公告内容');
+          return;
+        }
+        const raw = announcementDuration ? Number(announcementDuration.value) : 60;
+        const seconds = Math.max(10, Math.min(Number.isFinite(raw) ? raw : 60, 60));
+        if (announcementStatus) announcementStatus.textContent = '发送中...';
+        try {
+          const state = await API.adminAnnouncementSend(text, seconds);
+          if (announcementMessage) announcementMessage.value = '';
+          if (announcementStatus) {
+            const duration = Number(state?.duration || seconds);
+            announcementStatus.textContent = `公告已发送，将展示约 ${duration} 秒。`;
+          }
+        } catch (err) {
+          if (announcementStatus) announcementStatus.textContent = `发送失败：${err.message || err}`;
+        }
+        loadAnnouncement();
+      });
+    }
+
+    if (announcementClear) {
+      announcementClear.addEventListener('click', async () => {
+        if (announcementStatus) announcementStatus.textContent = '清除中...';
+        try {
+          await API.adminAnnouncementSend('', 0);
+          if (announcementMessage) announcementMessage.value = '';
+          if (announcementStatus) announcementStatus.textContent = '当前暂无公告';
+        } catch (err) {
+          if (announcementStatus) announcementStatus.textContent = `清除失败：${err.message || err}`;
+        }
+      });
+    }
+
+    loadMaintenance();
+    loadAnnouncement();
 
     const updateCookieDesc = (info = {}) => {
       if (!cookieDesc) return;
