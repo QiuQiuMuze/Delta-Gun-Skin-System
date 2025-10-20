@@ -564,14 +564,23 @@ const OrientationHelper = {
     const viewport = window.visualViewport;
     const vw = Math.max(1, viewport ? viewport.width : window.innerWidth || 1);
     const vh = Math.max(1, viewport ? viewport.height : window.innerHeight || 1);
+
+    // 在常见的手机横屏尺寸下，直接使用 100% 缩放，避免界面被整体缩小
+    const MIN_FULL_WIDTH = 680;
+    const MIN_FULL_HEIGHT = 380;
+    if (vw >= MIN_FULL_WIDTH && vh >= MIN_FULL_HEIGHT) {
+      this._landscapeScale = 1;
+      return 1;
+    }
+
     const referenceWidth = 1100;
     const referenceHeight = 620;
     const referenceArea = referenceWidth * referenceHeight;
     const widthScale = Math.min(1, vw / referenceWidth);
     const heightScale = Math.min(1, vh / referenceHeight);
     const areaScale = Math.min(1, Math.sqrt((vw * vh) / referenceArea));
-    const computed = Math.min(widthScale * 1.05, heightScale * 1.08, areaScale * 1.02);
-    const clamped = Math.min(1, Math.max(0.48, computed));
+    const computed = Math.min(widthScale * 1.08, heightScale * 1.12, areaScale * 1.05);
+    const clamped = Math.min(1, Math.max(0.9, computed));
     this._landscapeScale = clamped;
     return clamped;
   },
