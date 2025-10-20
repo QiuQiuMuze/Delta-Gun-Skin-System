@@ -341,8 +341,10 @@ const API = {
   cookieCultivationToggle: (enabled) => API.json("/admin/cookie-factory/cultivation-toggle", "POST", { enabled }),
   starfallAdminToggle: (enabled) => API.json("/admin/starfall/toggle", "POST", { enabled }),
   adminMaintenanceStatus: () => API.json("/admin/maintenance"),
-  adminMaintenanceSet: (active, message = "") =>
-    API.json("/admin/maintenance", "POST", { active, message }),
+  adminMaintenanceRequestCode: () =>
+    API.json("/admin/maintenance/request-code", "POST", {}),
+  adminMaintenanceSet: (active, message = "", code = "") =>
+    API.json("/admin/maintenance", "POST", { active, message, code }),
   adminAnnouncementStatus: () => API.json("/admin/announcement"),
   adminAnnouncementSend: (message, duration = 60) =>
     API.json("/admin/announcement", "POST", { message, duration }),

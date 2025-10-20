@@ -159,6 +159,14 @@ class SmsCode(Base):
     code_hash = Column(String)
     expire_ts = Column(Integer)
 
+
+class AdminMaintenanceCode(Base):
+    __tablename__ = "admin_maintenance_codes"
+    username = Column(String, primary_key=True)
+    code = Column(String, nullable=False)
+    expire_at = Column(Integer, nullable=False)
+    requested_at = Column(Integer, default=lambda: int(time.time()))
+
 class MarketItem(Base):
     __tablename__ = "market"
     id = Column(Integer, primary_key=True, index=True)
@@ -6203,7 +6211,7 @@ def announcement_state(db: Session) -> Dict[str, Any]:
         return {"active": False}
     now = int(time.time())
     created_at = _coerce_int(data.get("created_at"), 0)
-    duration = max(0, _coerce_int(data.get("duration"), 0))
+    duration = max(0, min(_coerce_int(data.get("duration"), 0), 60))
     expires_at = _coerce_int(data.get("expires_at"), 0)
     if duration and not expires_at:
         expires_at = created_at + duration
@@ -6237,7 +6245,7 @@ def set_announcement_state(
             db.delete(row)
             db.flush()
         return {"active": False}
-    seconds = max(10, min(int(duration or 60), 600))
+    seconds = max(10, min(int(duration or 60), 60))
     now = int(time.time())
     payload = {
         "id": f"{now}-{secrets.token_hex(4)}",
@@ -6255,6 +6263,45 @@ def set_announcement_state(
         db.add(SystemSetting(key=ANNOUNCEMENT_SETTING_KEY, value=raw))
     db.flush()
     return announcement_state(db)
+
+
+def issue_admin_maintenance_code(db: Session, username: str) -> Dict[str, int]:
+    tag = (username or "").strip()
+    if not tag:
+        raise HTTPException(400, "用户名无效")
+    _sms_rate_guard("admin-maintenance", tag)
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    now = int(time.time())
+    expire_at = now + 10 * 60
+    db.query(AdminMaintenanceCode).filter_by(username=tag).delete(synchronize_session=False)
+    db.add(AdminMaintenanceCode(username=tag, code=code, expire_at=expire_at, requested_at=now))
+    db.flush()
+    try:
+        write_sms_line(tag, code, "admin-maintenance")
+    except Exception:
+        pass
+    return {"expire_at": expire_at}
+
+
+def consume_admin_maintenance_code(db: Session, username: str, code: str) -> None:
+    tag = (username or "").strip()
+    submitted = (code or "").strip()
+    if not tag:
+        raise HTTPException(400, "用户名无效")
+    if not submitted:
+        raise HTTPException(400, "需要维护验证码")
+    entry = db.query(AdminMaintenanceCode).filter_by(username=tag).first()
+    if not entry:
+        raise HTTPException(400, "请先申请维护验证码")
+    now = int(time.time())
+    if int(entry.expire_at or 0) < now:
+        db.delete(entry)
+        db.flush()
+        raise HTTPException(401, "维护验证码已过期")
+    if str(entry.code) != str(submitted):
+        raise HTTPException(401, "维护验证码错误")
+    db.delete(entry)
+    db.flush()
 
 
 
@@ -10856,6 +10903,15 @@ def admin_maintenance_status(user: User = Depends(user_from_token), db: Session 
     return state
 
 
+@app.post("/admin/maintenance/request-code")
+def admin_maintenance_request_code(user: User = Depends(user_from_token), db: Session = Depends(get_db)):
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(403, "需要管理员权限")
+    info = issue_admin_maintenance_code(db, user.username)
+    db.commit()
+    return {"ok": True, **info}
+
+
 @app.post("/admin/maintenance")
 def admin_maintenance_update(
     payload: Dict[str, Any],
@@ -10866,6 +10922,8 @@ def admin_maintenance_update(
         raise HTTPException(403, "需要管理员权限")
     desired = bool((payload or {}).get("active", False))
     message = str((payload or {}).get("message") or "").strip()
+    code = str((payload or {}).get("code") or "").strip()
+    consume_admin_maintenance_code(db, user.username, code)
     state = set_maintenance_state(db, desired, message, actor=user.username)
     db.commit()
     return state
@@ -12106,6 +12164,12 @@ def _migrate_ext():
       code TEXT NOT NULL,
       requested_by TEXT NOT NULL,
       expire_at INTEGER NOT NULL
+    )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS admin_maintenance_codes(
+      username TEXT PRIMARY KEY,
+      code TEXT NOT NULL,
+      expire_at INTEGER NOT NULL,
+      requested_at INTEGER NOT NULL
     )""")
 
     con.commit(); con.close()

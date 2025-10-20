@@ -120,16 +120,28 @@ const AnnouncementCenter = {
     const node = document.createElement("div");
     node.className = "notify-card notice";
     node.innerHTML = `
+      <button type="button" class="notify-close" aria-label="关闭公告">×</button>
       <div class="notify-title">📢 全服公告</div>
       <div class="notify-body">${escapeHtml(message)}</div>
     `;
     wrap.appendChild(node);
     requestAnimationFrame(() => node.classList.add("show"));
-    const seconds = Math.max(5, Math.min(Number(payload.duration || 60), 600));
-    setTimeout(() => {
+    const seconds = Math.max(5, Math.min(Number(payload.duration || 60), 60));
+    let dismissed = false;
+    const hide = () => {
+      if (dismissed) return;
+      dismissed = true;
       node.classList.remove("show");
       setTimeout(() => node.remove(), 320);
-    }, seconds * 1000);
+    };
+    const timer = setTimeout(hide, seconds * 1000);
+    const closeBtn = node.querySelector(".notify-close");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => {
+        clearTimeout(timer);
+        hide();
+      });
+    }
   }
 };
 

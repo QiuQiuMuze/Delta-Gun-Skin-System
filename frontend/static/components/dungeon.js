@@ -975,11 +975,11 @@ class DungeonGame {
       `;
     }).join('');
     const featureList = [
-      '起点与房间分布会随周种子刷新，每次深入都是全新路线。',
+      '每次进入古井都会重新生成地图，怪物与事件完全随机分布。',
       '事件拥有多重抉择，成功或失败会影响状态、物品与遗物。',
       '奖励不止积分，还可能获得装备、药剂、勇气与灵魂碎片。',
     ].map(text => `<li>${text}</li>`).join('');
-    const seed = Math.abs(Math.floor(Date.now() / 604800000));
+    const seed = Math.floor(Date.now() + Math.random() * 1_000_000);
     this.currentIntroSeed = seed;
     const heroName = dungeonEscapeHtml(this.introChoice?.name || '');
     this.root.innerHTML = `
@@ -1004,9 +1004,9 @@ class DungeonGame {
           <button type="button" class="dungeon-intro__start" id="dungeon-start-run" ${(!this.admin.gameEnabled || !selected) ? 'disabled' : ''}>准备下井</button>
           <button type="button" class="dungeon-intro__random" id="dungeon-random-class">随机推荐</button>
         </div>
-        <div class="dungeon-intro__meta">
+          <div class="dungeon-intro__meta">
           <div>提示：首层前两场战斗必掉职业相关装备。</div>
-          <div class="dungeon-seed">本周种子：<span id="dungeon-seed">${seed}</span></div>
+          <div class="dungeon-seed">本次探险种子：<span id="dungeon-seed">${seed}</span></div>
         </div>
         <div class="dungeon-panel dungeon-intro-scores" id="dungeon-intro-scores" data-context="intro"></div>
         ${this.admin.gameEnabled ? '' : '<div class="dungeon-maintenance">古井入口暂时关闭，请等待管理员重新开启。</div>'}
@@ -1060,7 +1060,8 @@ class DungeonGame {
           this.addLog('请先选择一名职业再启程。', 'warn');
           return;
         }
-        this.startRun(clsId, this.currentIntroSeed || Math.abs(Math.floor(Date.now() / 604800000)));
+        const fallbackSeed = Math.floor(Date.now() + Math.random() * 1_000_000);
+        this.startRun(clsId, this.currentIntroSeed || fallbackSeed);
       });
     }
     if (this.introChoice?.classId) {
