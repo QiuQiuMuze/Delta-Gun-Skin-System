@@ -70,10 +70,27 @@ html:not(.orientation-mobile) .orientation-content__inner {
   display: block;
 }
 
-html:not(.orientation-mobile) #app-scale {
-  transform: none !important;
-  width: 100% !important;
-  max-width: none !important;
+html:not(.orientation-mobile) body {
+  --ui-scale: var(--orientation-resolution);
+}
+
+html:not(.orientation-mobile):not(.orientation-fallback-active) #app-scale {
+  transform: scale(var(--orientation-resolution));
+  transform-origin: top center;
+  width: 100%;
+  max-width: var(--page-max-width);
+  min-height: 100vh;
+}
+
+html:not(.orientation-mobile):not(.orientation-fallback-active) #app {
+  transform-origin: top center;
+}
+
+@supports (zoom: 1) {
+  html:not(.orientation-mobile):not(.orientation-fallback-active) #app-scale {
+    transform: none;
+    zoom: var(--orientation-resolution);
+  }
 }
 
 .orientation-content--measuring {
