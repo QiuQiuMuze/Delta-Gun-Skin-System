@@ -8,6 +8,245 @@ const escapeHtml = (s)=> String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt
 // ★★★ 关键：让 API 使用“每标签页独立会话”并迁移旧 token
 API.initSession();
 
+const OrientationHelper = {
+  _initialized: false,
+  _autoTried: false,
+  _dismissed: false,
+  _fallbackActive: false,
+  button: null,
+  hint: null,
+  wrapper: null,
+  init() {
+    if (this._initialized) return;
+    if (!document || !document.body) {
+      document.addEventListener("DOMContentLoaded", () => this.init(), { once: true });
+      return;
+    }
+    this._initialized = true;
+    this.ensureWrapper();
+    this.createUI();
+    this.update();
+    window.addEventListener("resize", () => this.update());
+    window.addEventListener("orientationchange", () => this.update());
+    document.addEventListener("fullscreenchange", () => this.update());
+  },
+  isMobile() {
+    const ua = (navigator.userAgent || "").toLowerCase();
+    if (/android|iphone|ipad|ipod|mobile/.test(ua)) return true;
+    if (window.matchMedia) {
+      const mq = window.matchMedia("(max-width: 900px)");
+      if (mq && typeof mq.matches === "boolean" && mq.matches) return true;
+    }
+    return false;
+  },
+  isPortrait() {
+    if (window.matchMedia) {
+      const mq = window.matchMedia("(orientation: portrait)");
+      if (mq && typeof mq.matches === "boolean") return mq.matches;
+    }
+    return window.innerHeight >= window.innerWidth;
+  },
+  supportsLock() {
+    return !!(window.screen && window.screen.orientation && typeof window.screen.orientation.lock === "function");
+  },
+  ensureWrapper() {
+    if (this.wrapper || !document || !document.body) return;
+    const wrapper = document.createElement("div");
+    wrapper.className = "orientation-content";
+    const nodes = Array.from(document.body.childNodes);
+    nodes.forEach((node) => {
+      if (node !== wrapper) {
+        wrapper.appendChild(node);
+      }
+    });
+    document.body.appendChild(wrapper);
+    this.wrapper = wrapper;
+  },
+  createUI() {
+    if (this.button || !document.body) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "orientation-toggle";
+    btn.innerHTML = `<span class="orientation-toggle__icon">📱</span><span class="orientation-toggle__label">横屏模式</span>`;
+    btn.addEventListener("click", async () => {
+      if (this._fallbackActive) {
+        this.setFallback(false);
+        this.update();
+        return;
+      }
+      this._dismissed = false;
+      await this.lockLandscape(true);
+    });
+    document.body.appendChild(btn);
+    this.button = btn;
+
+    const hint = document.createElement("div");
+    hint.className = "orientation-hint";
+    hint.innerHTML = `
+      <div class="orientation-hint__card">
+        <div class="orientation-hint__title">推荐横屏游玩</div>
+        <p class="orientation-hint__text">为了在手机上获得更好的操作体验，我们建议使用横屏。可以点击“一键横屏”尝试自动切换，或手动旋转设备。</p>
+        <div class="orientation-hint__actions">
+          <button type="button" class="btn primary orientation-hint__apply">一键横屏</button>
+          <button type="button" class="btn ghost orientation-hint__dismiss">我知道了</button>
+        </div>
+      </div>
+    `;
+    const applyBtn = hint.querySelector(".orientation-hint__apply");
+    if (applyBtn) {
+      applyBtn.addEventListener("click", async () => {
+        if (this._fallbackActive) {
+          this.setFallback(false);
+          this.update();
+          return;
+        }
+        this._dismissed = false;
+        await this.lockLandscape(true);
+      });
+    }
+    const dismissBtn = hint.querySelector(".orientation-hint__dismiss");
+    if (dismissBtn) {
+      dismissBtn.addEventListener("click", () => {
+        this._dismissed = true;
+        this.hideHint();
+      });
+    }
+    document.body.appendChild(hint);
+    this.hint = hint;
+    this.updateButtonState();
+  },
+  showHint() {
+    if (!this.hint || this._dismissed) return;
+    this.hint.classList.add("show");
+  },
+  hideHint() {
+    if (!this.hint) return;
+    this.hint.classList.remove("show");
+  },
+  setFallback(active) {
+    if (this._fallbackActive === active) return;
+    this.ensureWrapper();
+    this._fallbackActive = !!active;
+    if (this._fallbackActive) {
+      this.hideHint();
+    }
+    this.updateButtonState();
+    this.applyDocumentState(this.isMobile(), this.isPortrait());
+  },
+  updateButtonState() {
+    if (!this.button) return;
+    const active = this._fallbackActive;
+    this.button.classList.toggle("is-active", active);
+    this.button.setAttribute("aria-pressed", active ? "true" : "false");
+    const label = this.button.querySelector(".orientation-toggle__label");
+    if (label) {
+      label.textContent = active ? "退出横屏" : "横屏模式";
+    }
+  },
+  applyDocumentState(mobile, portrait) {
+    const docEl = document.documentElement;
+    if (!docEl) return;
+    const landscapeLike = mobile && (!portrait || this._fallbackActive);
+    docEl.classList.toggle("orientation-mobile", !!mobile);
+    docEl.classList.toggle("orientation-portrait", !!mobile && !!portrait);
+    docEl.classList.toggle("orientation-fallback-active", this._fallbackActive);
+    docEl.classList.toggle("mobile-landscape", !!landscapeLike);
+    if (this.wrapper) {
+      this.wrapper.classList.toggle("orientation-content--fallback", this._fallbackActive);
+      if (this._fallbackActive) {
+        const vw = Math.max(window.innerWidth || 0, 1);
+        const vh = Math.max(window.innerHeight || 0, 1);
+        const scale = Math.min(1, vw / vh);
+        this.wrapper.style.setProperty("--orientation-fallback-scale", scale.toFixed(4));
+      } else {
+        this.wrapper.style.removeProperty("--orientation-fallback-scale");
+      }
+    }
+  },
+  async lockLandscape(fromUser = false) {
+    if (!this.isMobile() || !this.supportsLock()) {
+      this.showHint();
+      if (fromUser) {
+        this.setFallback(true);
+      }
+      return false;
+    }
+    try {
+      const orientation = window.screen.orientation;
+      if (fromUser && !document.fullscreenElement && document.documentElement?.requestFullscreen) {
+        try {
+          await document.documentElement.requestFullscreen();
+        } catch (_) {
+          /* 忽略全屏失败，继续尝试锁定 */
+        }
+      }
+      const targets = fromUser ? ["landscape-primary", "landscape-secondary", "landscape"] : ["landscape"];
+      let locked = false;
+      let lastError = null;
+      for (const type of targets) {
+        try {
+          await orientation.lock(type);
+          locked = true;
+          break;
+        } catch (lockErr) {
+          lastError = lockErr;
+        }
+      }
+      if (!locked) {
+        throw lastError || new Error("orientation lock failed");
+      }
+      this.hideHint();
+      this._autoTried = true;
+      this.setFallback(false);
+      return true;
+    } catch (err) {
+      console.warn("orientation lock failed", err);
+      this.showHint();
+      if (fromUser) {
+        this.setFallback(true);
+      }
+      return false;
+    }
+  },
+  update() {
+    const mobile = this.isMobile();
+    if (this.button) {
+      if (mobile) {
+        this.button.classList.add("show");
+      } else {
+        this.button.classList.remove("show");
+      }
+    }
+    if (!mobile) {
+      this.hideHint();
+      this.setFallback(false);
+      this.applyDocumentState(false, false);
+      return;
+    }
+    const portrait = this.isPortrait();
+    if (!portrait && this._fallbackActive) {
+      this.setFallback(false);
+    }
+    this.applyDocumentState(mobile, portrait);
+    if (portrait) {
+      if (this._fallbackActive) {
+        this.hideHint();
+      } else {
+        this.showHint();
+        if (!this._autoTried) {
+          this._autoTried = true;
+          this.lockLandscape(false);
+        }
+      }
+    } else {
+      this.hideHint();
+    }
+  }
+};
+
+OrientationHelper.init();
+window.OrientationHelper = OrientationHelper;
+
 const PresenceTracker = {
   _route: "home",
   _activity: null,
