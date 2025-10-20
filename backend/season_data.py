@@ -1590,6 +1590,9 @@ SEASON_DEFINITIONS = [
                     "body_colors": [["#5e7bff", "#9cc4ff"], ["#ff75d8", "#ffe9ff"]],
                     "attachment_colors": [["#ffe58a", "#ffffff"], ["#9effff", "#ffffff"]],
                     "template_rules": [
+                        {"key": "brick_white_diamond", "label": "白钻模板", "weight": 1, "allow_premium": False, "allow_exquisite": True, "effects": ["sheen", "sparkle"], "body": ["#f6fbff", "#e2f3ff"], "attachments": ["#fffaf1", "#f1e6ff"]},
+                        {"key": "brick_yellow_diamond", "label": "黄钻模板", "weight": 1, "allow_premium": False, "allow_exquisite": True, "effects": ["sheen", "sparkle"], "body": ["#fff4d7", "#ffe9a6"], "attachments": ["#ffe8b7", "#fff6d6"]},
+                        {"key": "brick_pink_diamond", "label": "粉钻模板", "weight": 1, "allow_premium": False, "allow_exquisite": True, "effects": ["sheen", "sparkle"], "body": ["#ffe7f5", "#ffd0ec"], "attachments": ["#ffdef2", "#fff2fb"]},
                         {"key": "brick_prism2_flux", "label": "棱镜攻势2", "weight": 100, "allow_premium": True, "allow_exquisite": True, "effects": ["prism_flux"], "body": ["#6f8dff", "#b6d4ff"], "attachments": ["#ffd778", "#ffffff"]}
                     ],
                     "extra_effects": {
