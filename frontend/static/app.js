@@ -43,6 +43,7 @@ const OrientationHelper = {
   _resolutionTrigger: null,
   _resolutionHidden: false,
   _resolutionExpanded: false,
+  _forceResolutionPanel: false,
   _contentObserver: null,
   _suppressObserver: false,
   _observerReleaseTask: 0,
@@ -224,23 +225,23 @@ const OrientationHelper = {
     panel.className = "orientation-resolution";
     const selectId = "orientation-resolution-select";
     panel.innerHTML = `
-      <div class="orientation-resolution__head">
-        <div class="orientation-resolution__label">横屏视图</div>
-        <div class="orientation-resolution__actions">
-          <div class="orientation-resolution__status" aria-live="polite">
-            <span class="orientation-resolution__value">100%</span>
-            <span class="orientation-resolution__mode"></span>
+        <div class="orientation-resolution__head">
+          <div class="orientation-resolution__label">界面缩放</div>
+          <div class="orientation-resolution__actions">
+            <div class="orientation-resolution__status" aria-live="polite">
+              <span class="orientation-resolution__value">100%</span>
+              <span class="orientation-resolution__mode"></span>
+            </div>
+            <button type="button" class="orientation-resolution__collapse" aria-expanded="false" aria-controls="${selectId}-body">
+              <span class="orientation-resolution__collapse-text">展开设置</span>
+              <span class="orientation-resolution__collapse-icon" aria-hidden="true">▾</span>
+            </button>
+            <button type="button" class="orientation-resolution__close" aria-label="隐藏界面缩放设置">×</button>
           </div>
-          <button type="button" class="orientation-resolution__collapse" aria-expanded="false" aria-controls="${selectId}-body">
-            <span class="orientation-resolution__collapse-text">展开设置</span>
-            <span class="orientation-resolution__collapse-icon" aria-hidden="true">▾</span>
-          </button>
-          <button type="button" class="orientation-resolution__close" aria-label="隐藏横屏视图设置">×</button>
         </div>
-      </div>
       <div class="orientation-resolution__body" id="${selectId}-body">
-        <label class="sr-only" for="${selectId}">横屏视图模式</label>
-        <select id="${selectId}" class="orientation-resolution__select" aria-label="横屏分辨率">
+        <label class="sr-only" for="${selectId}">界面缩放模式</label>
+        <select id="${selectId}" class="orientation-resolution__select" aria-label="界面缩放比例">
           ${this._resolutionOptions.map((item) => `<option value="${item.value}">${item.label}</option>`).join("")}
         </select>
         <div class="orientation-resolution__tip">“自适应”会自动压缩内容到屏幕内，若想手动放大或缩小，可选择具体百分比。</div>
@@ -291,7 +292,7 @@ const OrientationHelper = {
     const trigger = document.createElement("button");
     trigger.type = "button";
     trigger.className = "orientation-resolution-trigger";
-    trigger.setAttribute("aria-label", "显示横屏视图设置");
+    trigger.setAttribute("aria-label", "显示界面缩放设置");
     trigger.innerHTML = `<span class="orientation-resolution-trigger__icon" aria-hidden="true">🎛️</span>`;
     trigger.addEventListener("click", () => {
       this.setResolutionHidden(false);
@@ -727,9 +728,10 @@ const OrientationHelper = {
   },
   syncResolutionShell(landscapeLikeOverride = null) {
     const landscapeLike = typeof landscapeLikeOverride === "boolean" ? landscapeLikeOverride : this._landscapeLike;
+    const effectiveLandscape = !!landscapeLike || !!this._forceResolutionPanel;
     const panel = this._resolutionPanel;
     const trigger = this._resolutionTrigger;
-    const showPanel = !!landscapeLike && !this._resolutionHidden;
+    const showPanel = effectiveLandscape && !this._resolutionHidden;
     if (panel) {
       panel.classList.toggle("show", showPanel);
       panel.classList.toggle("is-collapsed", showPanel && !this._resolutionExpanded);
@@ -738,8 +740,9 @@ const OrientationHelper = {
       panel.style.setProperty("--orientation-rotation", this._fallbackActive ? "-90deg" : "0deg");
     }
     if (trigger) {
-      trigger.classList.toggle("show", !!landscapeLike && this._resolutionHidden);
-      trigger.setAttribute("aria-hidden", !!landscapeLike && this._resolutionHidden ? "false" : "true");
+      const showTrigger = this._resolutionHidden && effectiveLandscape;
+      trigger.classList.toggle("show", showTrigger);
+      trigger.setAttribute("aria-hidden", showTrigger ? "false" : "true");
       trigger.style.setProperty("--orientation-rotation", this._fallbackActive ? "-90deg" : "0deg");
     }
     if (this._resolutionCollapseBtn) {
@@ -806,6 +809,7 @@ const OrientationHelper = {
   },
   update() {
     const mobile = this.isMobile();
+    this._forceResolutionPanel = !mobile;
     if (this.button) {
       if (mobile) {
         this.button.classList.add("show");
@@ -817,8 +821,14 @@ const OrientationHelper = {
       this.hideHint();
       this.setFallback(false);
       this.applyDocumentState(false, false);
+      const scale = this.getCurrentScale();
+      this.syncResolutionVariable(scale);
+      this.updateResolutionSummary(scale);
+      this.syncResolutionShell(true);
+      this.refreshDragBounds();
       return;
     }
+    this._forceResolutionPanel = false;
     const portrait = this.isPortrait();
     if (!portrait && this._fallbackActive) {
       this.setFallback(false);
