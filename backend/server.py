@@ -12697,6 +12697,7 @@ def admin_force_template(payload: dict, admin=_Depends(_require_admin)):
         force_exquisite = bool(selection.get("force_exquisite", True))
         target_skin = selection.get("skin_id") or ""
         grant = db.query(SeasonTemplateGrant).filter_by(user_id=user_id, season=season_key).first()
+        replaced = bool(grant)
         now_ts = int(time.time())
         if grant:
             grant.template_key = template_key
@@ -12714,6 +12715,7 @@ def admin_force_template(payload: dict, admin=_Depends(_require_admin)):
             )
             db.add(grant)
         db.commit()
+        db.refresh(grant)
 
         label = BRICK_TEMPLATE_LABELS.get(
             template_key,
@@ -12728,7 +12730,46 @@ def admin_force_template(payload: dict, admin=_Depends(_require_admin)):
             "template_label": label,
             "force_exquisite": bool(grant.force_exquisite),
             "skin_id": grant.skin_id or None,
+            "created_at": int(grant.created_at or now_ts),
+            "replaced": replaced,
         }
+
+
+@ext.get("/admin/force-template")
+def admin_force_template_queue(season: Optional[str] = None, admin=_Depends(_require_admin)):
+    season_key = _normalize_season(season) if season else None
+    with SessionLocal() as db:
+        query = (
+            db.query(SeasonTemplateGrant, User.username)
+            .join(User, User.id == SeasonTemplateGrant.user_id)
+        )
+        if season_key:
+            query = query.filter(SeasonTemplateGrant.season == season_key)
+        rows = query.order_by(SeasonTemplateGrant.created_at.desc(), SeasonTemplateGrant.id.desc()).all()
+        items: List[Dict[str, Any]] = []
+        now_ts = int(time.time())
+        for grant, username in rows:
+            tpl = grant.template_key or ""
+            label = BRICK_TEMPLATE_LABELS.get(
+                tpl,
+                TEMPLATE_LABEL_LOOKUP.get(str(tpl or "").lower(), tpl),
+            )
+            items.append(
+                {
+                    "id": grant.id,
+                    "user_id": grant.user_id,
+                    "username": username or "",
+                    "season": grant.season,
+                    "season_label": _season_display_name(grant.season or ""),
+                    "template": tpl,
+                    "template_label": label,
+                    "force_exquisite": bool(grant.force_exquisite),
+                    "skin_id": grant.skin_id or None,
+                    "created_at": int(grant.created_at or 0),
+                    "seconds_ago": max(0, now_ts - int(grant.created_at or now_ts)),
+                }
+            )
+        return {"items": items, "count": len(items)}
 
 # 管理员：发放法币
 @ext.post("/admin/grant-fiat")

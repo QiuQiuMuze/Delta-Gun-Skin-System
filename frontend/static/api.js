@@ -322,6 +322,12 @@ const API = {
 
   adminDeductFiat: (username, amount_fiat) =>
     API.json("/admin/deduct-fiat", "POST", { username, amount_fiat }),
+  adminForceTemplateQueue: (season = null) => {
+    const usp = new URLSearchParams();
+    if (season) usp.append("season", season);
+    const suffix = usp.toString() ? `?${usp.toString()}` : "";
+    return API.json(`/admin/force-template${suffix}`);
+  },
   adminForceSeasonTemplate: (user_id, season) =>
     API.json("/admin/force-template", "POST", { user_id, season }),
   adminPasswordRequest: (target_id) =>
