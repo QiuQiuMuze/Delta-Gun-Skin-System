@@ -2,8 +2,8 @@
   --orientation-resolution: 1;
   --orientation-effective-scale: 1;
   --orientation-resolution-inverse: 1;
-  --page-max-width: 1440px;
-  --page-horizontal-gap: clamp(16px, 4vw, 48px);
+  --page-max-width: min(2200px, 100vw);
+  --page-horizontal-gap: clamp(18px, 2.4vw, 52px);
   --page-vertical-gap: clamp(24px, 5vh, 72px);
 }
 
@@ -21,8 +21,10 @@ body {
 }
 
 #app {
-  width: min(var(--page-max-width), calc(100% - var(--page-horizontal-gap) * 2));
+  width: 100%;
+  max-width: var(--page-max-width);
   margin: 0 auto;
+  padding: 0 var(--page-horizontal-gap);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -33,10 +35,14 @@ body {
   width: 100%;
   display: flex;
   justify-content: center;
-  padding: 0 var(--page-horizontal-gap);
+  padding: 0;
 }
 
 html.orientation-fallback-active #app-scale {
+  padding: 0;
+}
+
+html.orientation-fallback-active #app {
   padding: 0;
 }
 
@@ -476,7 +482,7 @@ a:hover { text-decoration: underline; }
   display:flex;
   justify-content:space-between;
   align-items:center;
-  padding:14px 20px;
+  padding:14px var(--page-horizontal-gap);
   background:rgba(13,17,26,0.78);
   border-bottom:1px solid rgba(46,60,92,0.55);
   position:sticky;
@@ -493,7 +499,7 @@ a:hover { text-decoration: underline; }
 }
 
 .footer {
-  padding: 18px 20px 32px;
+  padding: 18px var(--page-horizontal-gap) 32px;
   text-align: center;
   color: #94a3b8;
   font-size: 13px;
@@ -546,10 +552,14 @@ main#page > * {
 
 @media (max-width: 1200px) {
   #app {
-    width: min(var(--page-max-width), 100%);
-  }
-  #app-scale {
     padding: 0 clamp(12px, 5vw, 24px);
+  }
+  .topbar {
+    padding: clamp(12px, 4vw, 18px) clamp(12px, 5vw, 24px);
+  }
+  .footer {
+    padding: clamp(16px, 5vw, 24px) clamp(12px, 5vw, 24px)
+      clamp(26px, 7vw, 48px);
   }
   main#page {
     padding: clamp(20px, 5vw, 40px) 0 clamp(28px, 7vw, 60px);
@@ -558,10 +568,14 @@ main#page > * {
 
 @media (max-width: 768px) {
   #app {
-    width: 100%;
-  }
-  #app-scale {
     padding: 0 clamp(10px, 4vw, 18px);
+  }
+  .topbar {
+    padding: clamp(12px, 4vw, 18px) clamp(10px, 4vw, 18px);
+  }
+  .footer {
+    padding: clamp(18px, 6vw, 28px) clamp(10px, 4vw, 18px)
+      clamp(30px, 10vw, 46px);
   }
   main#page {
     padding: 18px 0 48px;
