@@ -38,6 +38,11 @@ const OrientationHelper = {
   _resolutionSelect: null,
   _resolutionValueEl: null,
   _resolutionModeEl: null,
+  _resolutionCollapseBtn: null,
+  _resolutionCloseBtn: null,
+  _resolutionTrigger: null,
+  _resolutionHidden: false,
+  _resolutionExpanded: false,
   _contentObserver: null,
   _suppressObserver: false,
   _observerReleaseTask: 0,
@@ -60,7 +65,7 @@ const OrientationHelper = {
     this.createResolutionUI();
     this.updateResolutionSummary(1);
     this.syncResolutionVariable(1);
-    this.updateResolutionVisibility(false);
+    this.syncResolutionShell(false);
     this.update();
     window.addEventListener("resize", () => this.update());
     window.addEventListener("orientationchange", () => this.update());
@@ -218,16 +223,25 @@ const OrientationHelper = {
     panel.innerHTML = `
       <div class="orientation-resolution__head">
         <div class="orientation-resolution__label">横屏视图</div>
-        <div class="orientation-resolution__status" aria-live="polite">
-          <span class="orientation-resolution__value">100%</span>
-          <span class="orientation-resolution__mode"></span>
+        <div class="orientation-resolution__actions">
+          <div class="orientation-resolution__status" aria-live="polite">
+            <span class="orientation-resolution__value">100%</span>
+            <span class="orientation-resolution__mode"></span>
+          </div>
+          <button type="button" class="orientation-resolution__collapse" aria-expanded="false" aria-controls="${selectId}-body">
+            <span class="orientation-resolution__collapse-text">展开设置</span>
+            <span class="orientation-resolution__collapse-icon" aria-hidden="true">▾</span>
+          </button>
+          <button type="button" class="orientation-resolution__close" aria-label="隐藏横屏视图设置">×</button>
         </div>
       </div>
-      <label class="sr-only" for="${selectId}">横屏视图模式</label>
-      <select id="${selectId}" class="orientation-resolution__select" aria-label="横屏分辨率">
-        ${this._resolutionOptions.map((item) => `<option value="${item.value}">${item.label}</option>`).join("")}
-      </select>
-      <div class="orientation-resolution__tip">“自适应”会自动压缩内容到屏幕内，若想手动放大或缩小，可选择具体百分比。</div>
+      <div class="orientation-resolution__body" id="${selectId}-body">
+        <label class="sr-only" for="${selectId}">横屏视图模式</label>
+        <select id="${selectId}" class="orientation-resolution__select" aria-label="横屏分辨率">
+          ${this._resolutionOptions.map((item) => `<option value="${item.value}">${item.label}</option>`).join("")}
+        </select>
+        <div class="orientation-resolution__tip">“自适应”会自动压缩内容到屏幕内，若想手动放大或缩小，可选择具体百分比。</div>
+      </div>
     `;
     const select = panel.querySelector("select");
     if (select) {
@@ -255,8 +269,32 @@ const OrientationHelper = {
     }
     this._resolutionValueEl = panel.querySelector(".orientation-resolution__value");
     this._resolutionModeEl = panel.querySelector(".orientation-resolution__mode");
+    this._resolutionCollapseBtn = panel.querySelector(".orientation-resolution__collapse");
+    this._resolutionCloseBtn = panel.querySelector(".orientation-resolution__close");
+    if (this._resolutionCollapseBtn) {
+      this._resolutionCollapseBtn.addEventListener("click", () => {
+        this.setResolutionExpanded(!this._resolutionExpanded);
+      });
+    }
+    if (this._resolutionCloseBtn) {
+      this._resolutionCloseBtn.addEventListener("click", () => {
+        this.setResolutionHidden(true);
+      });
+    }
     document.body.appendChild(panel);
     this._resolutionPanel = panel;
+
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "orientation-resolution-trigger";
+    trigger.setAttribute("aria-label", "显示横屏视图设置");
+    trigger.innerHTML = `<span class="orientation-resolution-trigger__icon" aria-hidden="true">🎛️</span>`;
+    trigger.addEventListener("click", () => {
+      this.setResolutionHidden(false);
+      this.setResolutionExpanded(false);
+    });
+    document.body.appendChild(trigger);
+    this._resolutionTrigger = trigger;
   },
   updateResolutionSummary(scale) {
     const effective = typeof scale === "number" && isFinite(scale) ? scale : (this._fallbackActive ? this._lastEffectiveScale : 1);
@@ -269,6 +307,18 @@ const OrientationHelper = {
     }
     if (this._resolutionPanel) {
       this._resolutionPanel.classList.toggle("is-auto", this._resolutionMode === "auto");
+    }
+    if (this._resolutionCollapseBtn) {
+      const expanded = this._resolutionExpanded;
+      this._resolutionCollapseBtn.setAttribute("aria-expanded", expanded ? "true" : "false");
+      const textEl = this._resolutionCollapseBtn.querySelector(".orientation-resolution__collapse-text");
+      const iconEl = this._resolutionCollapseBtn.querySelector(".orientation-resolution__collapse-icon");
+      if (textEl) {
+        textEl.textContent = expanded ? "收起设置" : "展开设置";
+      }
+      if (iconEl) {
+        iconEl.textContent = expanded ? "▴" : "▾";
+      }
     }
   },
   showHint() {
@@ -307,10 +357,11 @@ const OrientationHelper = {
       this._contentRect = { width: 0, height: 0 };
       this.syncResolutionVariable(1);
       this.updateResolutionSummary(1);
+      this.syncResolutionShell();
     }
     this.updateButtonState();
     this.applyDocumentState(this.isMobile(), this.isPortrait());
-    this.updateResolutionVisibility(this._landscapeLike);
+    this.syncResolutionShell();
   },
   updateButtonState() {
     if (!this.button) return;
@@ -341,6 +392,7 @@ const OrientationHelper = {
         this.wrapper.style.removeProperty("--orientation-fallback-height");
       }
     }
+    this.updateFloatingRotation();
   },
   computeBaseScale() {
     const viewport = window.visualViewport;
@@ -401,10 +453,7 @@ const OrientationHelper = {
     }
   },
   updateResolutionVisibility(landscapeLike) {
-    const show = !!landscapeLike;
-    if (this._resolutionPanel) {
-      this._resolutionPanel.classList.toggle("show", show);
-    }
+    this.syncResolutionShell(landscapeLike);
     if (this._resolutionSelect) {
       this._resolutionSelect.value = this._resolutionMode === "auto" ? "auto" : String(this._resolutionScale);
     }
@@ -434,6 +483,66 @@ const OrientationHelper = {
     const safeEffective = Math.min(1, Math.max(0.2, base));
     docEl.style.setProperty("--orientation-resolution", safeTypography.toFixed(2));
     docEl.style.setProperty("--orientation-effective-scale", safeEffective.toFixed(3));
+  },
+  updateFloatingRotation() {
+    const rotation = this._fallbackActive ? "-90deg" : "0deg";
+    if (this.button) {
+      this.button.style.setProperty("--orientation-rotation", rotation);
+    }
+    if (this._resolutionPanel) {
+      this._resolutionPanel.style.setProperty("--orientation-rotation", rotation);
+    }
+    if (this._resolutionTrigger) {
+      this._resolutionTrigger.style.setProperty("--orientation-rotation", rotation);
+    }
+  },
+  setResolutionHidden(hidden, landscapeLikeOverride = null) {
+    this._resolutionHidden = !!hidden;
+    if (hidden) {
+      this._resolutionExpanded = false;
+    }
+    if (!hidden && !this._resolutionExpanded) {
+      this.updateResolutionSummary(this._fallbackActive ? this._lastEffectiveScale : 1);
+    }
+    this.syncResolutionShell(landscapeLikeOverride);
+  },
+  setResolutionExpanded(expanded, landscapeLikeOverride = null) {
+    this._resolutionExpanded = !!expanded;
+    this.updateResolutionSummary(this._fallbackActive ? this._lastEffectiveScale : 1);
+    this.syncResolutionShell(landscapeLikeOverride);
+  },
+  syncResolutionShell(landscapeLikeOverride = null) {
+    const landscapeLike = typeof landscapeLikeOverride === "boolean" ? landscapeLikeOverride : this._landscapeLike;
+    const panel = this._resolutionPanel;
+    const trigger = this._resolutionTrigger;
+    const showPanel = !!landscapeLike && !this._resolutionHidden;
+    if (panel) {
+      panel.classList.toggle("show", showPanel);
+      panel.classList.toggle("is-collapsed", showPanel && !this._resolutionExpanded);
+      panel.setAttribute("aria-hidden", showPanel ? "false" : "true");
+      panel.setAttribute("data-expanded", this._resolutionExpanded ? "true" : "false");
+      panel.style.setProperty("--orientation-rotation", this._fallbackActive ? "-90deg" : "0deg");
+    }
+    if (trigger) {
+      trigger.classList.toggle("show", !!landscapeLike && this._resolutionHidden);
+      trigger.setAttribute("aria-hidden", !!landscapeLike && this._resolutionHidden ? "false" : "true");
+      trigger.style.setProperty("--orientation-rotation", this._fallbackActive ? "-90deg" : "0deg");
+    }
+    if (this._resolutionCollapseBtn) {
+      const expanded = showPanel && this._resolutionExpanded;
+      this._resolutionCollapseBtn.setAttribute("aria-expanded", expanded ? "true" : "false");
+      const textEl = this._resolutionCollapseBtn.querySelector(".orientation-resolution__collapse-text");
+      const iconEl = this._resolutionCollapseBtn.querySelector(".orientation-resolution__collapse-icon");
+      if (textEl) {
+        textEl.textContent = expanded ? "收起设置" : "展开设置";
+      }
+      if (iconEl) {
+        iconEl.textContent = expanded ? "▴" : "▾";
+      }
+    }
+    if (this._resolutionModeEl) {
+      this._resolutionModeEl.setAttribute("aria-hidden", showPanel ? "false" : "true");
+    }
   },
   async lockLandscape(fromUser = false) {
     if (!this.isMobile() || !this.supportsLock()) {
@@ -503,7 +612,7 @@ const OrientationHelper = {
     if (this._fallbackActive) {
       this.applyFallbackScale();
     }
-    this.updateResolutionVisibility(this._landscapeLike);
+    this.syncResolutionShell();
     if (portrait) {
       if (this._fallbackActive) {
         this.hideHint();
