@@ -322,6 +322,8 @@ const API = {
 
   adminDeductFiat: (username, amount_fiat) =>
     API.json("/admin/deduct-fiat", "POST", { username, amount_fiat }),
+  adminForceSeasonTemplate: (user_id, season) =>
+    API.json("/admin/force-template", "POST", { user_id, season }),
   adminPasswordRequest: (target_id) =>
     API.json("/admin/user-password/request", "POST", { target_id }),
   adminPasswordConfirm: (target_id, code, new_password = null) => {

@@ -105,6 +105,19 @@ const AdminPage = {
       <div id="inventory-view" style="display:none;"></div>
 
       <div class="card">
+        <h3>下一抽必出特殊模板</h3>
+        <div class="muted">输入玩家 ID 并选择赛季，可让该玩家在该赛季的下一次开砖获得概率最低的特殊模板（一次性生效）。</div>
+        <div class="input-row">
+          <input id="force-template-user-id" type="number" min="1" placeholder="玩家ID" />
+        </div>
+        <div class="input-row" style="gap:8px; flex-wrap:wrap;">
+          <select id="force-template-season" style="min-width:160px;"></select>
+          <button class="btn primary" id="force-template-apply">触发必中</button>
+        </div>
+        <div class="muted" id="force-template-status">等待操作...</div>
+      </div>
+
+      <div class="card">
         <h3>余额操作</h3>
         <div class="input-row">
           <input id="op-username" placeholder="用户名"/>
@@ -220,6 +233,10 @@ const AdminPage = {
     const announcementStatus = byId('announcement-status');
     const announcementSend = byId('announcement-send');
     const announcementClear = byId('announcement-clear');
+    const forceTemplateUser = byId('force-template-user-id');
+    const forceTemplateSeason = byId('force-template-season');
+    const forceTemplateButton = byId('force-template-apply');
+    const forceTemplateStatus = byId('force-template-status');
     modeDesc.textContent = "加载中...";
     if (cookieDesc) cookieDesc.textContent = "加载中...";
 
@@ -227,6 +244,41 @@ const AdminPage = {
       modeDesc.textContent = free
         ? "当前为免验证码模式：登录无需短信验证，注册时不强制手机且赠送 20000 法币。"
         : "当前为短信验证模式：登录/注册均需短信验证码，新注册不再赠送法币。";
+    };
+
+    const populateForceTemplateSeasons = async () => {
+      if (!forceTemplateSeason) return;
+      forceTemplateSeason.innerHTML = '<option value="">加载中...</option>';
+      try {
+        const catalog = await API.seasonCatalog();
+        const seasons = Array.isArray(catalog?.seasons) ? catalog.seasons : [];
+        const latest = String(catalog?.latest || '').trim().toUpperCase();
+        const pieces = ['<option value="">请选择赛季</option>'];
+        const idSet = new Set();
+        seasons.forEach((item) => {
+          const rawId = String(item?.id || '').trim();
+          if (!rawId) return;
+          const id = rawId.toUpperCase();
+          const name = String(item?.name || '').trim();
+          const label = name ? `${id} ｜ ${name}` : id;
+          pieces.push(`<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`);
+          idSet.add(id);
+        });
+        forceTemplateSeason.innerHTML = pieces.join('');
+        if (latest && idSet.has(latest)) {
+          forceTemplateSeason.value = latest;
+        } else if (forceTemplateSeason.options.length > 1) {
+          forceTemplateSeason.selectedIndex = 1;
+        }
+        if (forceTemplateStatus) {
+          forceTemplateStatus.textContent = '等待操作...';
+        }
+      } catch (e) {
+        forceTemplateSeason.innerHTML = '<option value="">加载失败</option>';
+        if (forceTemplateStatus) {
+          forceTemplateStatus.textContent = `赛季列表加载失败：${escapeHtml(e.message || e)}`;
+        }
+      }
     };
 
     const loadAuthMode = async () => {
@@ -535,6 +587,47 @@ const AdminPage = {
       };
     }
 
+    if (forceTemplateButton) {
+      forceTemplateButton.onclick = async () => {
+        if (!forceTemplateUser || !forceTemplateSeason) return;
+        const uid = parseInt(forceTemplateUser.value || '', 10);
+        if (!Number.isInteger(uid) || uid <= 0) {
+          alert('请输入有效的玩家ID');
+          return;
+        }
+        const seasonVal = String(forceTemplateSeason.value || '').trim().toUpperCase();
+        if (!seasonVal) {
+          alert('请选择赛季');
+          return;
+        }
+        forceTemplateButton.disabled = true;
+        if (forceTemplateStatus) {
+          forceTemplateStatus.textContent = '处理中...';
+        }
+        try {
+          const resp = await API.adminForceSeasonTemplate(uid, seasonVal);
+          const tplLabel = escapeHtml(resp?.template_label || resp?.template || '');
+          const seasonLabel = escapeHtml(resp?.season_label || seasonVal);
+          if (forceTemplateStatus) {
+            forceTemplateStatus.innerHTML = `成功设置：玩家 <b>${uid}</b> 在 <b>${seasonLabel}</b> 的下一抽将获得 <b>${tplLabel}</b>（一次性）。`;
+          } else {
+            alert('已设置下一抽必中特殊模板');
+          }
+          forceTemplateUser.value = '';
+        } catch (e) {
+          const msg = e?.message || String(e);
+          if (forceTemplateStatus) {
+            forceTemplateStatus.textContent = `失败：${escapeHtml(msg)}`;
+          } else {
+            alert(msg);
+          }
+        } finally {
+          forceTemplateButton.disabled = false;
+        }
+      };
+    }
+
+    await populateForceTemplateSeasons();
     await loadCookie();
     loadDungeonSettings();
     if (dungeonGameToggle) dungeonGameToggle.onchange = persistDungeonSettings;
