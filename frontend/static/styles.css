@@ -505,6 +505,33 @@ main#page { padding:24px 20px 48px; max-width:1120px; margin:0 auto; }
     padding: clamp(6px, 10px * var(--orientation-resolution), 16px)
       clamp(10px, 14px * var(--orientation-resolution), 22px);
     overflow-x: hidden;
+    --ui-scale: var(--orientation-resolution);
+  }
+
+  html.mobile-landscape #app-scale {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    position: relative;
+  }
+
+  html.mobile-landscape:not(.orientation-fallback-active) #app-scale {
+    transform: scale(var(--orientation-resolution));
+    transform-origin: top center;
+    width: calc(100% * var(--orientation-resolution-inverse));
+    max-width: calc(100% * var(--orientation-resolution-inverse));
+    max-height: calc(100vh * var(--orientation-resolution-inverse));
+  }
+
+  @supports (zoom: 1) {
+    html.mobile-landscape:not(.orientation-fallback-active) #app-scale {
+      transform: none;
+      zoom: var(--orientation-resolution);
+      width: 100%;
+      max-width: 100%;
+      max-height: 100%;
+    }
   }
 
   html.mobile-landscape #app-scale {
@@ -720,6 +747,803 @@ main#page { padding:24px 20px 48px; max-width:1120px; margin:0 auto; }
 
   html.mobile-landscape .inventory-summary {
     font-size: calc(0.78rem * var(--orientation-resolution));
+  }
+
+  html.mobile-landscape .order-list {
+    border-radius: calc(10px * var(--ui-scale));
+    padding: calc(10px * var(--ui-scale));
+    gap: calc(8px * var(--ui-scale));
+    max-height: calc(220px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .order-list.small {
+    max-height: calc(180px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .order-list .muted {
+    font-size: calc(13px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-card {
+    gap: calc(16px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-price {
+    font-size: calc(15px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-board,
+  html.mobile-landscape .shop-board__lists,
+  html.mobile-landscape .shop-actions {
+    gap: calc(16px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-board__column {
+    gap: calc(10px * var(--ui-scale));
+    min-width: calc(200px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-season,
+  html.mobile-landscape .gacha-season {
+    border-radius: calc(12px * var(--ui-scale));
+    padding: calc(14px * var(--ui-scale));
+    gap: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-season__catalog,
+  html.mobile-landscape .gacha-season__info {
+    border-radius: calc(12px * var(--ui-scale));
+    padding: calc(12px * var(--ui-scale));
+    gap: calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-season__meta,
+  html.mobile-landscape .gacha-season__meta {
+    font-size: calc(13px * var(--ui-scale));
+    gap: calc(6px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-season__groups,
+  html.mobile-landscape .gacha-season__groups {
+    gap: calc(12px * var(--ui-scale));
+    grid-template-columns: repeat(
+      auto-fit,
+      minmax(calc(160px * var(--ui-scale)), 1fr)
+    );
+  }
+
+  html.mobile-landscape .shop-season__group,
+  html.mobile-landscape .gacha-season__group {
+    border-radius: calc(10px * var(--ui-scale));
+    padding: calc(10px * var(--ui-scale));
+    gap: calc(6px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-season__group h4,
+  html.mobile-landscape .gacha-season__group h4 {
+    font-size: calc(14px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-season__group ul,
+  html.mobile-landscape .gacha-season__group ul {
+    gap: calc(4px * var(--ui-scale));
+    font-size: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-season__grid {
+    gap: calc(12px * var(--ui-scale));
+    grid-template-columns: repeat(
+      auto-fit,
+      minmax(calc(220px * var(--ui-scale)), 1fr)
+    );
+  }
+
+  html.mobile-landscape .shop-season__card {
+    border-radius: calc(12px * var(--ui-scale));
+    padding: calc(12px * var(--ui-scale));
+    gap: calc(8px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-season__card h4 {
+    font-size: calc(16px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-season__card-meta {
+    font-size: calc(13px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-season__card-desc {
+    font-size: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-season__card-counts {
+    gap: calc(6px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-season__chip {
+    padding: calc(2px * var(--ui-scale)) calc(10px * var(--ui-scale));
+    font-size: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .shop-box {
+    border-radius: calc(12px * var(--ui-scale));
+    padding: calc(14px * var(--ui-scale));
+    gap: calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .market-preview-cell {
+    min-width: calc(150px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .market-preview-cell .skin-preview__meta {
+    font-size: calc(11px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .inventory-summary {
+    border-radius: calc(10px * var(--ui-scale));
+    padding: calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .inventory-season-grid {
+    gap: calc(10px * var(--ui-scale));
+    margin-top: calc(10px * var(--ui-scale));
+    grid-template-columns: repeat(
+      auto-fit,
+      minmax(calc(200px * var(--ui-scale)), 1fr)
+    );
+  }
+
+  html.mobile-landscape .inventory-season-chip {
+    border-radius: calc(12px * var(--ui-scale));
+    padding: calc(12px * var(--ui-scale));
+    gap: calc(8px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .inventory-season-chip__title {
+    font-size: calc(15px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .inventory-season-chip__count {
+    font-size: calc(13px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .inventory-season-chip__rarities {
+    gap: calc(6px * var(--ui-scale));
+    font-size: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .inventory-section {
+    margin-top: calc(12px * var(--ui-scale));
+    padding-top: calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .inventory-section__title {
+    font-size: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-container {
+    gap: calc(14px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-sidebar {
+    width: calc(240px * var(--ui-scale));
+    gap: calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-search {
+    gap: calc(8px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-search input,
+  html.mobile-landscape .friends-chat__form textarea {
+    border-radius: calc(8px * var(--ui-scale));
+    padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-search__results,
+  html.mobile-landscape .friends-chat__messages,
+  html.mobile-landscape .friends-section {
+    border-radius: calc(12px * var(--ui-scale));
+    padding: calc(12px * var(--ui-scale));
+    gap: calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-search__result,
+  html.mobile-landscape .friends-list__item,
+  html.mobile-landscape .friends-request,
+  html.mobile-landscape .friends-blocked__item,
+  html.mobile-landscape .friends-chat__disabled {
+    border-radius: calc(10px * var(--ui-scale));
+    padding: calc(10px * var(--ui-scale));
+    gap: calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-search__meta,
+  html.mobile-landscape .friends-search__hint,
+  html.mobile-landscape .friends-search__empty,
+  html.mobile-landscape .friends-list__meta,
+  html.mobile-landscape .friends-chat__toolbar .btn,
+  html.mobile-landscape .friends-chat__notice,
+  html.mobile-landscape .friends-chat__empty,
+  html.mobile-landscape .friends-chat__loading,
+  html.mobile-landscape .friends-chat__placeholder,
+  html.mobile-landscape .friends-chat__disabled,
+  html.mobile-landscape .friends-section__title,
+  html.mobile-landscape .friends-section__empty,
+  html.mobile-landscape .friends-search__status,
+  html.mobile-landscape .friends-list__time,
+  html.mobile-landscape .friends-request__info .meta,
+  html.mobile-landscape .friends-blocked__info .meta {
+    font-size: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-list {
+    border-radius: calc(12px * var(--ui-scale));
+    padding: calc(8px * var(--ui-scale));
+    gap: calc(8px * var(--ui-scale));
+    max-height: calc(360px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-list__name {
+    font-size: calc(14px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-chat {
+    border-radius: calc(16px * var(--ui-scale));
+    padding: calc(14px * var(--ui-scale));
+    gap: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-chat__header {
+    gap: calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-chat__header .title {
+    font-size: calc(18px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-chat__toolbar {
+    gap: calc(8px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-chat__toolbar .btn {
+    padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-chat__emoji {
+    gap: calc(6px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-emoji {
+    border-radius: calc(8px * var(--ui-scale));
+    padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+    font-size: calc(18px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .friends-chat__actions .btn {
+    min-width: calc(96px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-card {
+    gap: calc(16px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-hero {
+    gap: calc(14px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-big {
+    min-height: calc(200px * var(--ui-scale));
+    border-radius: calc(16px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-big__icon {
+    font-size: calc(64px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-big__count {
+    font-size: calc(32px * var(--ui-scale));
+    margin-top: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-big__label {
+    font-size: calc(14px * var(--ui-scale));
+    margin-top: calc(6px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-stats,
+  html.mobile-landscape .cookie-actions,
+  html.mobile-landscape .cookie-buildings,
+  html.mobile-landscape .cookie-minis,
+  html.mobile-landscape .cookie-weekly,
+  html.mobile-landscape .cookie-fun,
+  html.mobile-landscape .cookie-notice-stack,
+  html.mobile-landscape .cookie-guide {
+    gap: calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-actions .btn {
+    gap: calc(6px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-section {
+    padding-top: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-section h3 {
+    margin-bottom: calc(10px * var(--ui-scale));
+    gap: calc(6px * var(--ui-scale));
+    font-size: calc(18px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-building,
+  html.mobile-landscape .cookie-mini,
+  html.mobile-landscape .cookie-fun__item {
+    border-radius: calc(12px * var(--ui-scale));
+    padding: calc(12px * var(--ui-scale));
+    gap: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-building__icon {
+    font-size: calc(32px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-building__name {
+    gap: calc(8px * var(--ui-scale));
+    font-size: calc(16px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-building__name .count,
+  html.mobile-landscape .cookie-building__desc,
+  html.mobile-landscape .cookie-building__meta,
+  html.mobile-landscape .cookie-mini__desc,
+  html.mobile-landscape .cookie-mini__stats,
+  html.mobile-landscape .cookie-notice,
+  html.mobile-landscape .cookie-alert,
+  html.mobile-landscape .cookie-hint,
+  html.mobile-landscape .cookie-section__hint,
+  html.mobile-landscape .cookie-fun__text,
+  html.mobile-landscape .cookie-guide__detail,
+  html.mobile-landscape .cookie-guide__tabs,
+  html.mobile-landscape .cookie-guide__list,
+  html.mobile-landscape .cookie-claim__info,
+  html.mobile-landscape .cookie-claim__hint {
+    font-size: calc(13px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-mini__icon,
+  html.mobile-landscape .cookie-fun__icon {
+    font-size: calc(28px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-mini__stats span {
+    gap: calc(4px * var(--ui-scale));
+    padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+    border-radius: calc(8px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-mini__progress {
+    gap: calc(4px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-mini__progress-label {
+    font-size: calc(11px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-guide__tab {
+    padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+    border-radius: calc(10px * var(--ui-scale));
+    gap: calc(6px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-guide__list {
+    gap: calc(6px * var(--ui-scale));
+    padding-left: calc(20px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-fun {
+    grid-template-columns: repeat(
+      auto-fit,
+      minmax(calc(180px * var(--ui-scale)), 1fr)
+    );
+    margin: calc(10px * var(--ui-scale)) 0;
+  }
+
+  html.mobile-landscape .cookie-claim {
+    gap: calc(12px * var(--ui-scale));
+    margin-top: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .cookie-claim .btn {
+    min-width: calc(160px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-intro {
+    padding: calc(24px * var(--ui-scale));
+    gap: calc(20px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-intro__layout {
+    gap: calc(20px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-intro__story,
+  html.mobile-landscape .dungeon-intro__preview {
+    min-width: calc(220px * var(--ui-scale));
+    border-radius: calc(16px * var(--ui-scale));
+    padding: calc(16px * var(--ui-scale));
+    gap: calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-intro__story h2 {
+    font-size: calc(26px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-intro__features,
+  html.mobile-landscape .dungeon-preview-card__passive,
+  html.mobile-landscape .dungeon-preview-card__lore,
+  html.mobile-landscape .dungeon-status-line,
+  html.mobile-landscape .dungeon-intro__meta,
+  html.mobile-landscape .dungeon-intro-scores .score-section li {
+    font-size: calc(14px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-intro-scores .panel-title {
+    font-size: calc(15px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-intro__name-hint,
+  html.mobile-landscape .dungeon-preview-card__stats div,
+  html.mobile-landscape .dungeon-preview-card__meta,
+  html.mobile-landscape .dungeon-class-card__stats,
+  html.mobile-landscape .dungeon-class-card__items,
+  html.mobile-landscape .dungeon-commands .muted,
+  html.mobile-landscape .dungeon-log,
+  html.mobile-landscape .dungeon-panel ul,
+  html.mobile-landscape .dungeon-maintenance {
+    font-size: calc(13px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-class-card__passive,
+  html.mobile-landscape .dungeon-commands button {
+    font-size: calc(14px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-intro__name-label,
+  html.mobile-landscape .dungeon-preview-card__meta .meta-label,
+  html.mobile-landscape .dungeon-class-card .label,
+  html.mobile-landscape .dungeon-inventory-section__title {
+    font-size: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-intro__name-value {
+    border-radius: calc(12px * var(--ui-scale));
+    padding: calc(10px * var(--ui-scale)) calc(14px * var(--ui-scale));
+    font-size: calc(15px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-preview-card {
+    gap: calc(14px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-preview-card__name {
+    font-size: calc(22px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-preview-card__stats {
+    gap: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-preview-card__stats div {
+    padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+    border-radius: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-class-grid {
+    gap: calc(14px * var(--ui-scale));
+    grid-template-columns: repeat(
+      auto-fit,
+      minmax(calc(200px * var(--ui-scale)), 1fr)
+    );
+  }
+
+  html.mobile-landscape .dungeon-class-card {
+    padding: calc(14px * var(--ui-scale)) calc(16px * var(--ui-scale));
+    border-radius: calc(14px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-class-card__header {
+    gap: calc(6px * var(--ui-scale));
+    margin-bottom: calc(8px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-class-card__name {
+    font-size: calc(20px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-class-card__stats {
+    gap: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+    margin-bottom: calc(6px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-intro__actions {
+    gap: calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-intro__actions button {
+    padding: calc(9px * var(--ui-scale)) calc(16px * var(--ui-scale));
+    border-radius: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-layout {
+    gap: calc(16px * var(--ui-scale));
+    padding: calc(18px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-left,
+  html.mobile-landscape .dungeon-right {
+    gap: calc(14px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-panel {
+    border-radius: calc(16px * var(--ui-scale));
+    padding: calc(14px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-room__title {
+    font-size: calc(18px * var(--ui-scale));
+    margin-bottom: calc(8px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-commands {
+    border-radius: calc(16px * var(--ui-scale));
+    padding: calc(14px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-commands button {
+    padding: calc(8px * var(--ui-scale)) calc(14px * var(--ui-scale));
+    border-radius: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-log {
+    height: calc(260px * var(--ui-scale));
+    padding: calc(14px * var(--ui-scale));
+    border-radius: calc(16px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .dungeon-maintenance {
+    padding: calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));
+    border-radius: calc(12px * var(--ui-scale));
+    margin-top: calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-card--layout {
+    padding: calc(20px * var(--ui-scale)) calc(22px * var(--ui-scale));
+    gap: calc(18px * var(--ui-scale));
+    min-height: clamp(
+      calc(560px * var(--ui-scale)),
+      80vh,
+      calc(900px * var(--ui-scale))
+    );
+  }
+
+  html.mobile-landscape .starfall-layout {
+    gap: calc(18px * var(--ui-scale));
+    grid-template-columns: minmax(0, 2fr) minmax(
+        calc(280px * var(--ui-scale)),
+        1fr
+      );
+  }
+
+  html.mobile-landscape .starfall-main,
+  html.mobile-landscape .starfall-side {
+    gap: calc(16px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-side > * {
+    min-height: calc(200px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-title {
+    font-size: calc(28px * var(--ui-scale));
+    margin-bottom: calc(6px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-sub {
+    font-size: calc(15px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-stats {
+    gap: calc(10px * var(--ui-scale));
+    grid-template-columns: repeat(
+      auto-fit,
+      minmax(calc(120px * var(--ui-scale)), 1fr)
+    );
+  }
+
+  html.mobile-landscape .starfall-stat {
+    padding: calc(12px * var(--ui-scale)) calc(14px * var(--ui-scale));
+    border-radius: calc(14px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-stat__label {
+    font-size: calc(12px * var(--ui-scale));
+    margin-bottom: calc(6px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-stat__value {
+    font-size: calc(20px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-story {
+    padding: calc(20px * var(--ui-scale)) calc(22px * var(--ui-scale));
+    border-radius: calc(18px * var(--ui-scale));
+    min-height: calc(200px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-story__title {
+    margin-bottom: calc(10px * var(--ui-scale));
+    font-size: calc(22px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-story__body {
+    font-size: calc(15px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-hallucination {
+    margin-top: calc(12px * var(--ui-scale));
+    font-size: calc(14px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-outcome {
+    padding: calc(16px * var(--ui-scale)) calc(18px * var(--ui-scale));
+    border-radius: calc(18px * var(--ui-scale));
+    gap: calc(14px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-outcome__card {
+    gap: calc(14px * var(--ui-scale));
+    grid-template-columns: repeat(
+      auto-fit,
+      minmax(calc(200px * var(--ui-scale)), 1fr)
+    );
+  }
+
+  html.mobile-landscape .starfall-outcome__section {
+    padding: calc(12px * var(--ui-scale)) calc(14px * var(--ui-scale));
+    border-radius: calc(14px * var(--ui-scale));
+    gap: calc(10px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-outcome__title {
+    font-size: calc(16px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-outcome__summary {
+    font-size: calc(14px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-outcome__meta,
+  html.mobile-landscape .starfall-outcome__tips,
+  html.mobile-landscape .starfall-outcome__empty {
+    font-size: calc(13px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-outcome__tips {
+    gap: calc(6px * var(--ui-scale));
+    padding-left: calc(18px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-choices {
+    gap: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-option {
+    padding: calc(12px * var(--ui-scale)) calc(14px * var(--ui-scale));
+    border-radius: calc(14px * var(--ui-scale));
+    gap: calc(6px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-option__label {
+    font-size: calc(17px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-option__detail {
+    font-size: calc(13px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-option__admin {
+    font-size: calc(12px * var(--ui-scale));
+    border-radius: calc(10px * var(--ui-scale));
+    padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+    gap: calc(4px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-option__admin-title {
+    font-size: calc(11px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-option__admin-list {
+    gap: calc(2px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-option__admin-list li {
+    gap: calc(8px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-option__admin-chance {
+    min-width: calc(58px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-log,
+  html.mobile-landscape .starfall-codex,
+  html.mobile-landscape .starfall-leaderboard {
+    padding: calc(14px * var(--ui-scale)) calc(16px * var(--ui-scale));
+    border-radius: calc(16px * var(--ui-scale));
+    gap: calc(8px * var(--ui-scale));
+    min-height: calc(200px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-log__item,
+  html.mobile-landscape .starfall-codex__summary,
+  html.mobile-landscape .starfall-leaderboard__list li,
+  html.mobile-landscape .starfall-leaderboard__empty,
+  html.mobile-landscape .starfall-leaderboard__hint {
+    font-size: calc(13px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-codex__title,
+  html.mobile-landscape .starfall-leaderboard__title {
+    font-size: calc(18px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-codex__grid {
+    gap: calc(10px * var(--ui-scale));
+    grid-template-columns: repeat(
+      auto-fit,
+      minmax(calc(140px * var(--ui-scale)), 1fr)
+    );
+  }
+
+  html.mobile-landscape .starfall-codex__item {
+    padding: calc(12px * var(--ui-scale)) calc(14px * var(--ui-scale));
+    border-radius: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-codex__name {
+    font-size: calc(15px * var(--ui-scale));
+    margin-bottom: calc(6px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-leaderboard__header {
+    gap: calc(8px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-leaderboard__self,
+  html.mobile-landscape .starfall-leaderboard__personal {
+    padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+    border-radius: calc(10px * var(--ui-scale));
+    font-size: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-leaderboard__list {
+    gap: calc(6px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-leaderboard__list li {
+    padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+    border-radius: calc(10px * var(--ui-scale));
+    gap: calc(8px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-leaderboard__list li .day {
+    font-size: calc(12px * var(--ui-scale));
+  }
+
+  html.mobile-landscape .starfall-leaderboard__list li .ending {
+    font-size: calc(11px * var(--ui-scale));
+    border-radius: calc(8px * var(--ui-scale));
+    padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
   }
 }
 .btn {
