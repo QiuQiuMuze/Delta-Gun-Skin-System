@@ -1,6 +1,7 @@
 :root {
   --orientation-resolution: 1;
   --orientation-effective-scale: 1;
+  --orientation-resolution-inverse: 1;
 }
 
 * { box-sizing: border-box; }
@@ -14,6 +15,12 @@ body {
     #0b0d12;
   color:#e6e9ef;
   min-height:100vh;
+}
+
+#app-scale {
+  width: 100%;
+  display: flex;
+  justify-content: center;
 }
 
 .orientation-content {
@@ -498,6 +505,22 @@ main#page { padding:24px 20px 48px; max-width:1120px; margin:0 auto; }
     padding: clamp(6px, 10px * var(--orientation-resolution), 16px)
       clamp(10px, 14px * var(--orientation-resolution), 22px);
     overflow-x: hidden;
+  }
+
+  html.mobile-landscape #app-scale {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    position: relative;
+  }
+
+  html.mobile-landscape:not(.orientation-fallback-active) #app-scale {
+    transform: scale(var(--orientation-resolution));
+    transform-origin: top center;
+    width: calc(100% * var(--orientation-resolution-inverse));
+    max-width: calc(100% * var(--orientation-resolution-inverse));
+    max-height: calc(100vh * var(--orientation-resolution-inverse));
   }
 
   html.mobile-landscape .orientation-content__inner {
