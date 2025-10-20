@@ -393,9 +393,30 @@ const OrientationHelper = {
       const width = rect.width;
       const height = rect.height;
       let dragging = false;
+      let captured = false;
       const activeElements = () => Array.from(group.elements || []).filter((el) => el && el.isConnected);
       const updateElements = (position) => {
         activeElements().forEach((el) => this.applyDragPosition(el, position));
+      };
+      const tryCapture = () => {
+        if (!captured && handle.setPointerCapture && pointerId != null) {
+          try {
+            handle.setPointerCapture(pointerId);
+            captured = true;
+          } catch (_) {
+            captured = false;
+          }
+        }
+      };
+      const releaseCapture = () => {
+        if (captured && handle.releasePointerCapture && pointerId != null) {
+          try {
+            handle.releasePointerCapture(pointerId);
+          } catch (_) {
+            /* ignore */
+          }
+          captured = false;
+        }
       };
       const onPointerMove = (ev) => {
         if (pointerId != null && ev.pointerId !== pointerId) return;
@@ -407,6 +428,7 @@ const OrientationHelper = {
           }
           dragging = true;
           activeElements().forEach((el) => el.classList.add("is-dragging"));
+          tryCapture();
         }
         ev.preventDefault();
         const bounds = this.computeDragBounds(width, height, margin);
@@ -423,9 +445,7 @@ const OrientationHelper = {
         window.removeEventListener("pointermove", onPointerMove, true);
         window.removeEventListener("pointerup", onPointerUp, true);
         window.removeEventListener("pointercancel", onPointerUp, true);
-        if (handle.releasePointerCapture && pointerId != null) {
-          try { handle.releasePointerCapture(pointerId); } catch (_) { /* ignore */ }
-        }
+        releaseCapture();
         const elements = activeElements();
         elements.forEach((el) => el.classList.remove("is-dragging"));
         if (dragging) {
@@ -446,9 +466,6 @@ const OrientationHelper = {
       window.addEventListener("pointermove", onPointerMove, true);
       window.addEventListener("pointerup", onPointerUp, true);
       window.addEventListener("pointercancel", onPointerUp, true);
-      if (handle.setPointerCapture && pointerId != null) {
-        try { handle.setPointerCapture(pointerId); } catch (_) { /* ignore */ }
-      }
     };
     handle.addEventListener("pointerdown", onPointerDown, { passive: true });
     handle.__orientationDragAttached = true;
@@ -821,6 +838,8 @@ const OrientationHelper = {
       this.hideHint();
       this.setFallback(false);
       this.applyDocumentState(false, false);
+      this.setResolutionHidden(false, true);
+      this.setResolutionExpanded(true, true);
       const scale = this.getCurrentScale();
       this.syncResolutionVariable(scale);
       this.updateResolutionSummary(scale);
