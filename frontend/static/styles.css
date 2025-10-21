@@ -61,6 +61,46 @@ html.orientation-fallback-active #app {
   align-items: stretch;
 }
 
+html:not(.orientation-mobile) .orientation-content {
+  min-height: auto;
+}
+
+html:not(.orientation-mobile) .orientation-content__inner {
+  min-height: auto;
+  display: block;
+}
+
+html:not(.orientation-mobile) body {
+  --ui-scale: var(--orientation-resolution);
+}
+
+html:not(.orientation-mobile):not(.orientation-fallback-active) #app-scale {
+  transform: scale(var(--orientation-resolution));
+  transform-origin: top center;
+  width: min(
+    calc(100vw * var(--orientation-resolution-inverse)),
+    calc(var(--page-max-width) * var(--orientation-resolution-inverse))
+  );
+  max-width: calc(var(--page-max-width) * var(--orientation-resolution-inverse));
+  min-height: calc(100vh * var(--orientation-resolution-inverse));
+  margin: 0 auto;
+}
+
+html:not(.orientation-mobile):not(.orientation-fallback-active) #app {
+  transform-origin: top center;
+}
+
+@supports (zoom: 1) {
+  html:not(.orientation-mobile):not(.orientation-fallback-active) #app-scale {
+    transform: none;
+    zoom: var(--orientation-resolution);
+    width: 100%;
+    max-width: var(--page-max-width);
+    min-height: 100vh;
+    margin: 0 auto;
+  }
+}
+
 .orientation-content--measuring {
   position: static !important;
   left: auto !important;
@@ -2107,6 +2147,136 @@ main#page > * {
 .admin-presence__table th, .admin-presence__table td { white-space:nowrap; }
 .admin-presence__table td:first-child { font-weight:600; }
 .admin-presence__table td:nth-child(3) { color:#2563eb; }
+.force-template-queue {
+  margin-top: 16px;
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.75), rgba(17, 24, 39, 0.62));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.force-template-queue.has-items {
+  border-color: rgba(96, 165, 250, 0.55);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.45);
+}
+.force-template-queue__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.force-template-queue__title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #dbeafe;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.force-template-queue__count {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #a5b4fc;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(79, 70, 229, 0.32);
+}
+.force-template-queue__actions {
+  display: flex;
+  gap: 8px;
+}
+.force-template-queue__body {
+  max-height: 240px;
+  overflow: auto;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(71, 85, 105, 0.38);
+}
+.force-template-queue__body::-webkit-scrollbar {
+  width: 8px;
+}
+.force-template-queue__body::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+}
+.force-template-queue__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  color: #e2e8f0;
+}
+.force-template-queue__table thead {
+  background: rgba(30, 41, 59, 0.6);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.force-template-queue__table th,
+.force-template-queue__table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+}
+.force-template-queue__table tbody tr:hover {
+  background: rgba(30, 64, 175, 0.18);
+}
+.force-template-queue__table td[data-col="user"] {
+  font-weight: 600;
+  color: #f8fafc;
+}
+.force-template-queue__table td[data-col="season"] {
+  color: #93c5fd;
+}
+.force-template-queue__table td[data-col="template"] {
+  font-weight: 600;
+  color: #c7d2fe;
+}
+.force-template-queue__table td[data-col="wear"] {
+  font-variant-numeric: tabular-nums;
+  color: #fde68a;
+  white-space: nowrap;
+}
+.force-template-queue__badge {
+  display: inline-flex;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(192, 132, 252, 0.25);
+  color: #f5d0fe;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+.force-template-queue__time {
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+.force-template-queue__empty,
+.force-template-queue__loading,
+.force-template-queue__error {
+  padding: 18px 12px;
+  text-align: center;
+  font-size: 0.86rem;
+}
+.force-template-queue__error {
+  color: #fca5a5;
+}
+
+@media (max-width: 768px) {
+  .force-template-queue {
+    padding: 12px;
+  }
+  .force-template-queue__body {
+    max-height: 200px;
+  }
+  .force-template-queue__table th,
+  .force-template-queue__table td {
+    padding: 6px 8px;
+  }
+}
 
 /* —— 枪械外观预览 —— */
 .skin-preview {

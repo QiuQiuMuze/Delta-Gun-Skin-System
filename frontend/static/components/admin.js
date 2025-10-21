@@ -1,5 +1,6 @@
 const AdminPage = {
   _presenceTimer: null,
+  _forceTemplateTimer: null,
   render() {
     return `
     <div class="card"><h2>管理员</h2>
@@ -105,6 +106,34 @@ const AdminPage = {
       <div id="inventory-view" style="display:none;"></div>
 
       <div class="card">
+        <h3>下一抽必出特殊模板</h3>
+        <div class="muted">输入玩家 ID 并选择赛季，可让该玩家在该赛季的下一次开砖获得概率最低的特殊模板（一次性生效）。</div>
+        <div class="input-row">
+          <input id="force-template-user-id" type="number" min="1" placeholder="玩家ID" />
+        </div>
+        <div class="input-row">
+          <input id="force-template-wear" type="number" step="0.01" min="0" max="5" placeholder="磨损度（0.00-5.00，可选）" />
+        </div>
+        <div class="muted">若留空，则系统会随机生成磨损度。</div>
+        <div class="input-row" style="gap:8px; flex-wrap:wrap;">
+          <select id="force-template-season" style="min-width:160px;"></select>
+          <button class="btn primary" id="force-template-apply">触发必中</button>
+        </div>
+        <div class="muted" id="force-template-status">等待操作...</div>
+        <div class="force-template-queue" id="force-template-queue-card">
+          <div class="force-template-queue__head">
+            <div class="force-template-queue__title">当前等待列表 <span class="force-template-queue__count" id="force-template-count">0</span></div>
+            <div class="force-template-queue__actions">
+              <button class="btn ghost" id="force-template-refresh">刷新</button>
+            </div>
+          </div>
+          <div class="force-template-queue__body" id="force-template-queue">
+            <div class="force-template-queue__empty muted">暂无待处理玩家</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
         <h3>余额操作</h3>
         <div class="input-row">
           <input id="op-username" placeholder="用户名"/>
@@ -196,6 +225,10 @@ const AdminPage = {
       clearInterval(this._presenceTimer);
       this._presenceTimer = null;
     }
+    if (this._forceTemplateTimer) {
+      clearInterval(this._forceTemplateTimer);
+      this._forceTemplateTimer = null;
+    }
     window.PresenceTracker?.updateDetails?.({ activity: 'admin:dashboard' });
 
     const modeSwitch = byId("auth-mode-switch");
@@ -220,6 +253,15 @@ const AdminPage = {
     const announcementStatus = byId('announcement-status');
     const announcementSend = byId('announcement-send');
     const announcementClear = byId('announcement-clear');
+    const forceTemplateUser = byId('force-template-user-id');
+    const forceTemplateWear = byId('force-template-wear');
+    const forceTemplateSeason = byId('force-template-season');
+    const forceTemplateButton = byId('force-template-apply');
+    const forceTemplateStatus = byId('force-template-status');
+    const forceTemplateQueue = byId('force-template-queue');
+    const forceTemplateCount = byId('force-template-count');
+    const forceTemplateRefresh = byId('force-template-refresh');
+    const forceTemplateCard = byId('force-template-queue-card');
     modeDesc.textContent = "加载中...";
     if (cookieDesc) cookieDesc.textContent = "加载中...";
 
@@ -227,6 +269,136 @@ const AdminPage = {
       modeDesc.textContent = free
         ? "当前为免验证码模式：登录无需短信验证，注册时不强制手机且赠送 20000 法币。"
         : "当前为短信验证模式：登录/注册均需短信验证码，新注册不再赠送法币。";
+    };
+
+    const populateForceTemplateSeasons = async () => {
+      if (!forceTemplateSeason) return;
+      forceTemplateSeason.innerHTML = '<option value="">加载中...</option>';
+      try {
+        const catalog = await API.seasonCatalog();
+        const seasons = Array.isArray(catalog?.seasons) ? catalog.seasons : [];
+        const latest = String(catalog?.latest || '').trim().toUpperCase();
+        const pieces = ['<option value="">请选择赛季</option>'];
+        const idSet = new Set();
+        seasons.forEach((item) => {
+          const rawId = String(item?.id || '').trim();
+          if (!rawId) return;
+          const id = rawId.toUpperCase();
+          const name = String(item?.name || '').trim();
+          const label = name ? `${id} ｜ ${name}` : id;
+          pieces.push(`<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`);
+          idSet.add(id);
+        });
+        forceTemplateSeason.innerHTML = pieces.join('');
+        if (latest && idSet.has(latest)) {
+          forceTemplateSeason.value = latest;
+        } else if (forceTemplateSeason.options.length > 1) {
+          forceTemplateSeason.selectedIndex = 1;
+        }
+        if (forceTemplateStatus) {
+          forceTemplateStatus.textContent = '等待操作...';
+        }
+      } catch (e) {
+        forceTemplateSeason.innerHTML = '<option value="">加载失败</option>';
+        if (forceTemplateStatus) {
+          forceTemplateStatus.textContent = `赛季列表加载失败：${escapeHtml(e.message || e)}`;
+        }
+      }
+    };
+
+    const formatRelative = (seconds) => {
+      const sec = Math.max(0, Math.floor(seconds || 0));
+      if (sec < 60) return `${sec}秒前`;
+      const minutes = Math.floor(sec / 60);
+      if (minutes < 60) return `${minutes}分钟前`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}小时前`;
+      const days = Math.floor(hours / 24);
+      if (days < 7) return `${days}天前`;
+      const weeks = Math.floor(days / 7);
+      return `${weeks}周前`;
+    };
+
+    const renderForceTemplateQueue = (items = []) => {
+      if (!forceTemplateQueue) return;
+      if (!Array.isArray(items) || items.length === 0) {
+        forceTemplateQueue.innerHTML = '<div class="force-template-queue__empty muted">暂无待处理玩家</div>';
+      } else {
+        const rows = items.map((item) => {
+          const userId = Number(item.user_id || item.userId || 0);
+          const uidLabel = userId > 0 ? `#${userId}` : '-';
+          const username = escapeHtml(item.username || '');
+          const season = escapeHtml(item.season_label || item.season || '');
+          const template = escapeHtml(item.template_label || item.template || '');
+          const exquisiteFlag = item.force_exquisite ? '<span class="force-template-queue__badge">极品</span>' : '';
+          const createdAt = item.created_at ? new Date(item.created_at * 1000) : null;
+          const createdText = createdAt ? createdAt.toLocaleString() : '';
+          const relative = formatRelative(item.seconds_ago);
+          let wearCell = '';
+          if (typeof item.wear === 'string' && item.wear.trim()) {
+            wearCell = escapeHtml(item.wear.trim());
+          } else {
+            const wearNum = Number(item.wear_bp);
+            if (Number.isFinite(wearNum)) {
+              wearCell = escapeHtml((wearNum / 100).toFixed(2));
+            }
+          }
+          if (!wearCell) {
+            wearCell = '<span class="muted">随机</span>';
+          }
+          return `
+            <tr>
+              <td data-col="user">${uidLabel}</td>
+              <td data-col="name">${username || '<span class="muted">未知</span>'}</td>
+              <td data-col="season">${season}</td>
+              <td data-col="template">${template}${exquisiteFlag}</td>
+              <td data-col="wear">${wearCell}</td>
+              <td data-col="time"><div>${relative}</div>${createdText ? `<div class="force-template-queue__time">${escapeHtml(createdText)}</div>` : ''}</td>
+            </tr>`;
+        }).join('');
+        forceTemplateQueue.innerHTML = `
+          <table class="force-template-queue__table">
+            <thead>
+              <tr><th>玩家</th><th>昵称</th><th>赛季</th><th>模板</th><th>磨损</th><th>设置时间</th></tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+      }
+      if (forceTemplateCount) {
+        forceTemplateCount.textContent = String(Array.isArray(items) ? items.length : 0);
+      }
+      if (forceTemplateCard) {
+        forceTemplateCard.classList.toggle('has-items', Array.isArray(items) && items.length > 0);
+      }
+    };
+
+    const loadForceTemplateQueue = async (silent = false) => {
+      if (!forceTemplateQueue) return;
+      if (!silent) {
+        forceTemplateQueue.innerHTML = '<div class="force-template-queue__loading">加载中...</div>';
+      }
+      try {
+        const seasonVal = forceTemplateSeason ? String(forceTemplateSeason.value || '').trim().toUpperCase() : '';
+        const resp = await API.adminForceTemplateQueue(seasonVal || null);
+        const items = Array.isArray(resp?.items) ? resp.items : [];
+        renderForceTemplateQueue(items);
+      } catch (e) {
+        const msg = escapeHtml(e?.message || e);
+        forceTemplateQueue.innerHTML = `<div class="force-template-queue__error">加载失败：${msg}</div>`;
+      }
+    };
+
+    const scheduleForceTemplateQueue = () => {
+      if (this._forceTemplateTimer) {
+        clearInterval(this._forceTemplateTimer);
+      }
+      if (!forceTemplateQueue) {
+        this._forceTemplateTimer = null;
+        return;
+      }
+      this._forceTemplateTimer = setInterval(() => {
+        loadForceTemplateQueue(true);
+      }, 10000);
     };
 
     const loadAuthMode = async () => {
@@ -535,6 +707,74 @@ const AdminPage = {
       };
     }
 
+    if (forceTemplateButton) {
+      forceTemplateButton.onclick = async () => {
+        if (!forceTemplateUser || !forceTemplateSeason) return;
+        const uid = parseInt(forceTemplateUser.value || '', 10);
+        if (!Number.isInteger(uid) || uid <= 0) {
+          alert('请输入有效的玩家ID');
+          return;
+        }
+        const seasonVal = String(forceTemplateSeason.value || '').trim().toUpperCase();
+        if (!seasonVal) {
+          alert('请选择赛季');
+          return;
+        }
+        const wearVal = forceTemplateWear ? String(forceTemplateWear.value || '').trim() : '';
+        forceTemplateButton.disabled = true;
+        if (forceTemplateStatus) {
+          forceTemplateStatus.textContent = '处理中...';
+        }
+        try {
+          const resp = await API.adminForceSeasonTemplate(uid, seasonVal, wearVal || null);
+          const tplLabel = escapeHtml(resp?.template_label || resp?.template || '');
+          const seasonLabel = escapeHtml(resp?.season_label || seasonVal);
+          const replacedFlag = resp?.replaced ? '（已覆盖此前设置）' : '';
+          let wearInfo = '';
+          if (typeof resp?.wear === 'string' && resp.wear) {
+            wearInfo = `（磨损 ${escapeHtml(resp.wear)}）`;
+          } else {
+            const wearBpVal = Number(resp?.wear_bp);
+            if (Number.isFinite(wearBpVal)) {
+              wearInfo = `（磨损 ${escapeHtml((wearBpVal / 100).toFixed(2))}）`;
+            }
+          }
+          if (forceTemplateStatus) {
+            forceTemplateStatus.innerHTML = `成功设置：玩家 <b>${uid}</b> 在 <b>${seasonLabel}</b> 的下一抽将获得 <b>${tplLabel}</b>${wearInfo}${replacedFlag}。`;
+          } else {
+            alert('已设置下一抽必中特殊模板');
+          }
+          forceTemplateUser.value = '';
+          if (forceTemplateWear) forceTemplateWear.value = '';
+          await loadForceTemplateQueue(true);
+        } catch (e) {
+          const msg = e?.message || String(e);
+          if (forceTemplateStatus) {
+            forceTemplateStatus.textContent = `失败：${escapeHtml(msg)}`;
+          } else {
+            alert(msg);
+          }
+        } finally {
+          forceTemplateButton.disabled = false;
+        }
+      };
+    }
+
+    if (forceTemplateRefresh) {
+      forceTemplateRefresh.onclick = () => {
+        loadForceTemplateQueue();
+      };
+    }
+
+    if (forceTemplateSeason) {
+      forceTemplateSeason.addEventListener('change', () => {
+        loadForceTemplateQueue(true);
+      });
+    }
+
+    await populateForceTemplateSeasons();
+    await loadForceTemplateQueue(true);
+    scheduleForceTemplateQueue();
     await loadCookie();
     loadDungeonSettings();
     if (dungeonGameToggle) dungeonGameToggle.onchange = persistDungeonSettings;
