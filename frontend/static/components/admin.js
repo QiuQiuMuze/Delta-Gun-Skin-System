@@ -111,6 +111,10 @@ const AdminPage = {
         <div class="input-row">
           <input id="force-template-user-id" type="number" min="1" placeholder="玩家ID" />
         </div>
+        <div class="input-row">
+          <input id="force-template-wear" type="number" step="0.01" min="0" max="5" placeholder="磨损度（0.00-5.00，可选）" />
+        </div>
+        <div class="muted">若留空，则系统会随机生成磨损度。</div>
         <div class="input-row" style="gap:8px; flex-wrap:wrap;">
           <select id="force-template-season" style="min-width:160px;"></select>
           <button class="btn primary" id="force-template-apply">触发必中</button>
@@ -250,6 +254,7 @@ const AdminPage = {
     const announcementSend = byId('announcement-send');
     const announcementClear = byId('announcement-clear');
     const forceTemplateUser = byId('force-template-user-id');
+    const forceTemplateWear = byId('force-template-wear');
     const forceTemplateSeason = byId('force-template-season');
     const forceTemplateButton = byId('force-template-apply');
     const forceTemplateStatus = byId('force-template-status');
@@ -329,19 +334,32 @@ const AdminPage = {
           const createdAt = item.created_at ? new Date(item.created_at * 1000) : null;
           const createdText = createdAt ? createdAt.toLocaleString() : '';
           const relative = formatRelative(item.seconds_ago);
+          let wearCell = '';
+          if (typeof item.wear === 'string' && item.wear.trim()) {
+            wearCell = escapeHtml(item.wear.trim());
+          } else {
+            const wearNum = Number(item.wear_bp);
+            if (Number.isFinite(wearNum)) {
+              wearCell = escapeHtml((wearNum / 100).toFixed(2));
+            }
+          }
+          if (!wearCell) {
+            wearCell = '<span class="muted">随机</span>';
+          }
           return `
             <tr>
               <td data-col="user">${uidLabel}</td>
               <td data-col="name">${username || '<span class="muted">未知</span>'}</td>
               <td data-col="season">${season}</td>
               <td data-col="template">${template}${exquisiteFlag}</td>
+              <td data-col="wear">${wearCell}</td>
               <td data-col="time"><div>${relative}</div>${createdText ? `<div class="force-template-queue__time">${escapeHtml(createdText)}</div>` : ''}</td>
             </tr>`;
         }).join('');
         forceTemplateQueue.innerHTML = `
           <table class="force-template-queue__table">
             <thead>
-              <tr><th>玩家</th><th>昵称</th><th>赛季</th><th>模板</th><th>设置时间</th></tr>
+              <tr><th>玩家</th><th>昵称</th><th>赛季</th><th>模板</th><th>磨损</th><th>设置时间</th></tr>
             </thead>
             <tbody>${rows}</tbody>
           </table>`;
@@ -702,21 +720,32 @@ const AdminPage = {
           alert('请选择赛季');
           return;
         }
+        const wearVal = forceTemplateWear ? String(forceTemplateWear.value || '').trim() : '';
         forceTemplateButton.disabled = true;
         if (forceTemplateStatus) {
           forceTemplateStatus.textContent = '处理中...';
         }
         try {
-          const resp = await API.adminForceSeasonTemplate(uid, seasonVal);
+          const resp = await API.adminForceSeasonTemplate(uid, seasonVal, wearVal || null);
           const tplLabel = escapeHtml(resp?.template_label || resp?.template || '');
           const seasonLabel = escapeHtml(resp?.season_label || seasonVal);
           const replacedFlag = resp?.replaced ? '（已覆盖此前设置）' : '';
+          let wearInfo = '';
+          if (typeof resp?.wear === 'string' && resp.wear) {
+            wearInfo = `（磨损 ${escapeHtml(resp.wear)}）`;
+          } else {
+            const wearBpVal = Number(resp?.wear_bp);
+            if (Number.isFinite(wearBpVal)) {
+              wearInfo = `（磨损 ${escapeHtml((wearBpVal / 100).toFixed(2))}）`;
+            }
+          }
           if (forceTemplateStatus) {
-            forceTemplateStatus.innerHTML = `成功设置：玩家 <b>${uid}</b> 在 <b>${seasonLabel}</b> 的下一抽将获得 <b>${tplLabel}</b>${replacedFlag}。`;
+            forceTemplateStatus.innerHTML = `成功设置：玩家 <b>${uid}</b> 在 <b>${seasonLabel}</b> 的下一抽将获得 <b>${tplLabel}</b>${wearInfo}${replacedFlag}。`;
           } else {
             alert('已设置下一抽必中特殊模板');
           }
           forceTemplateUser.value = '';
+          if (forceTemplateWear) forceTemplateWear.value = '';
           await loadForceTemplateQueue(true);
         } catch (e) {
           const msg = e?.message || String(e);

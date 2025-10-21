@@ -328,8 +328,14 @@ const API = {
     const suffix = usp.toString() ? `?${usp.toString()}` : "";
     return API.json(`/admin/force-template${suffix}`);
   },
-  adminForceSeasonTemplate: (user_id, season) =>
-    API.json("/admin/force-template", "POST", { user_id, season }),
+  adminForceSeasonTemplate: (user_id, season, wear = null) => {
+    const payload = { user_id, season };
+    if (wear !== null && wear !== undefined) {
+      const wearStr = String(wear).trim();
+      if (wearStr) payload.wear = wearStr;
+    }
+    return API.json("/admin/force-template", "POST", payload);
+  },
   adminPasswordRequest: (target_id) =>
     API.json("/admin/user-password/request", "POST", { target_id }),
   adminPasswordConfirm: (target_id, code, new_password = null) => {

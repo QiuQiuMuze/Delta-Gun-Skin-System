@@ -77,9 +77,13 @@ html:not(.orientation-mobile) body {
 html:not(.orientation-mobile):not(.orientation-fallback-active) #app-scale {
   transform: scale(var(--orientation-resolution));
   transform-origin: top center;
-  width: 100%;
-  max-width: var(--page-max-width);
-  min-height: 100vh;
+  width: min(
+    calc(100vw * var(--orientation-resolution-inverse)),
+    calc(var(--page-max-width) * var(--orientation-resolution-inverse))
+  );
+  max-width: calc(var(--page-max-width) * var(--orientation-resolution-inverse));
+  min-height: calc(100vh * var(--orientation-resolution-inverse));
+  margin: 0 auto;
 }
 
 html:not(.orientation-mobile):not(.orientation-fallback-active) #app {
@@ -90,6 +94,10 @@ html:not(.orientation-mobile):not(.orientation-fallback-active) #app {
   html:not(.orientation-mobile):not(.orientation-fallback-active) #app-scale {
     transform: none;
     zoom: var(--orientation-resolution);
+    width: 100%;
+    max-width: var(--page-max-width);
+    min-height: 100vh;
+    margin: 0 auto;
   }
 }
 
@@ -2226,6 +2234,11 @@ main#page > * {
 .force-template-queue__table td[data-col="template"] {
   font-weight: 600;
   color: #c7d2fe;
+}
+.force-template-queue__table td[data-col="wear"] {
+  font-variant-numeric: tabular-nums;
+  color: #fde68a;
+  white-space: nowrap;
 }
 .force-template-queue__badge {
   display: inline-flex;

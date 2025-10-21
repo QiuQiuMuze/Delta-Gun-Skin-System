@@ -19,6 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 import sqlite3
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from season_data import SEASON_DEFINITIONS
 
@@ -168,6 +169,7 @@ class SeasonTemplateGrant(Base):
     template_key = Column(String, nullable=False)
     force_exquisite = Column(Boolean, default=True)
     skin_id = Column(String, default="")
+    wear_bp = Column(Integer, nullable=True)
     created_at = Column(Integer, default=lambda: int(time.time()))
     __table_args__ = (
         UniqueConstraint("user_id", "season", name="uq_template_grant_user_season"),
@@ -583,6 +585,16 @@ def _ensure_cookie_profile_columns():
     con.commit()
     con.close()
 
+def _ensure_template_grant_wear_column():
+    con = sqlite3.connect(DB_PATH_FS)
+    cur = con.cursor()
+    cur.execute("PRAGMA table_info(season_template_grants)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "wear_bp" not in cols:
+        cur.execute("ALTER TABLE season_template_grants ADD COLUMN wear_bp INTEGER")
+    con.commit()
+    con.close()
+
 Base.metadata.create_all(engine)
 _ensure_user_sessionver()
 _ensure_inventory_visual_columns()
@@ -593,6 +605,7 @@ _ensure_brick_buy_columns()
 _ensure_user_gift_columns()
 _ensure_user_password_plain()
 _ensure_cookie_profile_columns()
+_ensure_template_grant_wear_column()
 
 # ------------------ Pydantic ------------------
 RarityT = Literal["BRICK", "PURPLE", "BLUE", "GREEN"]
@@ -1358,6 +1371,15 @@ def grade_from_wear_bp(wear_bp: int) -> str:
 
 def wear_random_bp() -> int:
     return secrets.randbelow(501)
+
+def wear_bp_to_str(bp: Optional[int]) -> Optional[str]:
+    if bp is None:
+        return None
+    try:
+        scaled = Decimal(int(bp)).scaleb(-2)
+        return f"{scaled:.2f}"
+    except Exception:
+        return f"{(bp or 0) / 100:.2f}"
 
 def rng_ppm() -> int: return secrets.randbelow(1_000_000)
 def ppm(percent: float) -> int: return int(round(percent * 10_000))
@@ -11358,6 +11380,14 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
         forced_skin_id = (grant.skin_id if forced_active else "") if grant else ""
         forced_skin_id = (forced_skin_id or "").strip()
         force_exquisite_flag = False
+        forced_wear_bp = None
+        if forced_active and grant and grant.wear_bp is not None:
+            try:
+                forced_wear_bp = int(grant.wear_bp)
+            except (TypeError, ValueError):
+                forced_wear_bp = None
+            else:
+                forced_wear_bp = max(0, min(forced_wear_bp, 500))
 
         # 决定稀有度
         if forced_active or od.force_brick_next:
@@ -11401,7 +11431,7 @@ def gacha_open(inp: CountIn, user: User = Depends(user_from_token), db: Session 
             exquisite = True if (force_exquisite_flag or forced_template_lower in EXQUISITE_ONLY_TEMPLATE_KEYS) else False
         else:
             exquisite = (secrets.randbelow(100) < 15) if rarity == "BRICK" else False
-        wear_bp = wear_random_bp()
+        wear_bp = forced_wear_bp if forced_wear_bp is not None else wear_random_bp()
         grade = grade_from_wear_bp(wear_bp)
         profile = generate_visual_profile(
             skin.rarity,
@@ -12680,11 +12710,31 @@ def admin_user_inventory(username: str, admin=_Depends(_require_admin)):
 def admin_force_template(payload: dict, admin=_Depends(_require_admin)):
     user_id = int((payload or {}).get("user_id") or 0)
     season_raw = (payload or {}).get("season") or ""
+    wear_raw = (payload or {}).get("wear")
+    if wear_raw is None:
+        wear_raw = (payload or {}).get("wear_bp")
     if user_id <= 0:
         raise _HTTPException(400, "user_id required")
     season_key = _normalize_season(season_raw)
     if not season_key:
         raise _HTTPException(400, "无效的赛季")
+    wear_bp: Optional[int] = None
+    if isinstance(wear_raw, str):
+        wear_raw = wear_raw.strip()
+    if wear_raw not in (None, ""):
+        try:
+            wear_decimal = Decimal(str(wear_raw))
+        except (InvalidOperation, ValueError):
+            raise _HTTPException(400, "磨损度格式无效")
+        if wear_decimal < 0:
+            raise _HTTPException(400, "磨损度需在 0.00~5.00 之间")
+        if wear_decimal <= Decimal("5.5"):
+            wear_scaled = (wear_decimal * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        else:
+            wear_scaled = wear_decimal.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        wear_bp = int(wear_scaled)
+        if wear_bp < 0 or wear_bp > 500:
+            raise _HTTPException(400, "磨损度需在 0.00~5.00 之间")
 
     with SessionLocal() as db:
         user = db.query(User).filter_by(id=user_id).first()
@@ -12703,6 +12753,7 @@ def admin_force_template(payload: dict, admin=_Depends(_require_admin)):
             grant.template_key = template_key
             grant.force_exquisite = force_exquisite
             grant.skin_id = target_skin
+            grant.wear_bp = wear_bp
             grant.created_at = now_ts
         else:
             grant = SeasonTemplateGrant(
@@ -12711,6 +12762,7 @@ def admin_force_template(payload: dict, admin=_Depends(_require_admin)):
                 template_key=template_key,
                 force_exquisite=force_exquisite,
                 skin_id=target_skin,
+                wear_bp=wear_bp,
                 created_at=now_ts,
             )
             db.add(grant)
@@ -12730,6 +12782,8 @@ def admin_force_template(payload: dict, admin=_Depends(_require_admin)):
             "template_label": label,
             "force_exquisite": bool(grant.force_exquisite),
             "skin_id": grant.skin_id or None,
+            "wear_bp": int(grant.wear_bp) if grant.wear_bp is not None else None,
+            "wear": wear_bp_to_str(grant.wear_bp),
             "created_at": int(grant.created_at or now_ts),
             "replaced": replaced,
         }
@@ -12765,6 +12819,8 @@ def admin_force_template_queue(season: Optional[str] = None, admin=_Depends(_req
                     "template_label": label,
                     "force_exquisite": bool(grant.force_exquisite),
                     "skin_id": grant.skin_id or None,
+                    "wear_bp": int(grant.wear_bp) if grant.wear_bp is not None else None,
+                    "wear": wear_bp_to_str(grant.wear_bp),
                     "created_at": int(grant.created_at or 0),
                     "seconds_ago": max(0, now_ts - int(grant.created_at or now_ts)),
                 }
