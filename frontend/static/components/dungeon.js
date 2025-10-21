@@ -1582,6 +1582,8 @@ class DungeonGame {
   }
   startCombat(room) {
     const enemyDef = DungeonData.enemies[room.enemyId];
+    const storedState = room && typeof room.enemyState === 'object' ? { ...room.enemyState } : null;
+    if (room) room.enemyState = null;
     const balance = DungeonData.balance?.enemy || {};
     const hpMultiplier = typeof balance.hpMultiplier === 'number' ? balance.hpMultiplier : 1;
     const attackMultiplier = typeof balance.attackMultiplier === 'number' ? balance.attackMultiplier : 1;
@@ -1603,6 +1605,34 @@ class DungeonGame {
       enraged: false,
       inspected: false,
     };
+    if (storedState) {
+      const normalizedHp = Number.isFinite(Number(storedState.hp)) ? Number(storedState.hp) : enemy.maxHP;
+      enemy.hp = Math.max(1, Math.min(enemy.maxHP, Math.round(normalizedHp)));
+      if (Array.isArray(storedState.statuses)) {
+        enemy.statuses = storedState.statuses
+          .map(status => {
+            if (!status || typeof status !== 'object') return null;
+            const copy = { ...status };
+            if (copy.duration != null && Number.isFinite(Number(copy.duration))) copy.duration = Number(copy.duration);
+            if (copy.stacks != null && Number.isFinite(Number(copy.stacks))) copy.stacks = Number(copy.stacks);
+            if (typeof copy.id !== 'string') return null;
+            return copy;
+          })
+          .filter(Boolean);
+      }
+      const normalizedArmor = Number.isFinite(Number(storedState.armor)) ? Number(storedState.armor) : enemy.defense;
+      enemy.armor = Math.max(0, Math.round(normalizedArmor));
+      enemy.guard = Number.isFinite(Number(storedState.guard)) ? Math.max(0, Math.round(Number(storedState.guard))) : 0;
+      enemy.cooldowns = storedState.cooldowns && typeof storedState.cooldowns === 'object'
+        ? Object.keys(storedState.cooldowns).reduce((acc, key) => {
+            const val = storedState.cooldowns[key];
+            if (Number.isFinite(Number(val))) acc[key] = Math.max(0, Math.round(Number(val)));
+            return acc;
+          }, {})
+        : {};
+      enemy.channel = null;
+      enemy.enraged = !!storedState.enraged;
+    }
     this.run.combat = { room, enemy, turn: 1, playerActed: false };
     if (this.run.player.passiveId === 'soulguard') {
       this.applyStatus(this.run.player, 'guard', 1, 1);
@@ -1620,6 +1650,9 @@ class DungeonGame {
     if (enemy.tier === 'normal' && this.run.player.flags?.mirrorPenalty && this.rng.random() < 0.5) {
       this.run.player.armor = Math.max(0, this.run.player.armor - 1);
       this.addLog('无面誓印嗡鸣，你的护甲被抽走一层。', 'warn');
+    }
+    if (storedState) {
+      this.addLog('敌人重新集结，恢复了部分状态。', 'warn');
     }
     this.addLog(`出现：${enemy.name}(HP ${enemy.hp}/${enemy.maxHP})。弱点：${enemy.weakness.join("、")}。`, "info");
   }
@@ -3339,18 +3372,50 @@ class DungeonGame {
     }
     if (success) {
       this.addLog('你借机撤离战场。', 'info');
+      const room = combat.room || this.run.currentRoom;
+      if (room) {
+        const snapshot = this.prepareEnemyRetreatState(combat.enemy);
+        if (snapshot) {
+          room.enemyState = snapshot;
+        } else if (room.enemyState) {
+          delete room.enemyState;
+        }
+        room.resolved = false;
+      }
+      this.run.combat = null;
       if (this.hasRelic('veil')) {
         const healed = this.healPlayer(6, { source: 'veil', context: 'explore' });
         player.energy = Math.min(player.maxEnergy, player.energy + 2);
         this.addLog(`面纱生效：恢复 ${healed} 点生命与 2 点能量。`, 'good');
       }
       this.state.phase = 'explore';
-      if (this.run.currentRoom) this.run.currentRoom.resolved = true;
+      if (this.tutorial) this.tutorial.stage = 'explore';
+      if (room) {
+        this.addLog('敌人仍在原地，开始恢复元气。', 'warn');
+      }
       this.updateAll();
     } else {
       this.addLog('撤退失败，敌人拦住了去路。', 'warn');
       this.enemyTurn();
     }
+  }
+
+  prepareEnemyRetreatState(enemy) {
+    if (!enemy) return null;
+    const maxHp = Number.isFinite(Number(enemy.maxHP)) ? Math.max(1, Math.round(Number(enemy.maxHP))) : Math.max(1, Math.round(Number(enemy.hp) || 1));
+    const currentHp = Number.isFinite(Number(enemy.hp)) ? Math.max(1, Math.round(Number(enemy.hp))) : maxHp;
+    const missing = Math.max(0, maxHp - currentHp);
+    const recovered = Math.round(missing * 0.5);
+    const nextHp = Math.max(1, Math.min(maxHp, currentHp + recovered));
+    const baseArmor = Number.isFinite(Number(enemy.defense)) ? Number(enemy.defense) : Number(enemy.armor) || 0;
+    return {
+      hp: nextHp,
+      armor: Math.max(0, Math.round(baseArmor)),
+      guard: 0,
+      statuses: [],
+      cooldowns: {},
+      enraged: false,
+    };
   }
 
   playerInspect() {
@@ -4771,6 +4836,7 @@ class DungeonGame {
       if (room) {
         room.resolved = true;
         room.revealed = true;
+        if (room.enemyState) room.enemyState = null;
       }
       this.run.combat = null;
       if (tier === 'boss') {
