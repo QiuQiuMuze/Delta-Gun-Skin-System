@@ -10,6 +10,22 @@ const dungeonEscapeHtml = value => {
 };
 
 const DungeonData = (() => {
+  const BALANCE_CONFIG = {
+    enemy: {
+      hpMultiplier: 0.68,
+      attackMultiplier: 0.78,
+      armorMultiplier: 0.6,
+    },
+    player: {
+      hpBonus: 12,
+      energyBonusThreshold: 7,
+      energyBonus: 1,
+      defenseBonusCap: 5,
+      defenseBonus: 2,
+      attackBonusThreshold: 6,
+      attackBonus: 2,
+    },
+  };
   const statuses = {
     bleed: { id: "bleed", name: "流血", type: "debuff", maxStacks: 3, icon: "🩸", description: "回合末受伤，最高叠3。" },
     poison: { id: "poison", name: "中毒", type: "debuff", maxStacks: 5, icon: "☠️", description: "回合末受伤，治疗效果-30%。" },
@@ -47,27 +63,27 @@ const DungeonData = (() => {
   };
 
   const consumables = {
-    small_heal: { id: "small_heal", name: "小治疗药水", type: "potion", description: "恢复少量HP。", effect: { heal: 12 } },
+    small_heal: { id: "small_heal", name: "小治疗药水", type: "potion", description: "恢复少量HP。", effect: { heal: 26 } },
     bomb: { id: "bomb", name: "爆裂瓶", type: "bomb", description: "投掷小伤并附燃烧。", effect: { damage: 8, burn: 2 } },
     smoke: { id: "smoke", name: "烟雾弹", type: "escape", description: "run必定成功并免惩罚。", effect: { escape: true } },
     dispel: { id: "dispel", name: "驱散卷", type: "scroll", description: "移除1个负面并获得1回合守备。", effect: { dispel: 1, guard: 1 } },
-    ether: { id: "ether", name: "蓝药草", type: "potion", description: "恢复少量能量。", effect: { energy: 3 } },
+    ether: { id: "ether", name: "蓝药草", type: "potion", description: "恢复少量能量。", effect: { energy: 5 } },
     poison_coat: { id: "poison_coat", name: "毒刃涂抹", type: "buff", description: "下一次攻击附中毒。", effect: { imbue: "poison" } },
     ember_oil: { id: "ember_oil", name: "余烬油瓶", type: "buff", description: "下一次攻击附燃烧并激励。", effect: { imbue: "ember", inspire: 1 } },
-    guard_tonic: { id: "guard_tonic", name: "守护药剂", type: "potion", description: "获得护甲与守备。", effect: { armor: 2, guard: 1 } },
+    guard_tonic: { id: "guard_tonic", name: "守护药剂", type: "potion", description: "获得护甲与守备并小幅治疗。", effect: { armor: 3, guard: 1, heal: 14 } },
     thunder_scroll: { id: "thunder_scroll", name: "雷霆卷轴", type: "scroll", description: "对潮湿目标额外造成雷鸣打击。", effect: { damage: 10, stun: 1, bonusVsWet: 6 } },
-    valor_banner: { id: "valor_banner", name: "勇气旌旗", type: "tactic", description: "鼓舞士气，立即获得勇气并恢复能量。", effect: { heroism: 1, energy: 2 } },
-    mending_salve: { id: "mending_salve", name: "愈合膏", type: "salve", description: "缓缓愈合，解除一个流血或中毒。", effect: { heal: 6, cleanse: ["bleed", "poison"] } },
-    iron_biscuit: { id: "iron_biscuit", name: "铁味干粮", type: "food", description: "咬起来如钉，能补充体力。", effect: { heal: 8, armor: 1 } },
-    celerity_draught: { id: "celerity_draught", name: "灵迅药剂", type: "potion", description: "饮下后精神振奋。", effect: { energy: 1, inspire: 1 } },
+    valor_banner: { id: "valor_banner", name: "勇气旌旗", type: "tactic", description: "鼓舞士气，立即获得勇气并恢复能量。", effect: { heroism: 1, energy: 4 } },
+    mending_salve: { id: "mending_salve", name: "愈合膏", type: "salve", description: "缓缓愈合，解除一个流血或中毒。", effect: { heal: 16, cleanse: ["bleed", "poison"] } },
+    iron_biscuit: { id: "iron_biscuit", name: "铁味干粮", type: "food", description: "咬起来如钉，能补充体力。", effect: { heal: 18, armor: 2 } },
+    celerity_draught: { id: "celerity_draught", name: "灵迅药剂", type: "potion", description: "饮下后精神振奋。", effect: { energy: 2, inspire: 1 } },
     purge_charm: { id: "purge_charm", name: "净澈符石", type: "charm", description: "驱散腐蚀并留下一层守备。", effect: { cleanse: ["corrupt"], guard: 1 } },
-    berserk_draught: { id: "berserk_draught", name: "狂怒药剂", type: "potion", description: "饮下后激发怒意，恢复生命并点燃斗志。", effect: { heal: 10, inspire: 1 } },
-    focus_bead: { id: "focus_bead", name: "静心念珠", type: "charm", description: "以禅意抚平伤势并驱散毒素。", effect: { heal: 6, cleanse: ["bleed", "poison"] } },
-    gadget_charge: { id: "gadget_charge", name: "机械充能瓶", type: "potion", description: "恢复能量并生成护幕。", effect: { energy: 3, guard: 1 } },
-    sapling_totem: { id: "sapling_totem", name: "青木护符", type: "totem", description: "唤起小型树灵协助，恢复生命并提升勇气。", effect: { heal: 8, heroism: 1 } },
-    storm_vial: { id: "storm_vial", name: "闪潮瓶", type: "potion", description: "雷潮在瓶中翻滚，饮下可恢复能量并激励。", effect: { energy: 2, inspire: 1 } },
-    spirit_lantern: { id: "spirit_lantern", name: "幽灵提灯", type: "charm", description: "借灯火守护心神，恢复生命并获得守备。", effect: { heal: 5, guard: 1, heroism: 1 } },
-    time_dust: { id: "time_dust", name: "沙漏余尘", type: "potion", description: "吸入尘末，令时间稍缓，恢复少量能量。", effect: { energy: 2, inspire: 1 } }
+    berserk_draught: { id: "berserk_draught", name: "狂怒药剂", type: "potion", description: "饮下后激发怒意，恢复生命并点燃斗志。", effect: { heal: 20, inspire: 1 } },
+    focus_bead: { id: "focus_bead", name: "静心念珠", type: "charm", description: "以禅意抚平伤势并驱散毒素。", effect: { heal: 16, cleanse: ["bleed", "poison"] } },
+    gadget_charge: { id: "gadget_charge", name: "机械充能瓶", type: "potion", description: "恢复能量并生成护幕。", effect: { energy: 5, guard: 1 } },
+    sapling_totem: { id: "sapling_totem", name: "青木护符", type: "totem", description: "唤起小型树灵协助，恢复生命并提升勇气。", effect: { heal: 18, heroism: 1 } },
+    storm_vial: { id: "storm_vial", name: "闪潮瓶", type: "potion", description: "雷潮在瓶中翻滚，饮下可恢复能量并激励。", effect: { energy: 4, inspire: 1 } },
+    spirit_lantern: { id: "spirit_lantern", name: "幽灵提灯", type: "charm", description: "借灯火守护心神，恢复生命并获得守备。", effect: { heal: 14, guard: 1, heroism: 1 } },
+    time_dust: { id: "time_dust", name: "沙漏余尘", type: "potion", description: "吸入尘末，令时间稍缓，恢复少量能量。", effect: { energy: 4, inspire: 1 } }
   };
 
   const equipments = {
@@ -257,6 +273,21 @@ const DungeonData = (() => {
       lore: "她研究井底破碎的时序裂缝，能短暂倒转自身的战斗节奏。",
     }
   };
+
+  Object.values(classes || {}).forEach(cls => {
+    const base = cls.baseStats || {};
+    const buffedMaxHP = (base.maxHP || 0) + BALANCE_CONFIG.player.hpBonus;
+    const buffedEnergy = (base.maxEnergy || 0) + (base.maxEnergy <= BALANCE_CONFIG.player.energyBonusThreshold ? BALANCE_CONFIG.player.energyBonus : 0);
+    const buffedDefense = (base.defense || 0) + ((base.defense || 0) < BALANCE_CONFIG.player.defenseBonusCap ? BALANCE_CONFIG.player.defenseBonus : 0);
+    const buffedAttack = (base.attack || 0) + ((base.attack || 0) <= BALANCE_CONFIG.player.attackBonusThreshold ? BALANCE_CONFIG.player.attackBonus : 0);
+    cls.baseStats = {
+      ...base,
+      maxHP: buffedMaxHP,
+      maxEnergy: buffedEnergy,
+      defense: buffedDefense,
+      attack: buffedAttack,
+    };
+  });
 
   const enemies = {
     slime: { id: "slime", name: "史莱姆", tier: "normal", hp: 24, attack: 5, defense: 1, speed: 5, weakness: ["火焰", "雷系过载"], flavor: "半透明的软体不断抽动，似乎随时会分裂。", tags: ["潮湿体质"] },
@@ -543,7 +574,7 @@ const DungeonData = (() => {
     { id: "floor10", name: "深渊心室", ambience: "井底最深处的水面静止如镜，只有心跳般的震动。", rooms: { normal: ["ancient_sentinel", "void_stalker", "soul_flayer"], elite: ["abyssal_warder", "crown_keeper"], boss: "abyssal_crown", events: ["abyssal_forge", "sacrifice_vendor", "echoing_archive", "tide_pylon", "coral_orchard"], merchants: false, camp: 1 }, size: 6 }
   ];
 
-  return { statuses, skills, consumables, equipments, relics, classes, enemies, events, floors };
+  return { statuses, skills, consumables, equipments, relics, classes, enemies, events, floors, balance: BALANCE_CONFIG };
 })();
 
 const DungeonStorage = {
@@ -1551,12 +1582,21 @@ class DungeonGame {
   }
   startCombat(room) {
     const enemyDef = DungeonData.enemies[room.enemyId];
+    const balance = DungeonData.balance?.enemy || {};
+    const hpMultiplier = typeof balance.hpMultiplier === 'number' ? balance.hpMultiplier : 1;
+    const attackMultiplier = typeof balance.attackMultiplier === 'number' ? balance.attackMultiplier : 1;
+    const armorMultiplier = typeof balance.armorMultiplier === 'number' ? balance.armorMultiplier : 1;
+    const adjustedHp = Math.max(1, Math.round((enemyDef?.hp || 1) * hpMultiplier));
+    const adjustedAttack = Math.max(1, Math.round((enemyDef?.attack || 1) * attackMultiplier));
+    const adjustedDefense = Math.max(0, Math.round(((enemyDef?.defense ?? 0)) * armorMultiplier));
     const enemy = {
       ...enemyDef,
-      hp: enemyDef.hp,
-      maxHP: enemyDef.hp,
+      hp: adjustedHp,
+      maxHP: adjustedHp,
+      attack: adjustedAttack,
+      defense: adjustedDefense,
       statuses: [],
-      armor: enemyDef.defense || 0,
+      armor: adjustedDefense,
       guard: 0,
       cooldowns: {},
       channel: null,
@@ -3280,7 +3320,7 @@ class DungeonGame {
     }
     player.energy -= 1;
     player.cooldowns.__heal = 2;
-    const healed = this.healPlayer(12, { context: 'combat' });
+    const healed = this.healPlayer(16, { context: 'combat' });
     this.addLog(`你调整呼吸，恢复 ${healed} 点生命。`, 'player');
     this.triggerInnerPeace('heal');
     this.enemyTurn();
@@ -3917,7 +3957,7 @@ class DungeonGame {
       return;
     }
     const player = this.run.player;
-    const healed = this.healPlayer(10, { context: 'explore' });
+    const healed = this.healPlayer(24, { context: 'explore' });
     this.adjustCorruption(1);
     if (player?.passiveId === 'wildbond') {
       this.adjustCorruption(-1);
@@ -4602,7 +4642,7 @@ class DungeonGame {
           }
           scoreGain += 130;
         } else if (action === 'warm') {
-          const healed = this.healPlayer(14, { context: 'event' });
+          const healed = this.healPlayer(22, { context: 'event' });
           this.applyStatus(player, 'inspire', 1, 3);
           player.energy = Math.min(player.maxEnergy, player.energy + 1);
           this.addLog(`熔炉余温驱散疲惫，恢复 ${healed} 点生命并激励士气。`, 'good');
@@ -4671,7 +4711,7 @@ class DungeonGame {
       this.addLog('野性回响环绕营地，你感到腐蚀减轻。', 'good');
     }
     if (mode === 'rest') {
-      const healed = this.healPlayer(20, { context: 'camp' });
+      const healed = this.healPlayer(40, { context: 'camp' });
       this.addLog(`你在营地歇息，恢复 ${healed} 点生命。`, 'good');
     } else if (mode === 'prepare') {
       Object.keys(this.run.player.cooldowns).forEach(k => { this.run.player.cooldowns[k] = 0; });
