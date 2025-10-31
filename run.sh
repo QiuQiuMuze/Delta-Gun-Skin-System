@@ -12,5 +12,4 @@ pip install -r backend/requirements.txt
 cd backend
 uvicorn server_web:app --reload --host 0.0.0.0 --port 8000
 
-"ngrok http 8000
-"
+# ngrok http 8000
