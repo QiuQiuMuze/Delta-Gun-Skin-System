@@ -7,6 +7,8 @@
     <list default="true" id="1a7167cf-f1dc-4eff-9d02-6fd15bdebbe6" name="更改" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/delta_brick.db" beforeDir="false" afterPath="$PROJECT_DIR$/backend/delta_brick.db" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/sms_codes.txt" beforeDir="false" afterPath="$PROJECT_DIR$/backend/sms_codes.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/run.sh" beforeDir="false" afterPath="$PROJECT_DIR$/run.sh" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -91,6 +93,7 @@
       <workItem from="1758811117261" duration="459000" />
       <workItem from="1760833433844" duration="4365000" />
       <workItem from="1761061558946" duration="4414000" />
+      <workItem from="1761762621570" duration="1507000" />
     </task>
     <servers />
   </component>
